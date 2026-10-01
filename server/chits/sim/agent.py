@@ -26,7 +26,17 @@ def make_name(rng: random.Random, taken: set) -> str:
         n = n.capitalize()
         if n not in taken and 3 <= len(n) <= 7:
             return n
-    return f"Chit{len(taken)}"
+    # a long-lived world uses up the short names (both live worlds were naming babies "Chit2154" by day 2,600): a
+    # longer one, then a short one with a number, never one already taken
+    for _ in range(400):
+        n = (rng.choice(_SYL_A) + rng.choice(_SYL_A) + rng.choice(_SYL_B)).capitalize()
+        if n not in taken and len(n) <= 9:
+            return n
+    base = (rng.choice(_SYL_A) + rng.choice(_SYL_B)).capitalize()
+    k = 2
+    while f"{base}{k}" in taken:
+        k += 1
+    return f"{base}{k}"
 
 
 TRAITS = ("curiosity", "sociability", "diligence", "caution", "generosity")
