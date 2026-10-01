@@ -50,6 +50,33 @@ def _reachable(world, a: Agent, s) -> bool:
 FURNACE_ORE_TARGET = KEEP_STOCK["ore"] + 4  # reserve + two iron batches: 0-5 ore made the live furnaces choose charcoal
 
 
+def tool_care_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
+    """Look after metal tools (issue #5): mend one half worn at a workshop with a piece of wood, or smelt one that a
+    better tool of the same kind has replaced back into its metal at a furnace. Worn tools only ever vanished, and in
+    long runs the iron went into replacement picks instead of steel."""
+    from ..sim.actions import METAL_OF, tool_wear_limit
+
+    if a.is_child(world.tick):
+        return None
+    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
+        worn = a.tool_wear.get(tool, 0) >= tool_wear_limit(tool) // 2
+        wood = a.has("wood") or any(p.storage.get("wood", 0) > 0 for p in village_stores(world, a.x, a.y, 25, a))
+        if worn and wood and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
+            steps = [] if a.has("wood") else [{"do": "take", "what": "wood", "qty": 1}]
+            return {"goal": f"mend my {item_name(tool)}", "thought": f"My {item_name(tool)} is getting worn. A new haft will save the metal.",
+                    "steps": steps + [{"do": "repair", "what": tool}]}
+    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
+        it = a._item(tool)
+        better = [t for t in a.inventory if t != tool and a.inventory[t] > 0 and a._item(t) and a._item(t).tool == it.tool
+                  and a._item(t).tool_power > it.tool_power]
+        if better and world.nearest_station(a.x, a.y, "furnace", STATION_NEAR):
+            metal = METAL_OF[tool]
+            return {"goal": f"smelt down my old {item_name(tool)}",
+                    "thought": f"I don't need the {item_name(tool)} now I have a {item_name(better[0])}. The {item_name(metal)} is worth more.",
+                    "steps": [{"do": "smelt", "what": tool}]}
+    return None
+
+
 def feed_furnace_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
     """Carry ore from a full mine to a store that a furnace can actually draw from.
 
@@ -861,6 +888,9 @@ class Instinct:
         feed = feed_furnace_plan(world, a)
         if feed:
             opts.append((3.6 + a.traits["diligence"], feed))
+        care = tool_care_plan(world, a)
+        if care:
+            opts.append((1.4 + a.traits["diligence"], care))
         # a shift at a station nearby, turning stored materials into what the stores lack (the emptier they are of
         # it, the more a shift is worth). Kilns and furnaces used to stand idle beside hundreds of stored clay. It
         # yields to curiosity (weighted 1.2-3.0, x2.5 for crafters, often the keenest experimenters, shifts halved

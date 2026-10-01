@@ -30,7 +30,7 @@ VERBS = (
     "write", "read", "inspect", "explore", "go", "refuel", "plant", "harvest", "repair", "rest", "wander", "warm_up",
     "drop", "mark", "shelter", "invent", "pray", "preach", "trade", "steal", "guard", "fight", "pickup", "sail", "hunt", "tame",
     "prospect",
-    "work", "study",
+    "work", "study", "smelt",
 )
 
 VERB_ALIASES = {
@@ -53,6 +53,7 @@ VERB_ALIASES = {
     "pick_up": "pickup", "grab": "pickup", "collect_item": "pickup", "loot": "pickup",
     "take_cover": "shelter", "go_inside": "shelter", "hide": "shelter", "cover": "shelter",
     "operate": "work", "man": "work", "tend": "work", "run": "work",
+    "melt": "smelt", "melt_down": "smelt", "recycle": "smelt", "scrap": "smelt", "mend": "repair", "resharpen": "repair",
 }
 
 STOCKPILE_CAP = 240
@@ -596,9 +597,20 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
         a.remember(world.tick, f"I dropped {len(dropped)} {world.item_name(dropped[0])} to make room for food", 2, "event")
 
 
+def tool_wear_limit(tool: str) -> int:
+    return 60 if tool.startswith("stone") or tool == "spear" else 140
+
+
+# a metal tool's metal: what mending keeps and smelting gives back (issue #5: worn tools only ever vanished, and in long
+# runs the iron went into replacement axes and picks instead of steel)
+METAL_OF: Dict[str, str] = {k: m for k, r in RECIPES.items() if "metal" in (ITEMS[k].props if k in ITEMS else ())
+                            and ITEMS[k].tool for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
+MEND_AT, SMELT_AT = "workshop", "furnace"
+
+
 def _wear(world, a: Agent, tool: str) -> None:
     a.tool_wear[tool] = a.tool_wear.get(tool, 0) + 1
-    limit = 60 if tool.startswith("stone") or tool == "spear" else 140
+    limit = tool_wear_limit(tool)
     if a.tool_wear[tool] >= limit:
         a.tool_wear[tool] = 0
         a.remove(tool, 1)
@@ -2986,7 +2998,73 @@ def _do_harvest(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def _station_step(world, a: Agent, s, station: str) -> Optional[str]:
+    """Walk to the nearest station of a kind: None on arrival, else RUNNING or why not."""
+    mv = _gather_station(world, a, s, station)
+    if mv == "none":
+        return f"there's no {station} nearby"
+    if mv == "blocked":
+        return f"couldn't reach the {station}"
+    return None if mv == "arrived" else RUNNING
+
+
+def _mend_tool(world, a: Agent, step, s, tool: str) -> str:
+    """A worn metal tool, re-hafted at a workshop with one piece of wood: as good as new, its metal kept."""
+    name = world.item_name(tool)
+    if not a.has(tool):
+        return f"I have no {name} to mend"
+    if a.tool_wear.get(tool, 0) <= 0:
+        return f"my {name} doesn't need mending"
+    if not a.has("wood"):
+        return f"I need a piece of wood for a new haft for my {name}"
+    why = _station_step(world, a, s, MEND_AT)
+    if why is not None:
+        return why
+    a.activity = f"mending a {name}"
+    a.emote = "🔧"
+    a.emote_until = world.tick + 2
+    if not _work(a, a.skill_speed("crafting"), 6.0):
+        return RUNNING
+    a.remove("wood", 1)
+    a.tool_wear[tool] = 0
+    a.practice("crafting", 0.5)
+    a.bump("tools_mended")
+    s["note"] = f"Mended my {name}: as good as new"
+    return DONE
+
+
+def _do_smelt(world, a: Agent, step, s) -> str:
+    """Melt a metal tool back into its metal at a furnace (a copper pick nobody needs once there's an iron one)."""
+    tool = world.norm_item(step.get("what"))
+    if tool not in METAL_OF:
+        return f"only metal tools can be smelted down ({step.get('what')} isn't one)"
+    name = world.item_name(tool)
+    if not a.has(tool):
+        return f"I have no {name} to smelt"
+    why = _station_step(world, a, s, SMELT_AT)
+    if why is not None:
+        return why
+    a.activity = f"smelting a {name}"
+    a.emote = "🔥"
+    a.emote_until = world.tick + 2
+    if not _work(a, a.skill_speed("crafting"), 8.0):
+        return RUNNING
+    a.remove(tool, 1)
+    if not a.has(tool):
+        a.tool_wear.pop(tool, None)
+    metal = METAL_OF[tool]
+    a.add(metal, 1)
+    a.bump("tools_smelted")
+    world.emit("smelted_down", f"{a.name} smelted a {name} back into {world.item_name(metal)}", 1, a.id, a.x, a.y,
+               item=tool)
+    s["note"] = f"Smelted my {name} back into {world.item_name(metal)}"
+    return DONE
+
+
 def _do_repair(world, a: Agent, step, s) -> str:
+    tool = world.norm_item(step.get("what")) if step.get("what") else None
+    if tool in METAL_OF:  # a tool, not a building
+        return _mend_tool(world, a, step, s, tool)
     st = _find_structure(world, a, step.get("target"), 30, lambda x: x.complete and x.durability < 70)
     if not st:
         return "nothing nearby needs repair"
