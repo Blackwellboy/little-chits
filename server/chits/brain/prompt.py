@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, item_name
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-09-29.8"
+PROMPT_VERSION = "2026-10-02.1"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -98,6 +98,8 @@ def verb_guide(world) -> str:
         '{"do":"explore","dir":"N|S|E|W|NE|NW|SE|SW"}  {"do":"go","to":"x,y | name | id"}',
         '{"do":"refuel","target":"<campfire id>"}  (feed wood to a fire)  {"do":"plant"}  {"do":"harvest"}  (farms)',
         '{"do":"repair","target":"<id>"}  {"do":"drop","what":"<item>","qty":1}  {"do":"pickup","what":"<item>"}  {"do":"rest"}',
+        '{"do":"repair","what":"<worn metal tool>"}  (re-haft it at a workshop with one wood: as good as new)  '
+        '{"do":"smelt","what":"<metal tool>"}  (melt it back into its metal at a furnace)',
     ]
     from ..sim.agent import JOBS
 
@@ -304,7 +306,7 @@ def scene(world, a: Agent) -> str:
         f"energy {a.energy:.0f} ({_level(a.energy, ('exhausted!', 'tired', 'ok', 'rested'))}), "
         f"warmth {a.warmth:.0f} ({_level(a.warmth, ('freezing!', 'cold', 'ok', 'warm'))}), health {a.health:.0f}."
     )
-    inv = ", ".join(f"{n} {world.item_name(k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
     full = " — your hands are FULL: store or drop something before gathering more" if a.free_space() <= 0 else ""
     lines.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}.{full}")
     tools = [f"{world.item_name(k)} ({item_use(world.item(k))})" for k in a.inventory
@@ -555,6 +557,13 @@ def with_repair(msgs: List[Dict[str, str]], rep: Dict[str, Any]) -> List[Dict[st
     return out
 
 
+def _worn(a: Agent, k: str) -> str:
+    """" (worn)" on a metal tool past half its life, so a model knows to mend it (issue #5)."""
+    from ..sim.actions import METAL_OF, tool_wear_limit
+
+    return " (worn)" if k in METAL_OF and a.tool_wear.get(k, 0) >= tool_wear_limit(k) // 2 else ""
+
+
 _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
 
 
@@ -578,7 +587,7 @@ def compact_scene(world, a: Agent) -> str:
     hh = int(c["hour"])
     L: List[str] = [f"Day {c['day']} {c['season']} {hh:02d}h{' night' if c['night'] else ''}. You: {a.name} at ({a.x},{a.y})."]
     L.append(f"Hunger {a.hunger:.0f} energy {a.energy:.0f} warmth {a.warmth:.0f} health {a.health:.0f} (of 100).")
-    inv = ", ".join(f"{n} {world.item_name(k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
     L.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}{' FULL' if a.free_space() <= 0 else ''}.")
     rec = [world.item_name(k.split(':', 1)[1]) for k in a.knows if k.startswith("recipe:")]
     des = [DESIGNS[k.split(':', 1)[1]].name for k in a.knows if k.startswith("design:")]
