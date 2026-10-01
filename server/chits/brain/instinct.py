@@ -460,6 +460,16 @@ class Instinct:
                 return {"goal": "make the stockpile a warehouse",
                         "thought": "Every stockpile is full. A warehouse would hold four times as much.",
                         "steps": [{"do": "upgrade", "to": "warehouse", "target": pile.id}]}
+            # none can grow where it stands: a new warehouse beside them (its site is supplied from the stores, so
+            # full hands don't matter), rather than the load dropped on the ground
+            piles = [s for s in stores if s.functional and world.same_land(a, s)]
+            cap = max(3, len(world.agents) // 6)
+            if piles and len(world.agents) >= DESIGNS["warehouse"].min_pop \
+                    and sum(1 for s in world.structures.values() if s.design == "warehouse") < cap:
+                pile = min(piles, key=lambda s: (stockpile_room(s), s.id))
+                return {"goal": "build a warehouse",
+                        "thought": "Every store is full and there's no room to make one bigger. A new warehouse, then.",
+                        "steps": [{"do": "build", "what": "warehouse", "near": f"{pile.x},{pile.y}", "_cap": cap}]}
         if not a.knows_design("stockpile"):
             return None
         if sum(1 for s in world.structures.values() if s.design == "stockpile") >= max(5, len(world.agents) // 12):

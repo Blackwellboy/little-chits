@@ -112,3 +112,21 @@ def test_a_hemmed_in_stockpile_is_not_offered_as_a_warehouse():
     assert BLD.upgrade_spot(w, pile, "warehouse") is None
     plan = Instinct._more_storage(w, a)
     assert not plan or {"do": "upgrade", "to": "warehouse", "target": pile.id} not in plan["steps"]
+
+
+def test_with_no_stockpile_able_to_grow_a_bigger_village_builds_a_new_warehouse_beside_them():
+    w = World("A", "A", 3, "direct", 64, 14)
+    a = next(o for o in w.agents.values() if not o.is_child(w.tick))
+    for k in ("design:stockpile", "design:warehouse", "recipe:cord"):
+        a.learn(k, "taught", w.tick)
+    pile = build(w, a, "stockpile")
+    pile.storage["stone"] = 10 ** 4
+    a.x, a.y = pile.x, pile.y
+    own = set(pile.cells())
+    for y in range(pile.y - 3, pile.y + pile.h + 3):
+        for x in range(pile.x - 3, pile.x + pile.w + 3):
+            if (x, y) not in own and w.inb(x, y):
+                w.roads.add(y * w.w + x)
+    plan = Instinct._more_storage(w, a)
+    assert plan and plan["steps"][-1]["do"] == "build" and plan["steps"][-1]["what"] == "warehouse"
+    assert plan["steps"][-1]["near"] == f"{pile.x},{pile.y}"
