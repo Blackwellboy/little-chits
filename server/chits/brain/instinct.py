@@ -862,8 +862,13 @@ class Instinct:
                 continue  # the whole town already has plenty
             if d in ("kiln", "workshop", "furnace", "library") and len(standing) >= max(1, min(4, pop // 12)):
                 continue
+            # a monument is a great shared work, not one per corner of town: a sprawling town (70 tiles across) kept
+            # finding none within 20 tiles and stood 39 of them for 89 people by day 2,600
+            if d == "monument" and len(standing) >= max(1, pop // 30):
+                continue
             # checked again when it builds: chits that planned at the same time each started one (7 stockpiles, 5 kilns)
-            cap = 5 if d == "stockpile" else max(1, min(4, pop // 12)) if d in ("kiln", "workshop", "furnace", "library") else 0
+            cap = 5 if d == "stockpile" else max(1, min(4, pop // 12)) if d in ("kiln", "workshop", "furnace", "library") \
+                else max(1, pop // 30) if d == "monument" else 0
             if d == "farm":
                 # enough fields to feed everyone nearby: about one per four chits
                 if len(near) * 4 >= max(4, len(world.agents_near(a.x, a.y, radius))):
