@@ -763,6 +763,10 @@ class Instinct:
                 if lib.functional and any(_tablet_new(a, world.tablets[t]) for t in lib.shelf if t in world.tablets):
                     return {"goal": "read at the library", "thought": "The library holds things I don't know.",
                             "steps": [{"do": "read"}]}
+            for tb in world.tablets.values():  # (a tablet lying loose: the read step looks within 25 tiles too)
+                if tb.in_structure is None and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= 25 and _tablet_new(a, tb):
+                    return {"goal": "read an old tablet", "thought": "Someone wrote something on that tablet.",
+                            "steps": [{"do": "read"}]}
             for st in world.structures_near(a.x, a.y, 20):
                 if st.complete and not a.knows_design(st.design):
                     return {"goal": f"study the {DESIGNS[st.design].name}", "thought": "How did they build that?",
