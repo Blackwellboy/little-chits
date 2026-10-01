@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/Blackwellboy/little-chits/discussions
+    about: Ask questions, share runs and talk ideas through before opening an issue.
+  - name: Report a security problem
+    url: https://github.com/Blackwellboy/little-chits/security/advisories/new
+    about: Please report security problems privately.
