@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import heapq
 from collections import deque
 import json
 import os
@@ -95,13 +96,52 @@ class BrainStats:
         self.latency_ms_avg = self.latency_ms_avg * (1 - a) + ms * a
 
 
+class PriorityGate:
+    """A semaphore whose waiters are served by priority, then by arrival (issue #3): one-token decisions (a chief's
+    choice, a cascade pick) ahead of full plans and reflections. On a live run with one 3090 for 90 chits, ~105
+    requests waited here and 14 of 18 chief answers arrived after the question had expired."""
+
+    def __init__(self, n: int):
+        self._free = n
+        self._wait: List[Any] = []
+        self._seq = 0
+
+    async def acquire(self, priority: int = 1) -> None:
+        if self._free > 0 and not self._wait:
+            self._free -= 1
+            return
+        fut = asyncio.get_running_loop().create_future()
+        self._seq += 1
+        heapq.heappush(self._wait, (priority, self._seq, fut))
+        try:
+            await fut
+        except asyncio.CancelledError:
+            if fut.done() and not fut.cancelled():
+                self.release()  # granted just as it was cancelled: pass the slot on
+            raise
+
+    def release(self) -> None:
+        while self._wait:
+            _, _, fut = heapq.heappop(self._wait)
+            if not fut.done():  # (a cancelled waiter is skipped)
+                fut.set_result(True)
+                return
+        self._free += 1
+
+    def waiting(self) -> int:
+        return sum(1 for _, _, f in self._wait if not f.done())
+
+
+DECISION, PLAN = 0, 1  # priorities: one-token decisions first
+
+
 class LLMBrain:
     def __init__(self, cfg: BrainConfig):
         self.cfg = cfg
         self.stats = BrainStats()
         self.latencies: deque = deque(maxlen=300)
         self.done_log: deque = deque(maxlen=2000)  # (finish time, tokens out) for real throughput
-        self.sem = asyncio.Semaphore(max(1, cfg.max_concurrency))
+        self.sem = PriorityGate(max(1, cfg.max_concurrency))
         self._client: Optional[httpx.AsyncClient] = None
         self._json_ok = cfg.json_mode
         self._thinking_kw_ok = True
@@ -167,14 +207,15 @@ class LLMBrain:
 
     async def chat(self, messages: Any, *, max_tokens: Optional[int] = None,
                    temperature: Optional[float] = None, extra: Optional[Dict[str, Any]] = None,
-                   json_reply: bool = True) -> Dict[str, Any]:
+                   json_reply: bool = True, priority: Optional[int] = None) -> Dict[str, Any]:
         """Returns {"text", "latency_ms", "tokens_in", "tokens_out"}; raises on transport/HTTP failure.
+        `priority`: DECISION or PLAN; by default a one-token request is a DECISION and goes ahead of the queue.
         `messages` may be a function that builds them: it's called once a slot is free, so a request that queued
         for seconds still describes the world as it is when it's sent."""
         queued_at = time.monotonic()
         self.stats.queued += 1
         try:
-            await self.sem.acquire()
+            await self.sem.acquire(priority if priority is not None else (DECISION if max_tokens == 1 else PLAN))
         finally:
             self.stats.queued -= 1
         queue_ms = (time.monotonic() - queued_at) * 1000
