@@ -1,0 +1,31 @@
+name: Bug report
+description: Something in the game or the tools doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How to see it
+      description: Steps, the seed and day if it's in the simulation, and the command you ran.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        The relevant lines from `make diagnose` or the server log. Please remove anything personal first: your
+        username in paths, hostnames, IP addresses and API keys.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The commit you're on (`git rev-parse --short HEAD`), your OS, and the model server if one is involved.

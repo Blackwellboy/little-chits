@@ -1,0 +1,23 @@
+name: Idea or improvement
+description: A new building, item, behaviour, tool or research feature
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What should exist or change, and why it would make the world (or the research) better.
+    validations:
+      required: true
+  - type: textarea
+    id: rules
+    attributes:
+      label: How the world would handle it
+      description: >
+        The simulator decides what happens. What would the rules be (materials, stations, who can use it), and how
+        would instinct and a model's chits come to use it?
+  - type: textarea
+    id: check
+    attributes:
+      label: How we'd know it works
+      description: A test, a measurement over seeds, or something visible in the game.
