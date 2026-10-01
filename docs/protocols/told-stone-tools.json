@@ -1,0 +1,18 @@
+{
+  "name": "Told stone tools vs untold",
+  "notes": "Does telling half the founders how to make stone tools change what the village becomes? Same culture, same islands, instinct only (no GPU). The treatment arm's pack is in treatments/stone-tools.json; the linter guarantees it only changes what founders know.",
+  "arms": [
+    {"name": "told", "culture": "direct", "treatment": "stone-tools"},
+    {"name": "untold", "culture": "direct"}
+  ],
+  "treatments": {"stone-tools": "treatments/stone-tools.json"},
+  "seeds": [42, 7, 99, 1, 2, 3, 4, 5, 6, 11, 12, 13],
+  "days": 30,
+  "size": 128,
+  "population": 18,
+  "metrics": ["discoveries", "population", "era", "food", "homes", "useful", "villages", "births", "copper"],
+  "events": {
+    "first copper in store": {"metric": "copper", "at_least": 1},
+    "20 discoveries": {"metric": "discoveries", "at_least": 20}
+  }
+}

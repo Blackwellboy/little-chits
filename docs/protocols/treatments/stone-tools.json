@@ -1,0 +1,21 @@
+{
+  "id": "stone-tools",
+  "version": "1",
+  "title": "Stone tools (synthetic example)",
+  "scope_note": "A made-up pack to show the format and to test that telling founders a practice changes what a village does. It is not drawn from any real culture or text.",
+  "sources": [
+    {"id": "synthetic", "citation": "Written for the Little Chits lab as an example; describes the game's own recipes", "edition": "1", "licence": "CC0-1.0"}
+  ],
+  "claims": [
+    {"id": "edge", "text": "Two stones struck together give an edge that cuts.", "category": "practice", "sources": ["synthetic"]},
+    {"id": "axe", "text": "An edge bound to a stick fells trees faster than bare hands.", "category": "practice", "sources": ["synthetic"]},
+    {"id": "share", "text": "A tool that works should be shown to the others.", "category": "norm", "sources": ["synthetic"]}
+  ],
+  "practices": [
+    {"knowledge": "recipe:sharp_stone", "sources": ["synthetic"]},
+    {"knowledge": "recipe:stone_axe", "sources": ["synthetic"]},
+    {"knowledge": "recipe:stone_pick", "sources": ["synthetic"]}
+  ],
+  "founders": {"share": 0.5},
+  "reviewer_notes": "Synthetic; nothing to review for accuracy. Real packs (research plan R15) need sourced claims and a named reviewer."
+}

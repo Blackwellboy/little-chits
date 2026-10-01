@@ -1,0 +1,13 @@
+# Linux: host networking lets the game find model servers on this machine's localhost.
+# Docker Desktop (Windows/macOS) has no host networking: remove network_mode, add `ports: ["8000:8000"]`,
+# and point the game at http://host.docker.internal:PORT/v1 (in ⚙ Brains, or CHITS_MODEL_URL).
+services:
+  little-chits:
+    build: .
+    network_mode: host
+    volumes:
+      - ./data:/data
+    environment:
+      CHITS_TOKEN: ${CHITS_TOKEN:-change-me}
+      # CHITS_MODEL_URL: http://127.0.0.1:18090/v1
+    restart: unless-stopped

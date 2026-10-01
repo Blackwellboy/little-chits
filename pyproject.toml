@@ -1,0 +1,25 @@
+[project]
+name = "little-chits"
+version = "2.0.0"
+description = "A living artificial civilisation of tiny AI creatures that learn, build and cooperate."
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "httpx>=0.27",
+  "pydantic>=2.5",
+]
+
+[project.scripts]
+little-chits = "chits.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+
+[tool.setuptools.packages.find]
+where = ["server"]
+
+[tool.pytest.ini_options]
+pythonpath = ["server"]
+testpaths = ["tests"]
+asyncio_mode = "auto"

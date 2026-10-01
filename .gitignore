@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/
+web/node_modules/
+web/dist/
+*.sqlite*
+.env
+*.egg-info/
+plan/reports/
+*.tsbuildinfo
+.vite/

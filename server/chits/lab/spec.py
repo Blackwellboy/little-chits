@@ -1,0 +1,197 @@
+"""An experiment's protocol: what is compared, over which seeds, for how long, with which matched interventions."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+from typing import Any, Dict, List
+
+from ..sim.world import CULTURE_FLAGS
+
+INTERVENTIONS = ("drought", "storm", "snow", "rain", "hard_winter", "ore_shortage")
+LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+# R1 item 71: fields that can change what a model decides or whether a request succeeds must match across
+# model arms. Identity/routing (id, label, model, base_url, api_key) may differ because those are the treatment.
+FAIR_MODEL_FIELDS = (
+    "max_concurrency", "timeout", "temperature", "max_tokens", "json_mode", "disable_thinking",
+    "extra_body", "prompt_style", "escalate_below", "escalate_share", "focus",
+)
+
+
+class SpecError(ValueError):
+    pass
+
+
+@dataclass
+class Arm:
+    name: str
+    culture: str = "direct"
+    brain: str = "instinct"  # anything else is a model arm (refused without the owner's go-ahead)
+    flags: Dict[str, bool] = field(default_factory=dict)  # capability flags over the culture's own
+    treatment: str = ""  # a TreatmentPack id from the protocol's `treatments` (lab/treatment.py)
+
+
+@dataclass
+class Intervention:
+    day: int  # applied at the start of this day (1 = the first day), identically in every arm
+    kind: str
+    days: float = 1.0
+    params: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ExperimentSpec:
+    name: str
+    arms: List[Arm]
+    seeds: List[int]
+    days: int
+    size: int = 128
+    population: int = 18
+    contract: str = "experiment"
+    blind: bool = True
+    assign_seed: int = 0
+    sample_every: int = 1  # days between the rows of each run's daily table
+    metrics: List[str] = field(default_factory=list)  # the metrics the report leads with (all are recorded)
+    events: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # time-to-event: name -> {"metric", "at_least"}
+    interventions: List[Intervention] = field(default_factory=list)
+    allow_models: bool = False
+    brains: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # exact sealed BrainConfig dictionaries, keyed by id
+    treatments: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # pack id -> the pack (inlined on load)
+    notes: str = ""
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "ExperimentSpec":
+        d = dict(d)
+        known = set(cls.__dataclass_fields__)
+        extra = set(d) - known
+        if extra:
+            raise SpecError(f"unknown protocol fields: {', '.join(sorted(extra))}")
+        try:
+            d["arms"] = [a if isinstance(a, Arm) else Arm(**a) for a in d.get("arms", [])]
+            d["interventions"] = [i if isinstance(i, Intervention) else Intervention(**i) for i in d.get("interventions", [])]
+            spec = cls(**d)
+        except TypeError as e:
+            raise SpecError(str(e)) from None
+        spec.validate()
+        return spec
+
+    @classmethod
+    def load(cls, path) -> "ExperimentSpec":
+        text = Path(path).read_text()
+        if str(path).endswith((".yaml", ".yml")):
+            try:
+                import yaml
+            except ImportError:  # PyYAML is optional: a JSON protocol always works
+                raise SpecError("reading YAML needs PyYAML (pip install pyyaml), or write the protocol as JSON") from None
+            data = yaml.safe_load(text)
+        else:
+            data = json.loads(text)
+        # a pack may be named by a path (from the protocol's folder): it is read in, so the protocol's fingerprint
+        # covers the pack's content and a changed pack can't resume an old run
+        if isinstance(data, dict) and isinstance(data.get("treatments"), dict):
+            base = Path(path).parent
+            try:
+                data["treatments"] = {k: json.loads((base / v).read_text()) if isinstance(v, str) else v
+                                      for k, v in data["treatments"].items()}
+            except (OSError, ValueError) as e:
+                raise SpecError(f"reading a treatment pack: {e}") from None
+        return cls.from_dict(data)
+
+    def validate(self) -> None:
+        if not self.name or not str(self.name).strip():
+            raise SpecError("an experiment needs a name")
+        if len(self.arms) < 2:
+            raise SpecError("an experiment compares at least two arms")
+        if len(self.arms) > len(LABELS):
+            raise SpecError(f"at most {len(LABELS)} arms")
+        names = [a.name for a in self.arms]
+        if len(set(names)) != len(names):
+            raise SpecError("arm names must be unique")
+        if not self.seeds or len(set(self.seeds)) != len(self.seeds):
+            raise SpecError("seeds must be a non-empty list without repeats")
+        if self.days < 1 or self.sample_every < 1:
+            raise SpecError("days and sample_every must be at least 1")
+        if self.size < 32 or self.population < 2:
+            raise SpecError("the island must be at least 32 tiles and hold at least 2 chits")
+        if self.contract not in ("experiment", "play"):
+            raise SpecError("contract is 'experiment' or 'play'")
+        from ..brain.llm import BrainConfig
+
+        brain_fields = set(BrainConfig.__dataclass_fields__)
+        for bid, raw in self.brains.items():
+            if not isinstance(raw, dict):
+                raise SpecError(f"brain {bid!r}: config must be an object")
+            extra = set(raw) - brain_fields
+            if extra:
+                raise SpecError(f"brain {bid!r}: unknown fields {', '.join(sorted(extra))}")
+            if raw.get("id") != bid:
+                raise SpecError(f"brain {bid!r}: config id must be {bid!r}")
+            try:
+                cfg = BrainConfig(**raw)
+            except TypeError as e:
+                raise SpecError(f"brain {bid!r}: {e}") from None
+            if not cfg.base_url:
+                raise SpecError(f"brain {bid!r}: base_url is required")
+            if cfg.api_key and not cfg.api_key.startswith("env:"):
+                raise SpecError(f"brain {bid!r}: put API keys in an environment variable and use api_key='env:NAME'")
+            if not cfg.enabled:
+                raise SpecError(f"brain {bid!r}: a lab brain must be enabled")
+
+        for a in self.arms:
+            if a.brain != "instinct" and a.brain not in self.brains:
+                raise SpecError(f"arm {a.name}: no sealed brain config {a.brain!r} in protocol.brains")
+        model_ids = sorted({a.brain for a in self.arms if a.brain != "instinct"})
+        if len(model_ids) > 1:
+            configs = {bid: BrainConfig(**self.brains[bid]) for bid in model_ids}
+            ref_id = model_ids[0]
+            ref = configs[ref_id]
+            mismatches = []
+            for bid in model_ids[1:]:
+                cfg = configs[bid]
+                for field_name in FAIR_MODEL_FIELDS:
+                    if getattr(cfg, field_name) != getattr(ref, field_name):
+                        mismatches.append(field_name)
+            if mismatches:
+                names = ", ".join(sorted(set(mismatches)))
+                raise SpecError(
+                    f"model arms must use identical comparison settings; differ in: {names}. "
+                    "Only model identity/routing may differ (research item 71)."
+                )
+        for a in self.arms:
+            if a.culture not in CULTURE_FLAGS:
+                raise SpecError(f"arm {a.name}: unknown culture {a.culture!r} (one of {', '.join(CULTURE_FLAGS)})")
+            bad = set(a.flags) - {"say", "teach", "write"}
+            if bad:
+                raise SpecError(f"arm {a.name}: unknown flags {', '.join(sorted(bad))}")
+            if a.brain != "instinct" and not self.allow_models:
+                raise SpecError(f"arm {a.name} thinks with a model: set allow_models (and the owner's go-ahead)")
+        for i in self.interventions:
+            if i.kind not in INTERVENTIONS:
+                raise SpecError(f"unknown intervention {i.kind!r} (one of {', '.join(INTERVENTIONS)})")
+            if not 1 <= i.day <= self.days:
+                raise SpecError(f"intervention {i.kind} on day {i.day} is outside the run (1-{self.days})")
+        from . import treatment as T
+
+        for pid, pack in self.treatments.items():
+            if not isinstance(pack, dict) or pack.get("id") != pid:
+                raise SpecError(f"treatment {pid!r}: the pack's own id must be {pid!r}")
+            try:
+                T.check(pack)
+            except T.TreatmentError as e:
+                raise SpecError(str(e)) from None
+        for a in self.arms:
+            if a.treatment and a.treatment not in self.treatments:
+                raise SpecError(f"arm {a.name}: no treatment {a.treatment!r} in the protocol's treatments")
+        for name, ev in self.events.items():
+            if "metric" not in ev or "at_least" not in ev:
+                raise SpecError(f"event {name}: needs 'metric' and 'at_least'")
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+    def fingerprint(self) -> str:
+        """The protocol's identity: resuming or analysing a run under a changed protocol is refused."""
+        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode()).hexdigest()[:16]

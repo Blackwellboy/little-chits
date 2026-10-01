@@ -1,0 +1,51 @@
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: web/package-lock.json }
+      - name: Install
+        run: |
+          python -m pip install -q -e '.[dev]'
+          cd web && npm ci --no-audit --no-fund
+      - name: Tests
+        run: python -m pytest -q tests
+      - name: Web build
+        run: cd web && npm run build
+      - name: Plan — every ticked-off task must still pass its acceptance tests
+        run: |
+          python - <<'PY'
+          import json, subprocess, sys
+          data = json.load(open("plan/tasks.json"))
+          done = [t for t in data["tasks"] if t["status"] == "done"]
+          # acceptance tests must match the frozen plan tag (if the author has set one), not just tasks.json
+          import hashlib
+          frozen = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/tags/plan-lock"], capture_output=True).returncode == 0
+          for t in data["tasks"]:
+              for a in t.get("acceptance", []):
+                  cur = hashlib.sha256(open(a, "rb").read()).hexdigest()
+                  if t.get("sha256", {}).get(a) != cur:
+                      sys.exit(f"{a} does not match its locked hash in tasks.json")
+                  if frozen:
+                      old = subprocess.run(["git", "show", f"plan-lock:{a}"], capture_output=True)
+                      if old.returncode == 0 and hashlib.sha256(old.stdout).hexdigest() != cur:
+                          sys.exit(f"{a} differs from the frozen plan (tag plan-lock)")
+          print(f"{len(done)}/{len(data['tasks'])} plan tasks done")
+          py = [a for t in done for a in t["acceptance"] if a.endswith(".py")]
+          ts = [a for t in done for a in t["acceptance"] if a.endswith(".ts")]
+          rc = 0
+          if py:
+              rc |= subprocess.call([sys.executable, "-m", "pytest", "-q", *py], env={**__import__("os").environ, "PYTHONPATH": "server:tests"})
+          if ts:
+              rc |= subprocess.call(["npx", "vitest", "run", "--root", "..", "--globals", *ts], cwd="web")
+          sys.exit(rc)
+          PY

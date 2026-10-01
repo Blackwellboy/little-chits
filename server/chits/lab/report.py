@@ -1,0 +1,142 @@
+"""The comparison pack: a Markdown report plus tidy CSVs (one row per run, one row per run-day). Blind unless asked:
+arms appear as their labels, and `unblind` names them only after the seal checks out."""
+
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from . import assign, stats
+from .run import results
+from .spec import ExperimentSpec
+
+DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron", "villages", "homes", "useful",
+                   "births", "forgotten", "tunnels", "loose"]
+
+
+def _fmt(x: float) -> str:
+    if x is None or x != x:
+        return "-"
+    return f"{x:,.2f}" if abs(x) < 100 else f"{x:,.0f}"
+
+
+def analyze(out, unblind: bool = False) -> Dict[str, Any]:
+    out = Path(out)
+    manifest = json.loads((out / "manifest.json").read_text())
+    spec = ExperimentSpec.from_dict(manifest["protocol"])
+    if spec.fingerprint() != manifest["fingerprint"]:
+        raise ValueError("the manifest's protocol doesn't match its fingerprint")
+    names = assign.unblind(out) if unblind else {}
+    runs = results(out)
+    labels = sorted({r["label"] for r in runs})
+    show = {l: (f"{l} ({names[l]})" if unblind else l) for l in labels}
+    metrics = spec.metrics or DEFAULT_METRICS
+    by = {l: {r["seed"]: r for r in runs if r["label"] == l} for l in labels}
+    table = {}
+    for m in metrics:
+        table[m] = {}
+        for l in labels:
+            xs = [r["final"].get(m, 0) for r in by[l].values()]
+            d = stats.describe(xs)
+            d["ci"] = stats.bootstrap_ci(xs, seed=1)
+            table[m][l] = d
+    ref = labels[0] if labels else None
+    pairs = {}
+    for l in labels[1:]:
+        pairs[l] = {}
+        for m in metrics:
+            a = {s: r["final"].get(m, 0) for s, r in by[ref].items()}
+            b = {s: r["final"].get(m, 0) for s, r in by[l].items()}
+            p = stats.paired(a, b, seed=2)
+            p["cliffs_delta"] = stats.cliffs_delta(list(a.values()), list(b.values()))
+            p["mann_whitney_p"] = stats.mann_whitney(list(a.values()), list(b.values()))["p"]
+            pairs[l][m] = p
+    events = {}
+    for name, ev in spec.events.items():
+        events[name] = {}
+        for l in labels:
+            times = [stats.first_day(r["daily"], ev["metric"], ev["at_least"]) for r in by[l].values()]
+            events[name][l] = {"reached": sum(1 for t in times if t is not None), "runs": len(times),
+                               "km_median_day": stats.km_median(times, spec.days)}
+    return {"spec": spec, "manifest": manifest, "labels": labels, "show": show, "metrics": metrics, "table": table,
+            "pairs": pairs, "ref": ref, "events": events, "runs": runs, "unblinded": unblind}
+
+
+def markdown(a: Dict[str, Any]) -> str:
+    spec, man, show = a["spec"], a["manifest"], a["show"]
+    n = len(a["runs"])
+    total = len(spec.seeds) * len(spec.arms)
+    L = [f"# {spec.name}", "",
+         f"Protocol `{man['fingerprint']}` · code `{man['commit']}` · {len(spec.seeds)} seeds × {len(spec.arms)} arms · "
+         f"{spec.days} days · island {spec.size} · {spec.population} founders · {spec.contract} contract",
+         f"Runs finished: {n} of {total}." + ("" if n == total else " **Incomplete: resume before drawing conclusions.**"),
+         ("Arms are **unblinded** (seal checked)." if a["unblinded"] else
+          "Arms are shown **blind** by label; `analyze --unblind` names them after checking the seal."), ""]
+    if spec.interventions:
+        L += ["Interventions, identical in every arm: " + "; ".join(f"day {i.day} {i.kind}" for i in spec.interventions), ""]
+    L += ["## Final values", "", "| metric | " + " | ".join(show[l] for l in a["labels"]) + " |",
+          "|---|" + "---|" * len(a["labels"])]
+    for m in a["metrics"]:
+        cells = []
+        for l in a["labels"]:
+            d = a["table"][m][l]
+            cells.append("-" if not d.get("n") else f"{_fmt(d['mean'])} [{_fmt(d['ci'][0])}, {_fmt(d['ci'][1])}] · med {_fmt(d['median'])}")
+        L.append(f"| {m} | " + " | ".join(cells) + " |")
+    L += ["", "Mean [95% bootstrap interval] · median, over seeds.", ""]
+    for l, per in a["pairs"].items():
+        L += [f"## {show[l]} vs {show[a['ref']]}", "",
+              "| metric | mean diff per seed [95% CI] | seeds higher / lower / tied | Cliff's delta | Mann-Whitney p |",
+              "|---|---|---|---|---|"]
+        for m, p in per.items():
+            if not p.get("n"):
+                continue
+            L.append(f"| {m} | {_fmt(p['mean_diff'])} [{_fmt(p['ci_lo'])}, {_fmt(p['ci_hi'])}] | "
+                     f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | {_fmt(p['mann_whitney_p'])} |")
+        L += ["", "Differences are paired by seed (both arms had the same island). p-values are not corrected for the "
+                  "number of metrics: read them as a guide, not a verdict.", ""]
+    if a["events"]:
+        L += ["## Time to event", "", "| event | " + " | ".join(show[l] for l in a["labels"]) + " |",
+              "|---|" + "---|" * len(a["labels"])]
+        for name, per in a["events"].items():
+            cells = [f"{per[l]['reached']}/{per[l]['runs']} · median day {_fmt(per[l]['km_median_day'])}" for l in a["labels"]]
+            L.append(f"| {name} | " + " | ".join(cells) + " |")
+        L += ["", "Median day by Kaplan-Meier: a run that never got there counts as \"not by the last day\"; '-' means "
+                  "fewer than half got there.", ""]
+    return "\n".join(L)
+
+
+def write_pack(out, unblind: bool = False) -> Path:
+    """Report plus final-state, lifetime-event and daily tidy CSVs (blind/unblinded)."""
+    out = Path(out)
+    a = analyze(out, unblind)
+    tag = "unblinded" if unblind else "blind"
+    (out / f"report-{tag}.md").write_text(markdown(a))
+    name = assign.unblind(out) if unblind else {}
+    with open(out / f"runs-{tag}.csv", "w", newline="") as f:
+        cols = sorted({k for r in a["runs"] for k in r["final"]})
+        w = csv.writer(f)
+        w.writerow(["seed", "arm", "wall_s", *cols])
+        for r in a["runs"]:
+            w.writerow([r["seed"], name.get(r["label"], r["label"]), r["wall_s"], *[r["final"].get(c, "") for c in cols]])
+    # One row per run of persistent event totals. A migrated old save can honestly say that its counters begin
+    # after tick 0; fresh Lab worlds are complete_from_start.
+    with open(out / f"lifetime-{tag}.csv", "w", newline="") as f:
+        event_cols = sorted({k for r in a["runs"] for k in (r.get("lifetime") or {}).get("events", {})})
+        w = csv.writer(f)
+        w.writerow(["seed", "arm", "since_tick", "through_tick", "complete_from_start", *event_cols])
+        for r in a["runs"]:
+            life = r.get("lifetime") or {}
+            events = life.get("events") or {}
+            w.writerow([r["seed"], name.get(r["label"], r["label"]), life.get("since_tick", ""),
+                        life.get("through_tick", ""), life.get("complete_from_start", ""),
+                        *[events.get(c, 0) for c in event_cols]])
+    with open(out / f"daily-{tag}.csv", "w", newline="") as f:
+        cols = sorted({k for r in a["runs"] for row in r["daily"] for k in row})
+        w = csv.writer(f)
+        w.writerow(["seed", "arm", *cols])
+        for r in a["runs"]:
+            for row in r["daily"]:
+                w.writerow([r["seed"], name.get(r["label"], r["label"]), *[row.get(c, "") for c in cols]])
+    return out / f"report-{tag}.md"

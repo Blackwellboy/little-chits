@@ -1,0 +1,19 @@
+{
+  "name": "Speech vs silence, with a drought",
+  "notes": "Does a village that can talk, teach and write out-grow one that can only leave marks and watch? Both arms get the same drought on day 20. Instinct only (no GPU).",
+  "arms": [
+    {"name": "talking", "culture": "direct"},
+    {"name": "silent", "culture": "stigmergy"}
+  ],
+  "seeds": [42, 7, 99, 1, 2, 3, 4, 5, 6, 11, 12, 13],
+  "days": 30,
+  "size": 128,
+  "population": 18,
+  "interventions": [{"day": 20, "kind": "drought", "days": 3}],
+  "metrics": ["discoveries", "population", "era", "food", "homes", "useful", "villages", "births", "forgotten", "copper"],
+  "events": {
+    "first copper in store": {"metric": "copper", "at_least": 1},
+    "20 discoveries": {"metric": "discoveries", "at_least": 20},
+    "a second village": {"metric": "villages", "at_least": 2}
+  }
+}

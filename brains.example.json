@@ -1,0 +1,23 @@
+{
+  "brains": [
+    {
+      "id": "rtx5090",
+      "label": "RTX 5090",
+      "base_url": "http://127.0.0.1:18090/v1",
+      "model": "",
+      "max_concurrency": 8,
+      "disable_thinking": true,
+      "enabled": true
+    },
+    {
+      "id": "rtx3090",
+      "label": "RTX 3090",
+      "base_url": "http://127.0.0.1:18080/v1",
+      "model": "",
+      "max_concurrency": 4,
+      "disable_thinking": true,
+      "enabled": true
+    }
+  ],
+  "assign": { "A": "rtx5090", "B": "rtx3090" }
+}

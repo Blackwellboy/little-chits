@@ -1,0 +1,726 @@
+{
+  "version": 1,
+  "baseline_tests": 32,
+  "tasks": [
+    {
+      "id": "F1",
+      "title": "Play vs Experiment: a run contract",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F1-run-contract.md",
+      "acceptance": [
+        "plan/acceptance/test_f1_run_contract.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f1_run_contract.py": "705d4241370760e0f6c17409854465c805e0f9a036bc6fdc4f70c9932771c54b"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F2",
+      "title": "Decision records, persistent objective, stale-plan checks",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [
+        "F1"
+      ],
+      "spec": "plan/tasks/F2-decisions.md",
+      "acceptance": [
+        "plan/acceptance/test_f2_decisions.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f2_decisions.py": "a294b0bdcf00e5a90c26d786f4016d1c69e0720b678125b82947b627a58b6ca2"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F3",
+      "title": "World identity, timelines and versioned saves",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F3-identity.md",
+      "acceptance": [
+        "plan/acceptance/test_f3_identity.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f3_identity.py": "e5f10126e1ed26d5981cc9ac560e0a2fd7f5bedf6ff0f7d3f71d83223bb113bd"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F4",
+      "title": "A bounded, sequenced live stream",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F4-transport.md",
+      "acceptance": [
+        "plan/acceptance/test_f4_transport.py",
+        "plan/acceptance/web/stream.test.ts"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f4_transport.py": "0abb6d15d34dd46c674285936b8a609b11c2896c53f9ae58232dbb228a421335",
+        "plan/acceptance/web/stream.test.ts": "09ce1cf82dd34208b17505ff394d7d78a215b86726c94884d892d1fcf59494e6"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F5",
+      "title": "Invariants: nothing duplicated, lost or negative",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F5-invariants.md",
+      "acceptance": [
+        "plan/acceptance/test_f5_invariants.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f5_invariants.py": "cb4d0becb9b44400d7a88eec8bd140372d98f31dcea1c026db913bdd30ab8e70"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F6",
+      "title": "Independent random streams + why-not diagnostics",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F6-rng-and-why-not.md",
+      "acceptance": [
+        "plan/acceptance/test_f6_rng_why_not.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f6_rng_why_not.py": "1e5512f1a37b9dda1b3916b7f0f2ff79b96781df7829c05032119db10b6c1a27"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "F7",
+      "title": "Knowledge truth, delivery lineage, cited lessons",
+      "phase": "0 \u00b7 Foundation (integrity)",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/F7-knowledge-truth.md",
+      "acceptance": [
+        "plan/acceptance/test_f7_knowledge_truth.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_f7_knowledge_truth.py": "0e24cb36d5b577b0f16a44c9df00034f22b046c3a7006de0cba6a68e6eee5dfc"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T01",
+      "title": "doctor: prove a model works before a long run",
+      "phase": "A \u00b7 Run it on your GPUs",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T01-doctor.md",
+      "acceptance": [
+        "plan/acceptance/test_t01_doctor.py"
+      ],
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/test_t01_doctor.py": "24ebce06d74d31ded083ffeac3cf0157a5b7b7561e9c32cf2d3123610e1a0b4f"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T02",
+      "title": "Compact prompt style for small models",
+      "phase": "A \u00b7 Run it on your GPUs",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T02-compact-prompt.md",
+      "acceptance": [
+        "plan/acceptance/test_t02_compact_prompt.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t02_compact_prompt.py": "a48eafa0b7a56e10668245f322501811535da93f151eec7b6054fcfc8549e509"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T03",
+      "title": "Dual-GPU profile (5090 \u2192 A, 3090 \u2192 B)",
+      "phase": "A \u00b7 Run it on your GPUs",
+      "status": "done",
+      "depends": [
+        "T01"
+      ],
+      "spec": "plan/tasks/T03-dual-gpu.md",
+      "acceptance": [
+        "plan/acceptance/test_t03_dual_gpu.py"
+      ],
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/test_t03_dual_gpu.py": "ad105630c7dffea0abd2eba63118cb9818c16248c429c27fdd726a10f18bdfa6"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T04",
+      "title": "Model bench: rank your GGUFs",
+      "phase": "A \u00b7 Run it on your GPUs",
+      "status": "done",
+      "depends": [
+        "T02"
+      ],
+      "spec": "plan/tasks/T04-model-bench.md",
+      "acceptance": [
+        "plan/acceptance/test_t04_bench.py"
+      ],
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/test_t04_bench.py": "1af4794390ccf906d970e6cb467811a6d702412a25bf25c5ca5599fc11cd982b"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T05",
+      "title": "Chits name their inventions",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T05-named-inventions.md",
+      "acceptance": [
+        "plan/acceptance/test_t05_named_inventions.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t05_named_inventions.py": "9ca263b1d60f12b1e971c3b230cfd74883695d8f0c023c2a2de1eb63de2f8d6a"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T06",
+      "title": "Ambitions: chits choose life goals",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [
+        "F7"
+      ],
+      "spec": "plan/tasks/T06-ambitions.md",
+      "acceptance": [
+        "plan/acceptance/test_t06_ambitions.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t06_ambitions.py": "a95186e674c73ca34e4444c500d546059cb748b7e18bf6768cf06892862e4b02"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T07",
+      "title": "Signs: marks in the world (stigmergy)",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T07-signs.md",
+      "acceptance": [
+        "plan/acceptance/test_t07_signs.py"
+      ],
+      "sha256": {
+        "plan/acceptance/test_t07_signs.py": "6358520036e239e0ac3efa944f8aa5da919b824aeaf947a9eb8d6bc66db9b9b5"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T08",
+      "title": "Weather, disasters and common-sense shelter",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T08-weather.md",
+      "acceptance": [
+        "plan/acceptance/test_t08_weather.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t08_weather.py": "ae8398a26683efe07f0610167192e74c7b5e7017a2d4d032666fed67c0269d65"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T09",
+      "title": "Settlements emerge and get names",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T09-settlements.md",
+      "acceptance": [
+        "plan/acceptance/test_t09_settlements.py"
+      ],
+      "sha256": {
+        "plan/acceptance/test_t09_settlements.py": "6a320269c3ef1e05f06e405bdcd0ee62bbefcf23b523c4678b777ec661cba9b0"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T10",
+      "title": "Balance: thriving baseline, no building spam",
+      "phase": "B \u00b7 Free-thinking growth",
+      "status": "done",
+      "depends": [
+        "T07",
+        "T08",
+        "T09"
+      ],
+      "spec": "plan/tasks/T10-balance.md",
+      "acceptance": [
+        "plan/acceptance/test_t10_balance.py"
+      ],
+      "sha256": {
+        "plan/acceptance/test_t10_balance.py": "2b5850109cff9827e5f2d8717f653ba042283f03f6c03fef2c77fcf21aaf754e"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T11",
+      "title": "Moment detector (story beats with evidence)",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T11-moments.md",
+      "acceptance": [
+        "plan/acceptance/test_t11_moments.py"
+      ],
+      "sha256": {
+        "plan/acceptance/test_t11_moments.py": "af402fb3e8fe3ccfcca71f80278b44255d3b0941caae89290e92d8040e94c719"
+      },
+      "done_at": "2026-09-25"
+    },
+    {
+      "id": "T12",
+      "title": "Daily chronicle + evidence-checked historian",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [
+        "T11"
+      ],
+      "spec": "plan/tasks/T12-chronicle.md",
+      "acceptance": [
+        "plan/acceptance/test_t12_chronicle.py",
+        "plan/acceptance/test_t12b_truth.py"
+      ],
+      "sha256": {
+        "plan/acceptance/test_t12_chronicle.py": "aa94230e7663e03fe38985d192f79596f18a9cf13a5222d840ff4a91776b66b1",
+        "plan/acceptance/test_t12b_truth.py": "7a89d8463088054c1689ba0f8d004bb542b6b75928bd3574bd3f8d52e52389a6"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T32",
+      "title": "The narrator: one storyteller for every world",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [
+        "T11",
+        "T12"
+      ],
+      "spec": "plan/tasks/T32-narrator.md",
+      "acceptance": [
+        "plan/acceptance/test_t32_narrator.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t32_narrator.py": "074090439f4c29ba190ab09c55d6267a7b65149a8d199e69a8f0ffddd3da1b60"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T13",
+      "title": "X thread generator",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [
+        "T11"
+      ],
+      "spec": "plan/tasks/T13-x-thread.md",
+      "acceptance": [
+        "plan/acceptance/test_t13_xthread.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t13_xthread.py": "910950d78e28516b20d9d2e666b8ffbb8579c6d0bd0ea429ed62183f1394dd11"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T14",
+      "title": "Scoreboard card image",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [
+        "T13"
+      ],
+      "spec": "plan/tasks/T14-score-card.md",
+      "acceptance": [
+        "plan/acceptance/test_t14_card.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t14_card.py": "4a4e84c7a4ec92e075d1a54b905ec49baa48ac6e92a95d128f83e52a7f5b5bd1"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T15",
+      "title": "Experiment runner: model vs model",
+      "phase": "C \u00b7 Story engine for X",
+      "status": "done",
+      "depends": [
+        "T11",
+        "T13",
+        "T14",
+        "F1",
+        "F2"
+      ],
+      "spec": "plan/tasks/T15-experiment.md",
+      "acceptance": [
+        "plan/acceptance/test_t15_experiment.py"
+      ],
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/test_t15_experiment.py": "22d095d436ca597e882f6953dfdbd918100c2a3f9956318032fa334962b8d781"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T16",
+      "title": "Director camera",
+      "phase": "D \u00b7 Visuals for posts",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T16-director.md",
+      "acceptance": [
+        "plan/acceptance/web/director.test.ts"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/web/director.test.ts": "6e0dc0ccbe6d050a64457b1f60f9c8e366d3c54dc374f74e5ab96e9a084f1c3b"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T17",
+      "title": "Record mode for clips",
+      "phase": "D \u00b7 Visuals for posts",
+      "status": "done",
+      "depends": [
+        "T16"
+      ],
+      "spec": "plan/tasks/T17-record-mode.md",
+      "acceptance": [
+        "plan/acceptance/web/record.test.ts"
+      ],
+      "web": true,
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/web/record.test.ts": "3b9f9103cba0164658d4ead6075c9316f092667d88109221765c7e6bd6e043b7"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T18",
+      "title": "Weather, sign & village visuals",
+      "phase": "D \u00b7 Visuals for posts",
+      "status": "done",
+      "depends": [
+        "T07",
+        "T08",
+        "T09"
+      ],
+      "spec": "plan/tasks/T18-visual-fx.md",
+      "acceptance": [
+        "plan/acceptance/web/fx.test.ts"
+      ],
+      "web": true,
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/web/fx.test.ts": "6db3f5bd07110c399d6731250b786b16bc20b81c13e05ef20947c951c08e51ba"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T19",
+      "title": "Timelapse / MP4 clip export",
+      "phase": "D \u00b7 Visuals for posts",
+      "status": "done",
+      "depends": [
+        "T17"
+      ],
+      "spec": "plan/tasks/T19-timelapse.md",
+      "acceptance": [
+        "plan/acceptance/test_t19_timelapse.py"
+      ],
+      "manual": true,
+      "sha256": {
+        "plan/acceptance/test_t19_timelapse.py": "067012f6a25f770d4a0f61b08e85e157d851fd2af92351852125062cd8da27f1"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T20",
+      "title": "Open invention: each world grows its own tech tree",
+      "phase": "E \u00b7 True thinking & deep time",
+      "status": "done",
+      "depends": [
+        "T05"
+      ],
+      "spec": "plan/tasks/T20-invent.md",
+      "acceptance": [
+        "plan/acceptance/test_t20_invent.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t20_invent.py": "da8b91520a3c5c282793977296ae039614d09706c4fde89dab8017e515b4c02a"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T21",
+      "title": "Beliefs, shrines and scripture",
+      "phase": "E \u00b7 True thinking & deep time",
+      "status": "done",
+      "depends": [
+        "T06"
+      ],
+      "spec": "plan/tasks/T21-beliefs.md",
+      "acceptance": [
+        "plan/acceptance/test_t21_beliefs.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t21_beliefs.py": "36c31221ccdc65b1a84c46e2f8d9390e0f699bd31b575051f009dee97d966ab0"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T22",
+      "title": "Deep time: eras, the long ladder, and a rocket",
+      "phase": "E \u00b7 True thinking & deep time",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T22-deep-time.md",
+      "acceptance": [
+        "plan/acceptance/test_t22_deep_time.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t22_deep_time.py": "e6892ac482d859157e414793a9f9eca50ffe32fd5dd63beb2c307854658246fb"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T23",
+      "title": "Divergence report: how differently did the two worlds think?",
+      "phase": "E \u00b7 True thinking & deep time",
+      "status": "done",
+      "depends": [
+        "T05",
+        "T20",
+        "T21",
+        "T22"
+      ],
+      "spec": "plan/tasks/T23-divergence.md",
+      "acceptance": [
+        "plan/acceptance/test_t23_divergence.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t23_divergence.py": "8ba64cf62046e5d1757fb98042490d1a1f82dc7ef4019a04d72372f9a21ead48"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T24",
+      "title": "Jobs: a division of labour",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T24-jobs.md",
+      "acceptance": [
+        "plan/acceptance/test_t24_jobs.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t24_jobs.py": "337f14ecdc01058aa636aaebc79a3ca8db4584c1146e12254c4c65678658cff7"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T25",
+      "title": "Trade, markets and the invention of money",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T25-trade.md",
+      "acceptance": [
+        "plan/acceptance/test_t25_trade.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t25_trade.py": "c7414ac7084c23a488873630b386d5b89a0838ead97526336bf62a413336e7b8"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T26",
+      "title": "Leaders, elections and laws",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [
+        "T06"
+      ],
+      "spec": "plan/tasks/T26-government.md",
+      "acceptance": [
+        "plan/acceptance/test_t26_government.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t26_government.py": "7af40a3ea84e5df5fd193d78401846225b443806fea23d17b2ac0c942d32681c"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T27",
+      "title": "Rivalry, theft and the first guards",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [
+        "T24"
+      ],
+      "spec": "plan/tasks/T27-conflict.md",
+      "acceptance": [
+        "plan/acceptance/test_t27_conflict.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t27_conflict.py": "11d598185b84dd3eb870db87cc849f647241299be94a24de7b2402b81cc9fa2c"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T28",
+      "title": "God mode: drop anything, meddle, and save points",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [
+        "F1",
+        "F3"
+      ],
+      "spec": "plan/tasks/T28-god-mode.md",
+      "acceptance": [
+        "plan/acceptance/test_t28_god_mode.py",
+        "plan/acceptance/test_t28b_integrity.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t28_god_mode.py": "e610acf479121c2180d4cb96b9e8874569db27e1225336fc23a629776e568fd2",
+        "plan/acceptance/test_t28b_integrity.py": "eed00a132cd654fe42ccb29f4246a1e9ff26f73bea8e91b437fee410c4f2667d"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T29",
+      "title": "Plug-and-play release",
+      "phase": "G \u00b7 Release",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T29-release.md",
+      "acceptance": [
+        "plan/acceptance/test_t29_release.py",
+        "plan/acceptance/test_t29b_security.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t29_release.py": "64e013ea2017cb725367918de5c65d583c306709131cf1e410d2b018d0430f54",
+        "plan/acceptance/test_t29b_security.py": "d90cbfdbafef676c8d229f19278dfa460bee0d27da893203d1175888964adb10"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T30",
+      "title": "Contact: boats between the islands",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [
+        "T20",
+        "F1"
+      ],
+      "spec": "plan/tasks/T30-contact.md",
+      "acceptance": [
+        "plan/acceptance/test_t30_contact.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t30_contact.py": "550718a109a3b1638d54da7682389d07f37e122d8c3e0e7e2ce0f1ca34befa36"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T31",
+      "title": "Animals: deer to hunt, sheep to tame, wolves in the dark",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [],
+      "spec": "plan/tasks/T31-animals.md",
+      "acceptance": [
+        "plan/acceptance/test_t31_animals.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t31_animals.py": "ff72b9339f5555226970a8159b24dc945aee3019f83a66926ef7ce82a5708adf"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T33",
+      "title": "Replays you can share",
+      "phase": "G \u00b7 Release",
+      "status": "done",
+      "depends": [
+        "F3"
+      ],
+      "spec": "plan/tasks/T33-replay.md",
+      "acceptance": [
+        "plan/acceptance/test_t33_replay.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t33_replay.py": "195cfedc06dfae94b4cf8e69afe4c46673113b5ce8299858f99f202f6ea21b6c"
+      },
+      "done_at": "2026-09-27"
+    },
+    {
+      "id": "T34",
+      "title": "Rivals mode: Age of Chitpires",
+      "phase": "F \u00b7 Society & sandbox",
+      "status": "done",
+      "depends": [
+        "T27",
+        "T30"
+      ],
+      "spec": "plan/tasks/T34-rivals.md",
+      "acceptance": [
+        "plan/acceptance/test_t34_rivals.py"
+      ],
+      "web": true,
+      "sha256": {
+        "plan/acceptance/test_t34_rivals.py": "9f8ff7998aca1aa7f5cf331a9bc4ed09a27b74b9405f1a214ceec16fc5b8e09c"
+      },
+      "done_at": "2026-09-27"
+    }
+  ]
+}
