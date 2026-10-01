@@ -28,6 +28,9 @@ from . import ground as GR
 from . import civic
 
 RAW = ("wood", "stone", "fiber", "berries", "clay", "sand")
+# the most items any recipe takes: the steam engine's 2 steel + 2 gears + a pot is 5, and a bag that stopped growing at 4
+# could never become it (issue #2)
+MAX_BAG = max(sum(q for _, q in r.inputs) for r in RECIPES.values())
 # the world's feedback on a failed experiment, and the station it points to (sim.actions._experiment_hint)
 STATION_CUES = (("It needed far more heat than a campfire gives", "kiln"), ("Only a truly roaring fire", "furnace"),
                 ("a proper workbench might help", "workshop"), ("a blast of heat beyond any furnace", "forge"),
@@ -973,7 +976,7 @@ class Instinct:
                     return self._exp_plan(a, sorted(bag), hinted, "It needed something stronger. Let's try there.")
             if "want something more" in m.text or "wrong amounts" in m.text:
                 bag, station = self._bag_from(m.text)
-                if not bag or len(bag) >= 4:
+                if not bag or len(bag) >= MAX_BAG:
                     continue
                 if "want something more" in m.text:
                     extra = [k for k in sorted(a.familiar) if k in ITEMS and not a._item(k).tool]
