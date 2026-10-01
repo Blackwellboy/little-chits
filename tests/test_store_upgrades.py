@@ -93,3 +93,22 @@ def test_affordability_counts_warehouse_stock():
     assert diag.opportunities(w)["design:well"]["affordable_by"] == 0
     build(w, a, "warehouse").storage.update(DESIGNS["well"].material_map)  # (only a warehouse holds them)
     assert diag.opportunities(w)["design:well"]["affordable_by"] == 1
+
+
+def test_a_hemmed_in_stockpile_is_not_offered_as_a_warehouse():
+    """Live, "there's no clear ground beside the stockpile to make it a warehouse" failed 1.6 million times in one
+    2,600-day world: the fullest stockpile was offered for a warehouse whether or not a warehouse could stand there."""
+    w, a = village()
+    pile = build(w, a, "stockpile")
+    pile.storage["stone"] = 10 ** 4
+    a.x, a.y = pile.x, pile.y
+    plan = Instinct._more_storage(w, a)
+    assert plan and plan["steps"] == [{"do": "upgrade", "to": "warehouse", "target": pile.id}]
+    own = set(pile.cells())
+    for y in range(pile.y - 3, pile.y + pile.h + 3):
+        for x in range(pile.x - 3, pile.x + pile.w + 3):
+            if (x, y) not in own and w.inb(x, y):
+                w.roads.add(y * w.w + x)
+    assert BLD.upgrade_spot(w, pile, "warehouse") is None
+    plan = Instinct._more_storage(w, a)
+    assert not plan or {"do": "upgrade", "to": "warehouse", "target": pile.id} not in plan["steps"]

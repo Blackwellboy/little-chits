@@ -18,7 +18,7 @@ from ..sim.actions import (FOODS, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCK
                            food_items, plan_bill, remembered_place, stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
-from ..sim.buildings import HOME_CAP, HOMES  # beyond its cap a family home is crowded
+from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
 from . import outposts as OP
 from . import voyages as VOY
@@ -451,7 +451,10 @@ class Instinct:
         if any(not s.complete or s.upgrade for s in stores):
             return None  # one is going up (or being rebuilt) already: its builder is on it
         if a.knows_design("warehouse"):  # rebuild the fullest stockpile as a warehouse, keeping all it holds
-            full = [s for s in stores if s.design == "stockpile" and s.functional and world.same_land(a, s)]
+            # only one with clear ground beside it: a hemmed-in stockpile can't grow, and offering it anyway failed
+            # 1.6 million times in one 2,600-day world while the stores stayed full
+            full = [s for s in stores if s.design == "stockpile" and s.functional and world.same_land(a, s)
+                    and upgrade_spot(world, s, "warehouse") is not None]
             if full:
                 pile = min(full, key=lambda s: (stockpile_room(s), s.id))
                 return {"goal": "make the stockpile a warehouse",
