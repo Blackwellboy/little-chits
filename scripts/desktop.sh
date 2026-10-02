@@ -132,32 +132,7 @@ start_game() {
 
 # Which model each world is thinking with, from the running game itself.
 report_brains() {
-  curl -fs -m 5 "$URL/api/brains" 2>/dev/null | MODELS="$(models)" .venv/bin/python -c '
-import json, os, sys
-names = {}
-for line in os.environ.get("MODELS", "").splitlines():
-    p = line.split()
-    if len(p) >= 2:
-        names[p[0]] = p[1]
-d = json.load(sys.stdin)
-by_id = {b["config"]["id"]: b for b in d.get("brains", [])}
-for wid, bid in sorted((d.get("assign") or {}).items()):
-    b = by_id.get(bid)
-    if not b:
-        print(f"@warn w{wid} World {wid} has no model, so it runs on instinct (pick one in the game: Brains).")
-        continue
-    url = b["config"]["base_url"]
-    port = url.rsplit(":", 1)[-1].split("/")[0]
-    card = f" on the {names[port]}" if port in names else ""
-    model = b["stats"].get("resolved_model") or b["config"].get("model") or url
-    speed = b.get("speed") or {}
-    if b.get("healthy") and speed.get("level") == "slow":
-        print(f"@warn w{wid} World {wid} thinks with {model}{card}. {speed['text']}")
-    elif b.get("healthy"):
-        print(f"@ok w{wid} World {wid} thinks with {model}{card}.")
-    else:
-        print(f"@warn w{wid} World {wid} should use {model}{card}, but it isn'"'"'t answering yet.")
-' || true
+  curl -fs -m 5 "$URL/api/brains" 2>/dev/null | MODELS="$(models)" .venv/bin/python scripts/report_brains.py || true
 }
 
 # WSL shuts itself down about a minute after the last Windows program using it exits (vmIdleTimeout), taking
