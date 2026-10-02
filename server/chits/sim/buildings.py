@@ -44,10 +44,11 @@ BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
                 "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
                 "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10,
-                "university": 30, "theatre": 30, "harbour": 20}
+                "university": 30, "theatre": 30, "harbour": 20, "palisade": 30}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
        "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
-       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour")
+       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade")
+PALISADE_RADIUS = 22  # a palisade keeps wolves out of this much of the town round its gate
 CITY_ONLY = ("university", "theatre")  # the build verb refuses them outside a city
 UNI_RADIUS, UNI_EVERY, UNI_P = 20, 30, 0.08
 THEATRE_RADIUS, THEATRE_TICK, THEATRE_MOOD = 15, 200, 8.0  # 20:00
@@ -829,6 +830,14 @@ def _presses(world) -> None:
         readable.add(k)
         world.emit("printed", f"The printing press printed how to make {world.item_name(key)}"
                    + (" for the library" if lib else ""), 3, None, pr.x, pr.y, structure=pr.id, knowledge=k)
+
+
+def walled(world, x: int, y: int):
+    """The palisade whose wall (x, y) lies inside, if any."""
+    for p in fx(world)["palisade"]:
+        if p.dist(x, y) <= PALISADE_RADIUS:
+            return p
+    return None
 
 
 def hall_near(world, a: Agent, radius: int = HALL_PULL):
