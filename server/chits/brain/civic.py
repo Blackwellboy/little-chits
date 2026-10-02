@@ -69,7 +69,7 @@ def project_options(ins, world, a: Agent, rng) -> List[Opt]:
         if not steps and any(a.inventory.get(k, 0) < n for k, n in mats.items()):
             return []  # can't source the materials
         plan = {"goal": f"start the village's {name}", "thought": f"We agreed on a {name}. Someone has to start it.",
-                "steps": steps[:4] + [{"do": "build", "what": p["key"]}]}
+                "steps": steps[:4] + [dict({"do": "build", "what": p["key"]}, **({"near": p["near"]} if p.get("near") else {}))]}
         return [(PROJECT_W, _tag(plan, p["id"]))]
     if p["kind"] == "make":
         plan = make_plan(world, a, p)
