@@ -878,7 +878,27 @@ const harbour: Painter = () => {
   return c;
 };
 
+/** A palisade gate: sharpened timber stakes either side of a gate under a lookout walk, a stretch of wall each way. */
+const palisade: Painter = () => {
+  const [c, ctx] = canvas(32, 40);
+  px(ctx, "rgba(0,0,0,0.25)", 0, 37, 32, 3);
+  for (let x = 0; x < 32; x += 3) {
+    if (x >= 11 && x <= 19) continue;
+    const h = 20 + ((x * 7) % 4);
+    px(ctx, x % 2 ? "#8a5a2e" : "#7a4a24", x, 38 - h, 3, h);
+    px(ctx, "#a0703e", x + 1, 38 - h - 2, 1, 2);
+  }
+  px(ctx, "#5e3b1d", 0, 26, 32, 2);
+  px(ctx, "#6b4526", 10, 8, 2, 30); px(ctx, "#6b4526", 20, 8, 2, 30);
+  px(ctx, "#8a5a2e", 8, 8, 16, 3); px(ctx, "#a0703e", 8, 8, 16, 1);
+  px(ctx, "#3b2415", 12, 16, 8, 22);
+  for (let y = 18; y < 38; y += 4) px(ctx, "#5e3b1d", 12, y, 8, 1);
+  px(ctx, "#5e3b1d", 15, 0, 1, 8); px(ctx, "#c84a3a", 16, 1, 5, 3);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
+  palisade,
   town_hall: townHall, plaza, sand_pit: sandPit, tavern, bakery, healer, tailor, park, apartment, university, theatre, harbour,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,

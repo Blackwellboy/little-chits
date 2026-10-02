@@ -249,6 +249,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
     # towns: a hall for a big village, a square beside it, and streets along its worn trails
     opts += town_options(world, a)
     opts += town_life_options(world, a)
+    opts += palisade_option(world, a)
     opts += city_options(world, a)
     # the Machine and Electric Ages
     if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
@@ -329,6 +330,19 @@ def _fetch_then_craft(a: Agent, key: str, batches: int, stock: Dict[str, int]) -
                 return None
             steps.append({"do": "take", "what": k, "qty": short})
     return steps + [{"do": "craft", "what": key, "qty": batches}]
+
+
+def palisade_option(world, a: Agent) -> List[Tuple[float, Plan]]:
+    """A town with wolves about walls itself in (a palisade round its hall)."""
+    from ..sim import settlements as SE
+
+    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    if hall is None or a.is_child(world.tick) or not a.knows_design("palisade") or not _wolves_about(world, a) \
+            or not _none_near(world, hall.x, hall.y, "palisade", BLD.PALISADE_RADIUS):
+        return []
+    plan = _build(world, a, "palisade", max(1, len(world.agents) // SE.TOWN_POP), "Wolves keep coming into the town. A wall would keep them out.",
+                  near=(hall.x, hall.y))
+    return [(2.0, plan)] if plan else []
 
 
 def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:

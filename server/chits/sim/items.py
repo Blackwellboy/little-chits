@@ -327,6 +327,9 @@ DESIGNS: Dict[str, Design] = {
            blurb="its bell rings every morning: everyone within 20 tiles gathers for a moment, lifting spirits and "
                  "friendships (and hearing the chief's plan)", decay=0.5, min_pop=10),
         # towns: a hall at the heart of a big village makes it a town; its square is where everyone meets
+        _d("palisade", "palisade", {"wood": 30, "stone": 10, "cord": 6}, 80, (("design", "town_hall"), ("design", "watchtower")),
+           size=(2, 2), blurb="a timber wall and gate round a town: no wolf gets within 22 tiles of its gate to bite",
+           decay=1.0),
         _d("town_hall", "town hall", {"brick": 16, "wood": 10, "stone": 10, "glass": 2}, 120,
            (("recipe", "clay_tablet"), ("recipe", "brick"), ("recipe", "glass")), size=(3, 2),
            blurb="the heart of a town: a village of 20 or more with a hall becomes a town, its market, library, school "
