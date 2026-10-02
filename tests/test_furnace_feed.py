@@ -99,3 +99,33 @@ def test_feed_furnace_can_finish_a_one_unit_top_up():
     assert plan is not None
     gather = next(s for s in plan["steps"] if s["do"] == "gather")
     assert gather["qty"] == 1
+
+
+def test_with_one_ore_stocked_the_furnace_gets_the_other_too():
+    # once iron was on the way forward only iron ore was ever carried: copper ore lay in the mines (Codex, #46)
+    for era_key, first in (("recipe:copper", "iron_ore"), (None, "ore")):
+        _both_ores(era_key, first)
+
+
+def _both_ores(era_key, first):
+    w = World("A", "A", 17, "direct", 96, 1)
+    a = next(iter(w.agents.values()))
+    if era_key:
+        w.first[era_key] = {"tick": 1, "by": a.id, "name": a.name}  # the Copper Age: iron is the way forward
+    a.learn("recipe:iron", "taught", w.tick)
+    assert ("iron" in era_path(w)) == (first == "iron_ore")
+    a.inventory.clear()
+    a.inventory["stone_pick"] = 1
+    a.learn("recipe:copper", "taught", w.tick)
+    furnace = _complete(w, a, "furnace", a.x + 5, a.y)
+    pile = _complete(w, a, "stockpile", furnace.x + 3, furnace.y)
+    mine = _complete(w, a, "mine", a.x + 10, a.y + 5)
+    mine.storage.update({"ore": 20, "iron_ore": 20})
+    other = "ore" if first == "iron_ore" else "iron_ore"
+    plan = feed_furnace_plan(w, a)
+    assert next(s for s in plan["steps"] if s["do"] == "gather")["what"] == first
+    pile.storage[first] = FURNACE_ORE_TARGET
+    plan = feed_furnace_plan(w, a)
+    assert plan and next(s for s in plan["steps"] if s["do"] == "gather")["what"] == other
+    pile.storage[other] = FURNACE_ORE_TARGET
+    assert feed_furnace_plan(w, a) is None

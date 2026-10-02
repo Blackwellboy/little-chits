@@ -133,8 +133,18 @@ def feed_furnace_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
     """
     if not a.best_tool("pick") or not (a.knows_recipe("iron") or a.knows_recipe("copper")):
         return None
-    # the ore the furnace needs next (issue #4): iron ore while iron is the way forward, else copper ore
-    kind = "iron_ore" if a.knows_recipe("iron") and "iron" in era_path(world) else "ore"
+    # the ore the furnace needs next (issue #4): iron ore while iron is the way forward, else copper ore. When the
+    # stores by the furnace already hold enough of that one, the other: once iron was on the path, copper ore was
+    # never carried again, though wire and lanterns need copper (Codex, #46)
+    iron_first = a.knows_recipe("iron") and "iron" in era_path(world)
+    for kind in (("iron_ore", "ore") if iron_first else ("ore", "iron_ore")):
+        plan = _feed_furnace(world, a, kind)
+        if plan is not None:
+            return plan
+    return None
+
+
+def _feed_furnace(world, a: Agent, kind: str) -> Optional[Dict[str, Any]]:
     # A supply plan may use only infrastructure this chit can plausibly know. A nearby furnace is visible in the
     # same local scene a model would receive; a farther mine is eligible only when the chit remembers/heard its ore
     # location. Never scan the whole landmass for private infrastructure.
