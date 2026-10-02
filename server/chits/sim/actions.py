@@ -907,9 +907,9 @@ def _do_craft(world, a: Agent, step, s) -> str:
     return RUNNING
 
 
-def _make_one(world, a: Agent, r) -> None:
-    """One batch of recipe r from what the chit carries. What doesn't fit in hand is still made: it's held, over the
-    limit (nothing vanishes silently)."""
+def _make_one(world, a: Agent, r) -> int:
+    """One batch of recipe r from what the chit carries; returns how many it made (a bakery's oven makes two for one).
+    What doesn't fit in hand is still made: it's held, over the limit (nothing vanishes silently)."""
     for k, n in r.inputs:
         a.remove(k, n)
     qty = r.qty * BLD.bake_mult(world, a, r.key)  # (a bakery's oven: two for one)
@@ -919,6 +919,7 @@ def _make_one(world, a: Agent, r) -> None:
     a.made_it_work(f"recipe:{r.key}", world.tick)
     a.practice("crafting", 1.0)
     world.notice_items(a)
+    return qty
 
 
 # ---------------------------------------------------------------------------- production: bills at stations
@@ -1340,12 +1341,15 @@ def _do_work(world, a: Agent, step, s) -> str:
         done = s["worked"] >= WORK_SHIFT * 2  # interrupted too often: call it a shift
         if _work(a, speed, float(r.work)):
             if all(a.inventory.get(k, 0) >= q for k, q in r.inputs):
-                _make_one(world, a, r)
+                q = _make_one(world, a, r)
                 kept_up(world, st, 5)  # a station in use is looked after as it's used
-                s["made"] += 1
-                st.produced[r.key] = st.produced.get(r.key, 0) + r.qty
-                a.bump("produced", r.qty)
-                a.bump(f"produced_{r.key}", r.qty)
+                # goods (a bakery's batch is two for one, Codex #33); a shift saved before they were counted made as
+                # many in each batch so far
+                s["out"] = s.get("out", s["made"] * q) + q
+                s["made"] += 1  # (batches, against the bill's n)
+                st.produced[r.key] = st.produced.get(r.key, 0) + q
+                a.bump("produced", q)
+                a.bump(f"produced_{r.key}", q)
                 _observers_learn(world, a, f"recipe:{r.key}")
             done = done or s["made"] >= s["n"] or not all(a.inventory.get(k, 0) >= q for k, q in r.inputs)
         if not done:
@@ -1354,11 +1358,11 @@ def _do_work(world, a: Agent, step, s) -> str:
         world.dirty_struct.add(st.id)
         if s["made"]:
             a.bump("shifts")
-            _report_work(world, a, st, r, s["made"] * r.qty)
+            _report_work(world, a, st, r, s.get("out", s["made"] * r.qty))
         s["phase"] = "deliver"
         _retarget(a, s)
     # deliver: the goods, and any inputs left over, go into a store beside the station (or stay in hand)
-    made = s["made"] * r.qty
+    made = s.get("out", s["made"] * r.qty)
     stored = s.setdefault("stored", {})
     back = {r.key: min(a.inventory.get(r.key, 0), made)} if made else {}
     for k, n in s["took"].items():
