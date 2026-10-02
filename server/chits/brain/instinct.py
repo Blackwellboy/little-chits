@@ -42,6 +42,9 @@ def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
 
 
+LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what nobody alive still knows
+
+
 def _keeper_counts(world) -> Dict[str, int]:
     """How many living chits know each thing, counted once a tick."""
     c = getattr(world, "_keepers_n", None)
@@ -782,12 +785,21 @@ class Instinct:
                             "steps": [{"do": "read"}]}
             # a tablet lying loose that holds what nobody alive still knows (live World A had lost wire; its only
             # tablet lay loose). Only then: reading every loose tablet cost a 60-day A/B ~1 discovery in 12 seeds
-            for tb in world.tablets.values():
-                if tb.in_structure is None and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= 25 and _tablet_new(a, tb) \
-                        and tb.knowledge.startswith("recipe:") \
-                        and not any(tb.knowledge in o.knows for o in world.agents.values()):
+            lost = sorted((max(abs(tb.x - a.x), abs(tb.y - a.y)), tb.id) for tb in world.tablets.values()
+                          if tb.in_structure is None and tb.knowledge.startswith("recipe:") and _tablet_new(a, tb)
+                          and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= LOST_TABLET_TRIP
+                          and not any(tb.knowledge in o.knows for o in world.agents.values()))
+            for d, tid in lost:
+                if d <= 25:
                     return {"goal": "read an old tablet", "thought": "Someone wrote something on that tablet.",
                             "steps": [{"do": "read"}]}
+                tb = world.tablets[tid]
+                if world.same_land_xy(a, tb.x, tb.y) and not a.is_child(world.tick):
+                    # out of the read step's own 25 tiles: a deliberate trip to it (live World B's only tablet of
+                    # steel lay 30+ tiles from where anyone went, and steel stayed lost)
+                    return {"goal": "fetch lost knowledge",
+                            "thought": "There's an old tablet out there with something on it nobody remembers any more.",
+                            "steps": [{"do": "read", "tablet": tid}]}
             for st in world.structures_near(a.x, a.y, 20):
                 if st.complete and not a.knows_design(st.design):
                     return {"goal": f"study the {DESIGNS[st.design].name}", "thought": "How did they build that?",

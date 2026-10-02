@@ -2569,6 +2569,12 @@ def _tablet_new(a: Agent, tb) -> bool:
 
 def _do_read(world, a: Agent, step, s) -> str:
     src = s.get("src")
+    if src is None and step.get("tablet") in world.tablets:  # a particular tablet, wherever it lies
+        tb = world.tablets[step["tablet"]]
+        if tb.in_structure is None:
+            s["src"] = src = ("tab", tb.id)
+        elif tb.in_structure in world.structures:
+            s["src"] = src = ("lib", tb.in_structure)
     if src is None:
         best = None
         for lib in world.structures_near(a.x, a.y, 30, "library"):
