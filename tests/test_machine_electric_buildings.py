@@ -165,3 +165,34 @@ def test_a_power_station_doesnt_speed_a_cooking_fire():
     fire = next(k for k, r in RECIPES.items() if r.station == "fire")
     assert BLD.craft_speed(w, a, fire) == 1.0
     assert BLD.craft_speed(w, a, "brick") == BLD.POWER_SPEED
+
+
+    # only where it would water something: a pump with no farm near went up wherever its builder stood (Codex, #23)
+    hut = put(w, "hut", a)
+    for o in ags:
+        o.home = hut.id
+    assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    farms = [put(w, "farm", a, (a.x + dx, a.y + 4)) for dx in (-4, 4)]
+    w.tick += 1  # (the villages are looked up once a tick)
+    pump = next(c for c in PJ.candidates(w) if c[1] == "build" and c[2] == "steam_pump")
+    x, y = map(int, pump[4]["near"].split(","))
+    assert all(max(abs(f.x - x), abs(f.y - y)) <= 10 for f in farms)  # among the fields it waters
+
+
+def test_a_utility_project_is_built_where_it_was_sited():
+    # the project's build step carries its site, so the pump goes up among the fields, not where its builder stands
+    import random
+
+    from chits.brain import civic
+    from chits.brain.instinct import Instinct
+    from chits.sim import projects as PJ
+    from chits.sim.items import DESIGNS
+
+    w, ags = village(n=4)
+    a = ags[0]
+    a.learn("design:steam_pump", "taught", w.tick)
+    PJ.init(w)
+    PJ.start(w, "build", "steam_pump", "the village has none", a, "need", {"near": "37,38"})
+    a.inventory.update(DESIGNS["steam_pump"].material_map)
+    [(_, plan)] = civic.project_options(Instinct(), w, a, random.Random(1))
+    assert plan["steps"][-1]["do"] == "build" and plan["steps"][-1]["near"] == "37,38"

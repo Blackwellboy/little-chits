@@ -256,6 +256,45 @@ def road(world) -> Optional[Dict[str, Any]]:
 Cand = Tuple[float, str, str, str, Dict[str, Any]]
 
 
+def _utility_site(world, d: str) -> Optional[Tuple[int, int]]:
+    """Where a machine-age building would do its work, or None where it would do none: a steam pump among farms, a
+    sawmill by the woods, a press by a library, a power station by the benches, a lamp where wolves come. As a bare
+    project they went up wherever their builder stood (a pump with no farm near, Codex #23); instinct's own plans for
+    them (brain/builder.py) ask the same."""
+    from . import pioneers
+
+    vs = [v for v in pioneers.villages(world) if v.residents]
+    if vs:  # the biggest settlement's middle; before there is one, the middle of everyone
+        v = max(vs, key=lambda v: (len(v.residents), v.id))
+        cx, cy = int(v.x), int(v.y)
+    elif world.agents:
+        cx = round(sum(o.x for o in world.agents.values()) / len(world.agents))
+        cy = round(sum(o.y for o in world.agents.values()) / len(world.agents))
+    else:
+        return None
+    near = world.structures_near(cx, cy, 25)
+    if d == "steam_pump":
+        farms = [s for s in near if s.design == "farm" and s.functional]
+        return (round(sum(f.x for f in farms) / len(farms)), round(sum(f.y for f in farms) / len(farms))) if len(farms) >= 2 else None
+    if d == "sawmill":
+        return world.nearest_resource(cx, cy, "wood", 20)
+    if d == "printing_press":
+        lib = next((s for s in near if s.design == "library" and s.functional), None)
+        return (lib.x, lib.y) if lib else None
+    if d == "power_station":
+        st = next((s for s in near if s.functional and s.stations() & POWERED_STATIONS), None)
+        return (st.x, st.y) if st else None
+    if d == "street_lamp":
+        wolves = any(w["kind"] == "wolf" and max(abs(w["x"] - cx), abs(w["y"] - cy)) <= 25
+                     for w in getattr(world, "animals", {}).values())
+        return (cx, cy) if wolves else None
+    return None
+
+
+UTILITY = ("steam_pump", "sawmill", "printing_press", "power_station", "street_lamp")
+POWERED_STATIONS = {"workshop", "kiln", "furnace", "forge", "mill", "factory"}
+
+
 def candidates(world) -> List[Cand]:
     """(score, kind, key, why, extra) for every project the village could take on now: the next step on the road to
     the next age, or a building someone knows and the village lacks."""
@@ -292,7 +331,13 @@ def candidates(world) -> List[Cand]:
             continue
         if (d == "market" and pop < 10) or (d == "monument" and pop < 12):
             continue
-        add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", {})
+        extra: Dict[str, Any] = {}
+        if d in UTILITY:
+            spot = _utility_site(world, d)
+            if spot is None:
+                continue  # (nothing for it to do yet)
+            extra = {"near": f"{spot[0]},{spot[1]}"}
+        add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", extra)
     return sorted(((s, k, key, why, ex) for (k, key), (s, why, ex) in out.items()), key=lambda c: (-c[0], c[1], c[2]))
 
 
