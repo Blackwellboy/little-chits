@@ -162,3 +162,23 @@ def test_a_building_bigger_than_a_load_is_started_and_supplied_from_the_stores()
     assert plan["steps"] == [{"do": "build", "what": "town_hall", "_cap": 1, "near": f"{int(v.x)},{int(v.y)}"}]
     small = BI._build(w, a, "well", 3, "x") if a.knows_design("well") else None
     assert small is None or small["steps"][-1]["what"] == "well"  # (small buildings plan as before)
+
+
+def test_an_old_towns_public_buildings_count_wherever_in_it_they_stand():
+    # a hall built at the edge of an old town: its market and library stand 25+ tiles away, but in the same town
+    w, v = _full_village(44)
+    a = w.agents[v.residents[0]]
+    hall = put(w, "town_hall", a, (int(v.x), int(v.y)))
+    members = [w.structures[s] for s in v.structures]
+    far = [put(w, d, a, (hall.x, hall.y), 20) for d in ("market", "library", "school", "well", "granary")]
+    for s in far:  # (moved out of the hall's reach, still counted as the town's own)
+        s.x += 40
+    assert SE.rank_of(w, members + far + [hall], 44)[0] == "town"  # (no streets yet)
+    paved = 0
+    for y in range(hall.y - 15, hall.y + 16):
+        for x in range(hall.x - 15, hall.x + 16):
+            i = y * w.w + x
+            if paved < SE.CITY_STREETS and i not in w.occupied and w.passable(x, y):
+                w.roads.add(i)
+                paved += 1
+    assert SE.rank_of(w, members + far + [hall], 44)[0] == "city"
