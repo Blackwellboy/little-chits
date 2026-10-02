@@ -35,7 +35,7 @@ LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace
 NEXT_AGE = 4.0  # the next step on the road to the next age
 SITE_SIGHT = 12  # where chits can't talk, a building project is known by those who can see its site going up
 STATION_DESIGN = {"fire": "campfire", "kiln": "kiln", "workshop": "workshop", "furnace": "furnace", "forge": "forge",
-                  "factory": "factory"}
+                  "factory": "factory", "loom": "tailor"}
 
 Step = Tuple[str, str, Dict[str, Any]]  # ("discover" | "build" | "make", key, {"n": .., "for": design} for "make")
 

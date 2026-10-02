@@ -746,8 +746,97 @@ const sandPit: Painter = (v, fill) => {
   return c;
 };
 
+/** A tavern: a timber-framed inn with warm-lit windows, a hanging sign with a tankard, and barrels by the door. */
+const tavern: Painter = () => {
+  const [c, ctx] = canvas(32, 46);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 43, 30, 3);
+  px(ctx, "#e8dcc0", 3, 22, 26, 21);
+  for (const x of [3, 11, 20, 28]) px(ctx, "#5e3b1d", x, 22, 2, 21);
+  px(ctx, "#5e3b1d", 3, 22, 26, 2); px(ctx, "#5e3b1d", 3, 31, 26, 1);
+  for (const x of [6, 22]) { px(ctx, "#ffd06a", x, 25, 4, 5); px(ctx, "#ffb04a", x, 28, 4, 2); px(ctx, "#5e3b1d", x + 1, 25, 1, 5); }
+  px(ctx, "#3b2415", 13, 33, 6, 10); px(ctx, "#5a3822", 13, 33, 6, 1);
+  for (let y = 0; y < 12; y++) { const w = 6 + y * 2; px(ctx, y % 2 ? "#6e2e2a" : "#7e3a32", 16 - w / 2, 10 + y, w, 1); }
+  bricks(ctx, 23, 4, 4, 10, "#8a4030");
+  px(ctx, "#5e3b1d", 0, 26, 4, 1); px(ctx, "#5e3b1d", 1, 27, 1, 2);
+  px(ctx, "#a07a4a", 0, 29, 4, 5); px(ctx, "#e8c050", 1, 30, 2, 3);
+  for (const x of [24, 28]) { px(ctx, "#8a5a2e", x, 38, 4, 5); px(ctx, "#5e3b1d", x, 39, 4, 1); px(ctx, "#5e3b1d", x, 41, 4, 1); }
+  return c;
+};
+
+/** A bakery: a brick shop with a striped awning, a domed oven glowing at the side, and loaves in the window. */
+const bakery: Painter = () => {
+  const [c, ctx] = canvas(32, 42);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 39, 30, 3);
+  bricks(ctx, 2, 20, 20, 20, "#c98a5a");
+  for (let x = 0; x < 22; x++) px(ctx, Math.floor(x / 3) % 2 ? "#f2e2b8" : "#c84a3a", 1 + x, 18, 1, 4);
+  px(ctx, "#f2d8a0", 4, 25, 9, 6); px(ctx, "#c08a40", 5, 28, 3, 2); px(ctx, "#a8702a", 9, 27, 3, 3);
+  px(ctx, "#3b2415", 15, 28, 5, 12);
+  for (let y = 0; y < 8; y++) { const w = 6 + y * 2; px(ctx, y % 2 ? "#6e2e2a" : "#7e3a32", 12 - w / 2, 10 + y, w, 1); }
+  for (let y = 0; y < 12; y++) { const w = Math.round(Math.sqrt(Math.max(0, 1 - ((y - 12) / 12) ** 2)) * 10); px(ctx, "#b8704e", 27 - w / 2, 27 + y, w, 1); }
+  px(ctx, "#2a1410", 24, 33, 6, 6); px(ctx, "#ff8a2e", 25, 35, 4, 4); px(ctx, "#ffd06a", 26, 36, 2, 2);
+  smoke(ctx, 26, 24, 2);
+  return c;
+};
+
+/** A healer's house: a whitewashed cottage with a green cross over the door and herbs drying under the eaves. */
+const healer: Painter = () => {
+  const [c, ctx] = canvas(32, 42);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 39, 30, 3);
+  px(ctx, "#f2efe6", 3, 20, 26, 20); px(ctx, "#d8d4c8", 27, 20, 2, 20);
+  for (let y = 0; y < 10; y++) { const w = 8 + Math.round(y * 2.4); px(ctx, y % 2 ? "#4a5566" : "#5a6576", 16 - Math.floor(w / 2), 10 + y, w, 1); }
+  px(ctx, "#3a9a5a", 14, 22, 4, 10); px(ctx, "#3a9a5a", 11, 25, 10, 4);
+  px(ctx, "#3b2415", 13, 32, 6, 8);
+  for (const x of [5, 22]) { px(ctx, "#a8d0f0", x, 25, 5, 5); px(ctx, "#5e3b1d", x + 2, 25, 1, 5); }
+  for (let x = 4; x < 28; x += 4) { px(ctx, "#6a9a3a", x, 20, 2, 3); px(ctx, "#8ab05a", x, 21, 1, 1); }
+  return c;
+};
+
+/** A tailor's: a narrow shop with a bolt-of-cloth sign, a loom in the window and a coat on a stand outside. */
+const tailor: Painter = () => {
+  const [c, ctx] = canvas(32, 42);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 39, 30, 3);
+  px(ctx, "#a8784a", 3, 20, 24, 20);
+  for (let x = 3; x < 27; x += 4) px(ctx, "#8a5a2e", x, 20, 1, 20);
+  for (let y = 0; y < 10; y++) { const w = 6 + Math.round(y * 2.4); px(ctx, y % 2 ? "#3a5a8a" : "#4a6a9a", 15 - Math.floor(w / 2), 10 + y, w, 1); }
+  px(ctx, "#f2e2b8", 5, 24, 11, 9); px(ctx, "#6b4526", 6, 25, 1, 7); px(ctx, "#6b4526", 14, 25, 1, 7);
+  for (let x = 7; x < 14; x += 2) px(ctx, "#c84a3a", x, 26, 1, 5);
+  px(ctx, "#3b2415", 18, 30, 6, 10);
+  px(ctx, "#5e3b1d", 28, 30, 1, 10); px(ctx, "#3a6aa8", 26, 27, 5, 9); px(ctx, "#2a4a80", 27, 27, 3, 2);
+  px(ctx, "#5e3b1d", 9, 16, 1, 3); px(ctx, "#c84a3a", 6, 17, 7, 3); px(ctx, "#e86a5a", 6, 17, 7, 1);
+  return c;
+};
+
+/** A park: grass, two round trees, a flower bed and a bench, flat on the ground. */
+const park: Painter = () => {
+  const [c, ctx] = canvas(32, 40);
+  px(ctx, "#6a9a3a", 1, 18, 30, 21); px(ctx, "#7aaa4a", 2, 19, 28, 2);
+  for (const [x, y] of [[4, 2], [18, 6]] as [number, number][]) {
+    px(ctx, "#5e3b1d", x + 5, y + 12, 2, 12);
+    for (let r = 0; r < 7; r++) { const w = 12 - Math.abs(r - 3) * 2; px(ctx, r % 2 ? "#3a7a3a" : "#4a8a3a", x + 6 - w / 2, y + r * 2, w, 2); }
+  }
+  for (let x = 4; x < 16; x += 2) px(ctx, ["#e84a6a", "#f2d04a", "#e88ad8"][x % 3], x, 33, 1, 1);
+  px(ctx, "#8a5a2e", 20, 31, 9, 2); px(ctx, "#6b4526", 20, 33, 1, 3); px(ctx, "#6b4526", 28, 33, 1, 3); px(ctx, "#8a5a2e", 20, 28, 9, 1);
+  return c;
+};
+
+/** An apartment block: a tall brick building, rows of glass windows, a flat roof with a water tank. */
+const apartment: Painter = (v) => {
+  const [c, ctx] = canvas(32, 72);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 69, 30, 3);
+  const base = ["#a8503a", "#9a4a36", "#b5603e"][v % 3];
+  bricks(ctx, 2, 10, 28, 60, base);
+  px(ctx, "#5a5a66", 1, 8, 30, 3); px(ctx, "#3a3a44", 1, 10, 30, 1);
+  px(ctx, "#8f929a", 21, 1, 7, 7); px(ctx, "#6a6a78", 22, 2, 1, 5);
+  for (let row = 0; row < 5; row++) for (const x of [5, 13, 21]) {
+    const y = 14 + row * 10;
+    px(ctx, (row + x) % 3 ? "#a8d0f0" : "#ffd06a", x, y, 6, 6); px(ctx, "#efe6d0", x, y + 6, 6, 1);
+  }
+  px(ctx, "#3b2415", 13, 62, 6, 8); px(ctx, "#efe6d0", 12, 61, 8, 1);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
-  town_hall: townHall, plaza, sand_pit: sandPit,
+  town_hall: townHall, plaza, sand_pit: sandPit, tavern, bakery, healer, tailor, park, apartment,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
   forge, factory, market, shrine, pen, launch_pad: launchPad,

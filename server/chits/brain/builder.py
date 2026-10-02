@@ -245,6 +245,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
     # towns: a hall for a big village, a square beside it, and streets along its worn trails
     opts += town_options(world, a)
+    opts += town_life_options(world, a)
     # the Machine and Electric Ages
     if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
         add(2.0, _build(world, a, "steam_pump", max(1, pop // 15), "An engine could lift water to every field at once."))
@@ -307,6 +308,98 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
             steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": 2}]
             out.append((1.2, {"goal": "pave a street", "thought": "Everyone walks this way. It should be paved.",
                               "steps": steps + [{"do": "build", "what": "road", "at": f"{street[0]},{street[1]}"}]}))
+    return out
+
+
+def _fetch_then_craft(a: Agent, key: str, batches: int, stock: Dict[str, int]) -> Optional[List[Dict[str, Any]]]:
+    """Take what this many batches need from the stores (what isn't already in hand), then make them; None when the
+    stores and hands together fall short. (_craft_steps only gathers: grain in a stockpile never counted.)"""
+    r = RECIPES.get(key)
+    if r is None:
+        return None
+    steps: List[Dict[str, Any]] = []
+    for k, n in r.inputs:
+        short = n * batches - a.inventory.get(k, 0)
+        if short > 0:
+            if stock.get(k, 0) < short:
+                return None
+            steps.append({"do": "take", "what": k, "qty": short})
+    return steps + [{"do": "craft", "what": key, "qty": batches}]
+
+
+def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
+    """In a town: build what it lacks of tavern, bakery, healer, tailor and park (around the hall), and keep them in
+    use: brew ale for the tavern, bake at the bakery, weave warm clothes before winter, and rest at the healer's."""
+    from .instinct import _craft_steps
+    from ..sim import settlements as SE
+
+    out: List[Tuple[float, Plan]] = []
+    if a.is_child(world.tick):
+        return out
+    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    if hall is None:
+        return out
+    pop = len(world.agents)
+    hurt = sum(1 for o in world.agents_near(hall.x, hall.y, 20) if o.health < 60)
+    wants = (("tavern", 1.4, max(1, pop // 25), True, "A tavern would give everyone somewhere to go of an evening."),
+             ("bakery", 1.4, max(1, pop // 30), True, "An oven of our own would make every sack of grain go twice as far."),
+             ("healer", 2.0 if hurt else 1.0, max(1, pop // 30), True, "The hurt need somewhere to mend."),
+             ("tailor", 1.6 if world.season in ("autumn", "winter") else 1.0, max(1, pop // 30), True,
+              "Warm clothes would keep the cold off."),
+             ("park", 1.0, max(1, pop // 15), True, "A green spot would lift everyone's spirits."))
+    for d, w, cap, _, thought in wants:
+        if a.knows_design(d) and _none_near(world, hall.x, hall.y, d, SE.HALL_REACH):
+            plan = _build(world, a, d, cap, thought)
+            if plan:
+                out.append((w, plan))
+    near = village_stores(world, hall.x, hall.y, 25)
+    stock = {}
+    for p in near:
+        for k, n in p.storage.items():
+            stock[k] = stock.get(k, 0) + n
+    # brew for the tavern
+    tv = next((x for x in world.structures_near(a.x, a.y, 25, "tavern") if x.functional), None)
+    if tv is not None and a.knows_recipe("ale") and near and stock.get("ale", 0) < 6:
+        steps = _fetch_then_craft(a, "ale", 2, stock)
+        if steps:
+            pile = min(near, key=lambda p: (p.dist(tv.x, tv.y), p.id))
+            out.append((1.3, {"goal": "brew ale for the tavern", "thought": "The tavern's dry.",
+                              "steps": steps + [{"do": "store", "what": "ale", "target": pile.id}]}))
+    # bake at the bakery (two for one)
+    bk = next((x for x in world.structures_near(a.x, a.y, 20, "bakery") if x.functional), None)
+    if bk is not None:
+        for key, need in (("loaf", {"flour": 2}), ("bread", {"grain": 2})):
+            k, n = next(iter(need.items()))
+            if a.knows_recipe(key) and a.inventory.get(k, 0) + stock.get(k, 0) >= n * 2:
+                fetch = [{"do": "take", "what": k, "qty": n * 2 - a.inventory.get(k, 0)}] if a.inventory.get(k, 0) < n * 2 else []
+                out.append((1.4, {"goal": f"bake at the bakery", "thought": "The oven makes two of everything.",
+                                  "steps": fetch + [{"do": "go", "to": f"{bk.x},{bk.y}"},
+                                                    {"do": "craft", "what": key, "qty": 2}]}))
+                break
+    # weave warm clothes before the cold
+    tl = next((x for x in world.structures_near(a.x, a.y, 20, "tailor") if x.functional), None)
+    warm = any(n > 0 and (it := world.item(k)) and "wearable" in it.props and "warm" in it.props
+               for k, n in a.inventory.items())
+    if tl is not None and not warm and world.season in ("autumn", "winter"):
+        if a.knows_recipe("clothes"):
+            steps = _craft_steps(a, "clothes", 1, world=world)
+            if steps:
+                out.append((1.5, {"goal": "make warm clothes", "thought": "Winter's coming and I've nothing warm to wear.",
+                                  "steps": steps}))
+        elif a.inventory.get("fiber", 0) >= 4 and a.inventory.get("cord", 0) >= 1:
+            out.append((1.2, {"goal": "try the loom", "thought": "That loom could weave this fiber into something warm.",
+                              "steps": [{"do": "go", "to": f"{tl.x},{tl.y}"},
+                                        {"do": "experiment", "with": ["fiber", "fiber", "fiber", "fiber", "cord"], "at": "loom"}]}))
+    # the badly hurt rest at the healer's
+    hl = next((x for x in world.structures_near(a.x, a.y, 25, "healer") if x.functional), None)
+    if hl is not None and a.health < 50 and hl.dist(a.x, a.y) > 3:
+        out.append((3.0, {"goal": "rest at the healer's", "thought": "I'm badly hurt. The healer will see to me.",
+                          "steps": [{"do": "go", "to": f"{hl.x},{hl.y}"}, {"do": "rest"}]}))
+    # a town's first ale: try brewing grain and berries at a workshop
+    if not a.knows_recipe("ale") and a.knows_design("town_hall") and a.inventory.get("grain", 0) >= 2 \
+            and a.inventory.get("berries", 0) >= 1 and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
+        out.append((0.8, {"goal": "try brewing", "thought": "Grain and berries left to sit... might they make a drink?",
+                          "steps": [{"do": "experiment", "with": ["grain", "grain", "berries"], "at": "workshop"}]}))
     return out
 
 

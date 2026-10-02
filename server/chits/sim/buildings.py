@@ -22,11 +22,11 @@ from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent
 from .items import DESIGNS, HOME_STORES, STORES, normalize_design
 
-HOME_CAP: Dict[str, int] = {"hut": 3, "brick_house": 5, "longhouse": 6, "two_storey_house": 8}
+HOME_CAP: Dict[str, int] = {"hut": 3, "brick_house": 5, "longhouse": 6, "two_storey_house": 8, "apartment": 12}
 HOMES: Tuple[str, ...] = tuple(HOME_CAP)
-WARM_HOMES = ("brick_house", "two_storey_house")  # warm inside in any weather; a hut or longhouse not in a winter storm
+WARM_HOMES = ("brick_house", "two_storey_house", "apartment")  # warm inside in any weather; a hut or longhouse not in a winter storm
 UPGRADES: Dict[str, Tuple[str, ...]] = {"hut": ("longhouse", "brick_house"), "brick_house": ("two_storey_house",),
-                                        "longhouse": ("two_storey_house",),
+                                        "longhouse": ("two_storey_house",), "two_storey_house": ("apartment",),
                                         "stockpile": ("warehouse",)}  # a full village's store, rebuilt bigger in place
 UPGRADE_WORK = 0.6  # rebuilding over an old home takes this share of building the new one from scratch
 
@@ -43,9 +43,14 @@ BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 # a building of the same kind this close is used instead of starting another (actions.REUSE_WITHIN)
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
                 "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
-                "town_hall": 30, "plaza": 15}
+                "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
-       "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza")
+       "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
+       "tavern", "bakery", "healer", "tailor", "park")
+TAVERN_RADIUS, TAVERN_TICK, TAVERN_MOOD, ALE_MOOD = 10, 190, 3.0, 6.0  # 19:00; with an ale, 3 + 6
+BAKED, BAKERY_MULT = ("bread", "loaf", "berry_tart"), 2
+HEALER_RADIUS, HEALER_MULT = 10, 3.0
+PARK_RADIUS = 6
 PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
 TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
                "shrine", "tavern", "bakery", "healer", "tailor", "fountain", "park")  # go up around a town hall
@@ -102,6 +107,8 @@ def step(world) -> None:
         _bell(world)
     if t % TICKS_PER_DAY == PLAZA_TICK:
         _plaza(world)
+    if t % TICKS_PER_DAY == TAVERN_TICK:
+        _tavern(world)
     if t % TICKS_PER_DAY == 0:
         _spoil(world)
         _mice(world)
@@ -814,6 +821,47 @@ def hall_near(world, a: Agent, radius: int = HALL_PULL):
     """The nearest working town hall on this chit's land, if one is this near."""
     halls = [h for h in fx(world)["town_hall"] if h.dist(a.x, a.y) <= radius and world.same_land(a, h)]
     return min(halls, key=lambda h: (h.dist(a.x, a.y), h.id), default=None)
+
+
+def bake_mult(world, a: Agent, key: str) -> int:
+    """Bread, loaves and tarts baked at a bakery come out two for one."""
+    if key in BAKED and any(b.dist(a.x, a.y) <= 2 for b in fx(world)["bakery"]):
+        return BAKERY_MULT
+    return 1
+
+
+def heal_mult(world, a: Agent) -> float:
+    return HEALER_MULT if any(h.dist(a.x, a.y) <= HEALER_RADIUS for h in fx(world)["healer"]) else 1.0
+
+
+def _tavern(world) -> None:
+    """Evening at the tavern: those within reach drop in. Each drinks an ale from the stores near it if there is one
+    (twice the cheer, and the drinkers warm to each other); without ale, a little cheer all the same."""
+    from .actions import village_stores
+
+    for tv in fx(world)["tavern"]:
+        near = [o for o in world.agents.values() if tv.dist(o.x, o.y) <= TAVERN_RADIUS and not o.is_child(world.tick)]
+        if len(near) < 2:
+            continue
+        stores = [p for p in village_stores(world, tv.x, tv.y, 12) if p.storage.get("ale", 0) > 0]
+        drank = []
+        for o in near:
+            pile = next((p for p in stores if p.storage.get("ale", 0) > 0), None)
+            if pile is not None:
+                pile.storage["ale"] -= 1
+                if not pile.storage["ale"]:
+                    pile.storage.pop("ale")
+                world.dirty_struct.add(pile.id)
+                drank.append(o)
+                o.mood = min(100.0, o.mood + TAVERN_MOOD + ALE_MOOD)
+            else:
+                o.mood = min(100.0, o.mood + TAVERN_MOOD)
+        for i, o in enumerate(drank):
+            for q in drank[i + 1:]:
+                o.like(q.id, 0.5)
+                q.like(o.id, 0.5)
+        world.emit("tavern", f"{len(near)} chits spent the evening at the tavern" + (f"; {len(drank)} had an ale" if drank else ""),
+                   1, None, *tv.center(), structure=tv.id, gathered=len(near), ale=len(drank))
 
 
 def _plaza(world) -> None:
