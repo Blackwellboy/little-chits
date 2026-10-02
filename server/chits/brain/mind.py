@@ -137,6 +137,7 @@ class Mind:
         self.patience_ticks = 12  # how long a chit waits idle for a model before instinct fills in
         self.log: List[Dict[str, Any]] = []  # recent model exchanges for the UI
         self._tasks: set = set()
+        self.plans_out: Counter = Counter()  # brain id -> plan requests spawned and not finished (queued or running)
         self.strict = False  # experiment contract: a model's chits never get instinct plans
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
@@ -317,7 +318,9 @@ class Mind:
         if need and not a.thinking and a.pending_plan is None:
             if not a.plan and self.focused(brain) and self._routine(world, a):
                 return  # eating and sleeping don't need the model
-            if not self.strict and brain.stats.queued >= QUEUE_PER_SLOT * max(1, brain.cfg.max_concurrency):
+            slots = max(1, brain.cfg.max_concurrency)
+            if not self.strict and (brain.stats.queued >= QUEUE_PER_SLOT * slots
+                                    or self.plans_out[brain.id] >= (QUEUE_PER_SLOT + 1) * slots):
                 # the model is far behind: a request now would wait a minute and come back stale (live, 229 queued
                 # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
                 if not a.plan:
@@ -436,15 +439,26 @@ class Mind:
         diag.plan_from(world, kind)
 
     # ------------------------------------------------------------ async requests
-    def _spawn(self, coro) -> None:
+    def _spawn(self, coro):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             coro.close()
-            return
+            return None
         t = loop.create_task(coro)
         self._tasks.add(t)
         t.add_done_callback(self._tasks.discard)
+        return t
+
+    def _spawn_plan(self, brain: LLMBrain, coro) -> None:
+        """A plan request, counted out against its brain until it finishes. The count is taken here, when the request
+        is made: the brain's own queue count only rises once the task first runs, after the whole tick, so every chit
+        in a tick saw the same short queue and all of them went past the cap (Codex, #29)."""
+        t = self._spawn(coro)
+        if t is not None:
+            bid = brain.id
+            self.plans_out[bid] += 1
+            t.add_done_callback(lambda _t: self.plans_out.subtract([bid]))
 
     def _ask(self, world, a: Agent, brain: LLMBrain) -> None:
         style = getattr(brain.cfg, "prompt_style", "full") or "full"
@@ -483,7 +497,7 @@ class Mind:
             return fresh
 
         sent: Dict[str, Any] = {"msgs": msgs}
-        self._spawn(self._think(world, a, brain, at_send, rec, sent))
+        self._spawn_plan(brain, self._think(world, a, brain, at_send, rec, sent))
 
     def _ask_choice(self, world, a: Agent, brain: LLMBrain, cascade: bool = False) -> None:
         """Choose mode: instinct drafts a few plans, the model picks one by letter (one output token, scored by
@@ -514,7 +528,7 @@ class Mind:
             rec["prompt_hash"] = hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16]
             return msgs
 
-        self._spawn(self._choose(world, a, brain, at_send, rec, sent, cascade))
+        self._spawn_plan(brain, self._choose(world, a, brain, at_send, rec, sent, cascade))
 
     def _ask_chief(self, world, a: Agent, brain: LLMBrain, ask: Dict[str, Any]) -> None:
         """The chief chooses the village's next project from the world's candidates: one token, scored by logprobs,
