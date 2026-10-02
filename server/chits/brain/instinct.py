@@ -42,6 +42,19 @@ def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
 
 
+def _keeper_counts(world) -> Dict[str, int]:
+    """How many living chits know each thing, counted once a tick."""
+    c = getattr(world, "_keepers_n", None)
+    if c is None or c[0] != world.tick:
+        n: Dict[str, int] = {}
+        for o in world.agents.values():
+            for k in o.knows:
+                n[k] = n.get(k, 0) + 1
+        c = (world.tick, n)
+        world._keepers_n = c
+    return c[1]
+
+
 def _reachable(world, a: Agent, s) -> bool:
     """False for a site this chit recently failed to reach (it may be across water)."""
     return a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick and world.same_land(a, s)
@@ -733,7 +746,11 @@ class Instinct:
             for o in world.agents_near(a.x, a.y, 8, exclude=a.id):
                 gaps = [k for k in a.knows if k not in o.knows and a.knows[k]["how"] != "instinct"]
                 if gaps:
-                    k = rng.choice(gaps)
+                    # what fewest others know first: chosen at random, a chit who knew 80 things almost never taught
+                    # the one only it and a friend knew, and live worlds forgot the engine, magnet and gear that way
+                    n = _keeper_counts(world)
+                    low = min(n.get(g, 0) for g in gaps)
+                    k = rng.choice(sorted(g for g in gaps if n.get(g, 0) == low))
                     kind, key = k.split(":", 1)
                     # the world's own name ("Berry-Wick"), not the key: chits said "Now you know how to make a inv b 4!"
                     what = world.item_name(key) if kind == "recipe" else DESIGNS[key].name if key in DESIGNS else key.replace("_", " ")
