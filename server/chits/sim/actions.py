@@ -1697,7 +1697,7 @@ def _do_trade(world, a: Agent, step, s) -> str:
     """Barter (T25): no words needed, so it works in both worlds. The partner judges the deal by what it's worth to them."""
     if str(step.get("at") or "").strip().lower() in ("stores", "stockpile", "the stores"):
         return _trade_at_stores(world, a, step, s)
-    other = world.agent_by_name(step.get("to") or step.get("target") or "")
+    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} to trade with"
     give = _trade_bag(world, step.get("give"))
@@ -1837,7 +1837,7 @@ def _strength(a: Agent) -> float:
 
 def _do_fight(world, a: Agent, step, s) -> str:
     """A scuffle (T27): it hurts and leaves grudges, but nobody is killed in a fight."""
-    other = world.agent_by_name(step.get("to") or step.get("target") or "")
+    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} here"
     mv = _approach_agent(world, a, s, other, 1)
@@ -2128,7 +2128,7 @@ def _resolve_place(world, a: Agent, ref: Any) -> Optional[Tuple[int, int]]:
             pass
     if r.lower() in ("here", "me", "self"):
         return a.x, a.y
-    o = world.agent_by_name(r)
+    o = world.agent_by_name(r, near=a)
     if o:
         return o.x, o.y
     st = _find_structure(world, a, r, 60)
@@ -2355,7 +2355,7 @@ def _approach_agent(world, a: Agent, s, other: Agent, dist: int = 1) -> str:
 
 
 def _do_give(world, a: Agent, step, s) -> str:
-    other = world.agent_by_name(step.get("to") or step.get("target") or "")
+    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
     st = world.structures.get(str(step.get("to") or step.get("target") or "")) if not other else None
     if st is not None and st.design in STORES and st.complete:
         return _do_store(world, a, dict(step, do="store", target=st.id), s)
@@ -2394,7 +2394,7 @@ def _do_say(world, a: Agent, step, s) -> str:
     if not text:
         return "had nothing to say"
     to = step.get("to")
-    other = world.agent_by_name(to) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
+    other = world.agent_by_name(to, near=a) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
     if other and not s.get("close"):
         mv = _approach_agent(world, a, s, other, 4)
         if mv == "blocked" or s["ticks"] > 150:
@@ -2470,7 +2470,7 @@ def _do_teach(world, a: Agent, step, s) -> str:
     if not kk:
         return f"'{step.get('what')}' isn't something that can be taught"
     who = str(step.get("to") or step.get("target") or "").strip()
-    other = world.agent_by_name(who) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
+    other = world.agent_by_name(who, near=a) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
     if other is None and who.lower() in ("", "all", "everyone", "anyone", "others"):
         near = [o for o in world.agents.values() if o is not a and kk not in o.knows and o.activity != "sleeping"
                 and max(abs(o.x - a.x), abs(o.y - a.y)) <= 8]
@@ -2673,7 +2673,7 @@ def _do_inspect(world, a: Agent, step, s) -> str:
             s["note"] = f"Studied my {world.item_name(k)} but couldn't work out how it was made"
             a.remember(world.tick, s["note"], 2, "learn")
         return DONE
-    other = world.agent_by_name(ref)
+    other = world.agent_by_name(ref, near=a)
     if other and other.id != a.id:
         mv = _approach_agent(world, a, s, other, 2)
         if mv == "blocked" or s["ticks"] > 200:

@@ -1397,12 +1397,15 @@ class World:
         self.check_insights(agent)
 
     # ------------------------------------------------------------------ queries for brains
-    def agent_by_name(self, name: str) -> Optional[Agent]:
+    def agent_by_name(self, name: str, near: Optional[Agent] = None) -> Optional[Agent]:
+        """The chit with this name or id. Several can share a name (old worlds named many "Chit2154"): then the one
+        nearest `near`, the chit asking, not whichever came first: live, chits walked off after a namesake across
+        the map and failed "couldn't find X to talk to" 36-48 times in ten days."""
         n = str(name or "").strip().lower()
-        for a in self.agents.values():
-            if a.name.lower() == n or a.id == n:
-                return a
-        return None
+        found = [a for a in self.agents.values() if a.name.lower() == n or a.id == n]
+        if len(found) > 1 and near is not None:
+            return min(found, key=lambda o: (o.id != n, max(abs(o.x - near.x), abs(o.y - near.y)), o.id))
+        return found[0] if found else None
 
     def agents_near(self, x: int, y: int, radius: int, exclude: Optional[str] = None) -> List[Agent]:
         out = [a for a in self.agents.values() if a.id != exclude and max(abs(a.x - x), abs(a.y - y)) <= radius]
