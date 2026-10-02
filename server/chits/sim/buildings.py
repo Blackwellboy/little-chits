@@ -617,10 +617,13 @@ def _mills(world) -> None:
 def mine_near(world, a: Agent, radius: int = 26, kind: str = "ore"):
     """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to."""
     for s in world.structures_near(a.x, a.y, radius, PIT_OF[kind]):
-        if s.functional and s.storage.get(kind, 0) > 0 and world.same_land(a, s) \
+        if s.functional and (s.storage.get(kind, 0) > 0 or kind in DEEP_DIG) and world.same_land(a, s) \
                 and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
             return s
     return None
+
+
+DEEP_DIG = {"ore": 3.0}  # a mine whose seam is dug out for the day can still be dug, this many times as slowly (#6)
 
 
 PIT_OF = {"ore": "mine", "sand": "sand_pit"}
