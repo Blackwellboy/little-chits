@@ -157,6 +157,11 @@ def _count(world, design: str) -> int:
     return sum(1 for s in world.structures.values() if s.design == design and not s.ruined)
 
 
+def _count_all(world, design: str) -> int:
+    """Every one of a design, ruins too: what the build itself counts against a step's cap (sim/actions.py)."""
+    return sum(1 for s in world.structures.values() if s.design == design)
+
+
 def _none_near(world, x: int, y: int, design: str, radius: int) -> bool:
     return not world.structures_near(x, y, radius, design)
 
@@ -291,12 +296,18 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     out: List[Tuple[float, Plan]] = []
     if a.is_child(world.tick):
         return out
-    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    # its own village's hall: a daughter village 35-70 tiles from its mother (sim/pioneers.py) never got one while
+    # the mother's hall stood within 40 tiles of its middle, or within reach of the chit (Codex, #30)
+    v = _my_village(world, a)
+    hall = world.structures.get(v.hall) if v is not None and v.hall else None
+    if hall is None and v is None:
+        hall = BLD.hall_near(world, a, SE.HALL_REACH)  # (no home village: the town it stands in)
     if hall is None:
-        v = _my_village(world, a) if a.knows_design("town_hall") else None
-        if v is not None and len(v.residents) >= SE.TOWN_POP and not v.hall \
-                and _none_near(world, int(v.x), int(v.y), "town_hall", 40):
-            plan = _build(world, a, "town_hall", max(1, len(world.agents) // SE.TOWN_POP),
+        if v is not None and a.knows_design("town_hall") and len(v.residents) >= SE.TOWN_POP \
+                and _none_near(world, int(v.x), int(v.y), "town_hall", SE.HALL_REACH):
+            # one hall per village (the reach check above); the cap only stops two of its chits starting two at once
+            # (a share of the world's people counted the mother's hall against its daughter)
+            plan = _build(world, a, "town_hall", _count_all(world, "town_hall") + 1,  # (a ruin counts at the build)
                           f"{v.name} has grown big enough for a town hall.", near=(int(v.x), int(v.y)))
             if plan:
                 out.append((2.0, plan))

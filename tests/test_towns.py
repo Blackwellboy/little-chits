@@ -182,3 +182,32 @@ def test_an_old_towns_public_buildings_count_wherever_in_it_they_stand():
                 w.roads.add(i)
                 paved += 1
     assert SE.rank_of(w, members + far + [hall], 44)[0] == "city"
+
+
+def test_a_daughter_village_near_its_mothers_hall_builds_its_own():
+    # daughters are founded 35-70 tiles from their mother (sim/pioneers.py); a hall anywhere within 40 tiles of a
+    # village's middle, or within reach of the chit, kept it from ever planning its own (Codex, #30)
+    w, v = _full_village(24)
+    a = w.agents[v.residents[0]]
+    a.learn("design:town_hall", "insight", w.tick)
+    a.inventory.update({"brick": 16, "wood": 10, "stone": 10, "glass": 2})
+    cx, cy = int(v.x), int(v.y)
+    other = next((x, y) for x, y in ((cx + 36, cy), (cx - 36, cy), (cx, cy + 36), (cx, cy - 36))
+                 if 4 <= x < w.w - 4 and 4 <= y < w.h - 4 and w.find_site("town_hall", x, y, 4))
+    mother = put(w, "town_hall", a, other, radius=4)
+    assert SE.HALL_REACH < mother.dist(cx, cy) <= 40
+    w.tick += 1
+    v = village_of(w, a)
+    assert not v.hall
+    a.x, a.y = (cx + mother.x) // 2, (cy + mother.y) // 2  # standing within reach of the mother's hall
+    assert BLD.hall_near(w, a, SE.HALL_REACH) is mother
+    plans = [p for _, p in BI.town_options(w, a)]
+    assert any(s.get("what") == "town_hall" for p in plans for s in p["steps"]), plans
+    # a ruined hall elsewhere counts at the build: the cap must count it too, or the build refuses (Codex, #53)
+    mother.durability, mother.ruined_at = 0.0, w.tick
+    step = next(s for p in BI.town_options(w, a) for s in p[1]["steps"] if s.get("what") == "town_hall")
+    assert step["_cap"] == sum(1 for s in w.structures.values() if s.design == "town_hall") + 1
+    # but never a second hall in the same village's middle
+    put(w, "town_hall", a, (cx, cy))
+    w.tick += 1
+    assert not any(s.get("what") == "town_hall" for _, p in BI.town_options(w, a) for s in p["steps"])
