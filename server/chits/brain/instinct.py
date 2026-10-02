@@ -840,13 +840,14 @@ class Instinct:
             lost = sorted((max(abs(tb.x - a.x), abs(tb.y - a.y)), tb.id) for tb in world.tablets.values()
                           if tb.in_structure is None and tb.knowledge.startswith("recipe:") and _tablet_new(a, tb)
                           and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= LOST_TABLET_TRIP
+                          and world.same_land_xy(a, tb.x, tb.y)  # (one across the water was chosen again and again)
+                          and a.reflex_rest.get("unreach:" + tb.id, 0) <= world.tick
                           and not any(tb.knowledge in o.knows for o in world.agents.values()))
             for d, tid in lost:
-                if d <= 25:
+                if d <= 25:  # (this tablet: a bare read went to a library or an earlier tablet first, Codex #25)
                     return {"goal": "read an old tablet", "thought": "Someone wrote something on that tablet.",
-                            "steps": [{"do": "read"}]}
-                tb = world.tablets[tid]
-                if world.same_land_xy(a, tb.x, tb.y) and not a.is_child(world.tick):
+                            "steps": [{"do": "read", "tablet": tid}]}
+                if not a.is_child(world.tick):
                     # out of the read step's own 25 tiles: a deliberate trip to it (live World B's only tablet of
                     # steel lay 30+ tiles from where anyone went, and steel stayed lost)
                     return {"goal": "fetch lost knowledge",

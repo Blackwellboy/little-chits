@@ -2611,6 +2611,7 @@ def _do_read(world, a: Agent, step, s) -> str:
             s["src"] = src = ("tab", tb.id)
         elif tb.in_structure in world.structures:
             s["src"] = src = ("lib", tb.in_structure)
+            s["want"] = tb.id  # (that tablet, not the first unread one on its shelf, Codex #31)
     if src is None:
         best = None
         for lib in world.structures_near(a.x, a.y, 30, "library"):
@@ -2630,7 +2631,7 @@ def _do_read(world, a: Agent, step, s) -> str:
         if not lib:
             return "the library is gone"
         mv = _goto_structure(world, a, s, lib)
-        tabs = [world.tablets[t] for t in lib.shelf if t in world.tablets]
+        tabs = [world.tablets[t] for t in lib.shelf if t in world.tablets and (not s.get("want") or t == s["want"])]
     else:
         tb = world.tablets.get(src[1])
         if not tb:
@@ -2638,6 +2639,8 @@ def _do_read(world, a: Agent, step, s) -> str:
         mv = move_toward(world, a, s, world.stand_tiles_for(tb.x, tb.y))
         tabs = [tb]
     if mv == "blocked":
+        if src[0] == "tab":
+            a.reflex_rest["unreach:" + src[1]] = world.tick + TICKS_PER_DAY
         return "couldn't get there"
     if mv != "arrived":
         return RUNNING
