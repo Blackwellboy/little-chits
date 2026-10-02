@@ -140,3 +140,15 @@ def test_two_presses_on_the_same_day_dont_print_the_same_thing_twice():
     w.tick += 1
     BLD._presses(w)
     assert sum(1 for t in w.tablets.values() if t.knowledge == "recipe:steel") == 1
+
+
+def test_a_village_takes_on_a_steam_pump_as_a_project_once_it_can_make_what_it_needs():
+    from chits.sim import projects as PJ
+
+    w, ags = village(n=4)
+    a = ags[0]
+    for k in ("recipe:brick", "recipe:iron", "recipe:steel", "recipe:gear", "recipe:pot", "recipe:engine", "design:well"):
+        a.learn(k, "discovered", w.tick)
+    w.check_insights(a)
+    assert a.knows_design("steam_pump")
+    assert any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
