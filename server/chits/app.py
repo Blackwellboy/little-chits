@@ -213,7 +213,8 @@ def replay_export(days: int = 7):
 
     r = R()
     days = max(1, min(400, days))
-    out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode, "worlds": {}}
+    out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode,
+                           "theme": theme.active(), "worlds": {}}
     summary = r.brain_summary()
     for wid, w in r.worlds.items():
         frm = max(0, w.tick - days * 240)

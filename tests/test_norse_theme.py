@@ -286,5 +286,6 @@ def test_health_reports_the_theme(env, monkeypatch, on):
     from chits.app import app
     with TestClient(app) as c:
         assert c.get("/api/health").json()["theme"] == ("norse" if on else "default")
+        assert c.get("/api/replay/export?days=1").json()["theme"] == ("norse" if on else "default")
         names = [w["name"] for w in c.get("/api/worlds").json()]
         assert names == (["Fjordhaven", "Pineholm"] if on else ["World A", "World B"])
