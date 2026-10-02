@@ -466,6 +466,7 @@ def scorecard(rt) -> Dict[str, Any]:
     """Which model is building the better civilisation: one row per world, side by side, from what the game already
     records. Decisions are counted since the game last started (they're kept in memory), so discoveries per 100
     decisions counts the discoveries made in the same stretch."""
+    from .brain.mind import CIVIC_STYLES
     from .sim.world import ERAS
 
     r = report(rt)
@@ -476,7 +477,7 @@ def scorecard(rt) -> Dict[str, Any]:
         br = r["brains"].get(bid, {})
         # the plan decisions adopted (a running count: the record deque keeps only the last 5000, which made the
         # ratio climb as a game went on); escalation is a rate, so the recent records serve
-        recs = [x for x in rt.mind.decisions if x.get("world") == wid and x.get("style") != "chief-project"]
+        recs = [x for x in rt.mind.decisions if x.get("world") == wid and x.get("style") not in CIVIC_STYLES]
         adopted = rt.mind.adopted.get(wid, 0)
         choices = [x["choice"] for x in recs if isinstance(x.get("choice"), dict)]
         since = getattr(w, "_scored_from", 0)

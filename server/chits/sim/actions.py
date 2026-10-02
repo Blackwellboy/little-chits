@@ -1725,7 +1725,12 @@ def _do_trade(world, a: Agent, step, s) -> str:
     s["t"] = s.get("t", 0) + 1
     if s["t"] < 4:
         return RUNNING
-    if not world.accepts_trade(other, a, give, get):
+    from . import ballots
+
+    verdict = ballots.offer_verdict(world, a, other, give, get, s)  # a model-minded partner's own mind answers
+    if verdict is None:
+        return RUNNING
+    if not verdict:
         a.like(other.id, -1)
         return f"{other.name} didn't want that deal"
     w_give = sum((world.item(k).weight if world.item(k) else 1) * n for k, n in give.items())
