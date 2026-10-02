@@ -1572,6 +1572,12 @@ class World:
             self.occupied.pop(cy * self.w + cx, None)
         self.structures.pop(s.id, None)
         self.removed_struct.add(s.id)
+        # a crumbled library's tablets lie where it stood, to be read or shelved again: they stayed "in" a building
+        # that was gone, where nothing could read them (World B kept 180 of its 196 tablets that way, steel among them)
+        for tb in self.tablets.values():
+            if tb.in_structure == s.id:
+                tb.in_structure = None
+                tb.x, tb.y = s.x, s.y
         if s.complete and (s.design in self.BLOCKING or s.design == "bridge"):
             self.rebuild_block()
             BLD.off_the_bridge(self, s)
@@ -1971,6 +1977,9 @@ class World:
             if "last_work" not in s_d and not st.complete:
                 st.last_work = d["tick"]  # older save: count its sites as worked on now, not idle since tick -1
         w.tablets = {t["id"]: Tablet(**t) for t in d["tablets"]}
+        for tb in w.tablets.values():  # (a save from before libraries let go of their tablets when they crumbled)
+            if tb.in_structure and tb.in_structure not in w.structures:
+                tb.in_structure = None
         w.events = deque((Event(**e) for e in d.get("events", [])), maxlen=4000)
         if "tallies" in d:
             w.tallies, w.tallies_since = Counter(d["tallies"]), int(d.get("tallies_since", 0))

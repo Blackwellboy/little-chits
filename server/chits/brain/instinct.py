@@ -763,6 +763,14 @@ class Instinct:
                 if lib.functional and any(_tablet_new(a, world.tablets[t]) for t in lib.shelf if t in world.tablets):
                     return {"goal": "read at the library", "thought": "The library holds things I don't know.",
                             "steps": [{"do": "read"}]}
+            # a tablet lying loose that holds what nobody alive still knows (live World A had lost wire; its only
+            # tablet lay loose). Only then: reading every loose tablet cost a 60-day A/B ~1 discovery in 12 seeds
+            for tb in world.tablets.values():
+                if tb.in_structure is None and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= 25 and _tablet_new(a, tb) \
+                        and tb.knowledge.startswith("recipe:") \
+                        and not any(tb.knowledge in o.knows for o in world.agents.values()):
+                    return {"goal": "read an old tablet", "thought": "Someone wrote something on that tablet.",
+                            "steps": [{"do": "read"}]}
             for st in world.structures_near(a.x, a.y, 20):
                 if st.complete and not a.knows_design(st.design):
                     return {"goal": f"study the {DESIGNS[st.design].name}", "thought": "How did they build that?",
