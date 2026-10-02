@@ -43,17 +43,22 @@ BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 # a building of the same kind this close is used instead of starting another (actions.REUSE_WITHIN)
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
                 "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
-                "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10}
+                "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10,
+                "university": 30, "theatre": 30, "harbour": 20}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
        "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
-       "tavern", "bakery", "healer", "tailor", "park")
+       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour")
+CITY_ONLY = ("university", "theatre")  # the build verb refuses them outside a city
+UNI_RADIUS, UNI_EVERY, UNI_P = 20, 30, 0.08
+THEATRE_RADIUS, THEATRE_TICK, THEATRE_MOOD = 15, 200, 8.0  # 20:00
+HARBOUR_RADIUS = 12
 TAVERN_RADIUS, TAVERN_TICK, TAVERN_MOOD, ALE_MOOD = 10, 190, 3.0, 6.0  # 19:00; with an ale, 3 + 6
 BAKED, BAKERY_MULT = ("bread", "loaf", "berry_tart"), 2
 HEALER_RADIUS, HEALER_MULT = 10, 3.0
 PARK_RADIUS = 6
 PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
 TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
-               "shrine", "tavern", "bakery", "healer", "tailor", "fountain", "park")  # go up around a town hall
+               "shrine", "tavern", "bakery", "healer", "tailor", "fountain", "park", "university", "theatre")  # go up around a town hall
 HALL_PULL = 30  # a hall this near the builder draws them
 PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
 SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
@@ -103,6 +108,10 @@ def step(world) -> None:
     t = world.tick
     if t % SCHOOL_EVERY == 0:
         _school(world)
+    if t % UNI_EVERY == 0:
+        _university(world)
+    if t % TICKS_PER_DAY == THEATRE_TICK:
+        _theatre(world)
     if t % TICKS_PER_DAY == BELL_TICK:
         _bell(world)
     if t % TICKS_PER_DAY == PLAZA_TICK:
@@ -862,6 +871,59 @@ def _tavern(world) -> None:
                 q.like(o.id, 0.5)
         world.emit("tavern", f"{len(near)} chits spent the evening at the tavern" + (f"; {len(drank)} had an ale" if drank else ""),
                    1, None, *tv.center(), structure=tv.id, gathered=len(near), ale=len(drank))
+
+
+def city_of(world, x: int, y: int):
+    """The city whose town hall stands within reach of (x, y), if any."""
+    from . import pioneers as PIs
+    from .settlements import HALL_REACH
+
+    for v in PIs.villages(world):
+        if v.rank == "city" and v.hall in world.structures and world.structures[v.hall].dist(x, y) <= HALL_REACH + 5:
+            return v
+    return None
+
+
+def fished(world, x: int, y: int) -> bool:
+    return any(h.dist(x, y) <= HARBOUR_RADIUS for h in fx(world)["harbour"])
+
+
+def _university(world) -> None:
+    """Grown-ups near a university pick up, now and then, a recipe another grown-up there has made work."""
+    unis = fx(world)["university"]
+    if not unis:
+        return
+    rng = world.rng_for("university")
+    t = world.tick
+    how = "taught" if world.flags.get("teach") else "observed"
+    for u in unis:
+        near = [o for o in world.agents.values() if u.dist(o.x, o.y) <= UNI_RADIUS and o.activity != "sleeping"
+                and not o.is_child(t)]
+        for o in near:
+            if rng.random() >= UNI_P:
+                continue
+            opts = sorted((k, b.id) for b in near if b is not o for k, v in b.knows.items()
+                          if k.startswith("recipe:") and v.get("status") == "worked" and k not in o.knows)
+            if opts:
+                k, bid = opts[rng.randrange(len(opts))]
+                if world.learned(o, k, how, world.agents.get(bid)):
+                    o.bump("university_lessons")
+
+
+def _theatre(world) -> None:
+    """An evening show: everyone within reach of a theatre in better spirits, and friendlier."""
+    for th in fx(world)["theatre"]:
+        near = [o for o in world.agents.values() if th.dist(o.x, o.y) <= THEATRE_RADIUS]
+        if len(near) < 3:
+            continue
+        for o in near:
+            o.mood = min(100.0, o.mood + THEATRE_MOOD)
+        for i, o in enumerate(near):
+            for q in near[i + 1:]:
+                o.like(q.id, 0.4)
+                q.like(o.id, 0.4)
+        world.emit("theatre", f"{len(near)} chits watched the evening show at the theatre", 2, None, *th.center(),
+                   structure=th.id, gathered=len(near))
 
 
 def _plaza(world) -> None:
