@@ -2051,6 +2051,10 @@ def _do_build(world, a: Agent, step, s) -> str:
         tgt = _resolve_place(world, a, near)
         if tgt:
             ox, oy = tgt
+    elif key in BLD.TOWN_CENTRE:  # a town's public buildings go up around its hall, not wherever the builder stood
+        hall = BLD.hall_near(world, a)
+        if hall is not None:
+            ox, oy = hall.x + hall.w // 2, hall.y + hall.h // 2
     # join an existing unfinished site of the same kind there rather than duplicating it
     for st in world.structures_near(ox, oy, 12, key):
         if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st):

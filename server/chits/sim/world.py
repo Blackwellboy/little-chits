@@ -826,6 +826,14 @@ class World:
                     rec["milestones"].append(m)
                     self.emit("village_growth", f"{s.name} has grown to {len(s.residents)} chits", 3, None, s.x, s.y,
                               settlement=s.id, name=s.name, population=len(s.residents))
+            from .settlements import RANKS
+
+            best = rec.get("best_rank", "village")
+            if RANKS.index(s.rank) > RANKS.index(best):  # a first: told once, and never again if it slips and recovers
+                rec["best_rank"] = s.rank
+                self.emit("town_rank", f"{s.name} has become a {s.rank}", 5, None, s.x, s.y, settlement=s.id,
+                          name=s.name, rank=s.rank, population=len(s.residents))
+            rec["rank"] = s.rank
         return found
 
     def settlement_of(self, a: Agent):

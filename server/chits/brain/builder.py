@@ -185,10 +185,20 @@ def _build(world, a: Agent, design: str, cap: int, thought: str, near=None) -> O
     if a.reflex_rest.get("nobuild:" + design, 0) > world.tick or _count(world, design) >= cap:
         return None
     mats = DESIGNS[design].material_map
+    step = {"do": "build", "what": design, "_cap": cap}
+    if sum(mats.values()) > a.capacity():
+        # more than anyone can carry (a town hall is 38 things, a chit carries 12): fetching it all first failed
+        # before the site was ever started. Start the site; its builders bring the rest from the stores a load at a
+        # time. Only when the stores hold every made material it needs (raw ones can be gathered for it).
+        stock = _stock(world, a)
+        if any(k not in GATHER_RULES and a.inventory.get(k, 0) + stock.get(k, 0) < n for k, n in mats.items()):
+            return None
+        if near is not None:
+            step["near"] = f"{near[0]},{near[1]}"
+        return {"goal": f"build a {DESIGNS[design].name}", "thought": thought, "steps": [step]}
     steps = _need_steps(a, mats, world)
     if not steps and any(a.inventory.get(k, 0) < n for k, n in mats.items()):
         return None  # something it needs can't be had
-    step = {"do": "build", "what": design, "_cap": cap}
     if near is not None:
         step["near"] = f"{near[0]},{near[1]}"
     return {"goal": f"build a {DESIGNS[design].name}", "thought": thought, "steps": steps[:4] + [step]}
@@ -229,6 +239,8 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know."))
     if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop:
         add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
+    # towns: a hall for a big village, a square beside it, and streets along its worn trails
+    opts += town_options(world, a)
     # the Machine and Electric Ages
     if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
         add(2.0, _build(world, a, "steam_pump", max(1, pop // 15), "An engine could lift water to every field at once."))
@@ -252,6 +264,65 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
 
 
 POWERED = {"workshop", "kiln", "furnace", "forge", "mill", "factory"}
+STREETS_MAX = 140  # paved tiles near a hall before the town stops paving
+
+
+def _my_village(world, a: Agent):
+    from ..sim import pioneers as PIs
+
+    return next((v for v in PIs.villages(world) if a.home in v.structures), None)
+
+
+def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
+    """A village of 20 builds a town hall at its middle; a town lays a square beside its hall and paves the paths its
+    people wear (the most walked first), so streets run where everyone goes."""
+    from ..sim import settlements as SE
+
+    out: List[Tuple[float, Plan]] = []
+    if a.is_child(world.tick):
+        return out
+    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    if hall is None:
+        v = _my_village(world, a) if a.knows_design("town_hall") else None
+        if v is not None and len(v.residents) >= SE.TOWN_POP and not v.hall \
+                and _none_near(world, int(v.x), int(v.y), "town_hall", 40):
+            plan = _build(world, a, "town_hall", max(1, len(world.agents) // SE.TOWN_POP),
+                          f"{v.name} has grown big enough for a town hall.", near=(int(v.x), int(v.y)))
+            if plan:
+                out.append((2.0, plan))
+        return out
+    if a.knows_design("plaza") and _none_near(world, hall.x, hall.y, "plaza", 15):
+        plan = _build(world, a, "plaza", max(1, len(world.agents) // SE.TOWN_POP), "The town needs a square by its hall.",
+                      near=(hall.x + hall.w // 2, hall.y + hall.h + 2))
+        if plan:
+            out.append((1.5, plan))
+    street = _street_to_pave(world, hall) if a.knows_design("road") else None
+    if street is not None:
+        have = a.inventory.get("stone", 0) + _stock(world, a).get("stone", 0)
+        if have >= 1:
+            steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": 2}]
+            out.append((1.2, {"goal": "pave a street", "thought": "Everyone walks this way. It should be paved.",
+                              "steps": steps + [{"do": "build", "what": "road", "at": f"{street[0]},{street[1]}"}]}))
+    return out
+
+
+def _street_to_pave(world, hall) -> Optional[Tuple[int, int]]:
+    """The most-walked unpaved, open tile near a town hall (a worn trail: traffic over 30), if the town isn't fully
+    paved yet."""
+    from ..sim import settlements as SE
+
+    r = SE.STREET_REACH
+    if SE.streets_near(world, hall.x, hall.y, r) >= STREETS_MAX:
+        return None
+    best, best_t = None, 30.0
+    w = world.w
+    for y in range(max(0, hall.y - r), min(world.h, hall.y + r + 1)):
+        for x in range(max(0, hall.x - r), min(w, hall.x + r + 1)):
+            i = y * w + x
+            t = world.traffic[i]
+            if t > best_t and i not in world.roads and i not in world.occupied and world.passable(x, y):
+                best, best_t = (x, y), t
+    return best
 
 
 def _paper_for_the_press(world, a: Agent) -> List[Tuple[float, Plan]]:

@@ -42,9 +42,14 @@ SCHOOL_RADIUS, SCHOOL_EVERY, SCHOOL_P = 8, 20, 0.15
 BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 # a building of the same kind this close is used instead of starting another (actions.REUSE_WITHIN)
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
-                "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4}
+                "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
+                "town_hall": 30, "plaza": 15}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
-       "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp")
+       "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza")
+PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
+TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
+               "shrine", "tavern", "bakery", "healer", "tailor", "fountain", "park")  # go up around a town hall
+HALL_PULL = 30  # a hall this near the builder draws them
 PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
 SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
 POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station goes faster
@@ -95,6 +100,8 @@ def step(world) -> None:
         _school(world)
     if t % TICKS_PER_DAY == BELL_TICK:
         _bell(world)
+    if t % TICKS_PER_DAY == PLAZA_TICK:
+        _plaza(world)
     if t % TICKS_PER_DAY == 0:
         _spoil(world)
         _mice(world)
@@ -794,6 +801,28 @@ def _presses(world) -> None:
         readable.add(k)
         world.emit("printed", f"The printing press printed how to make {world.item_name(key)}"
                    + (" for the library" if lib else ""), 3, None, pr.x, pr.y, structure=pr.id, knowledge=k)
+
+
+def hall_near(world, a: Agent, radius: int = HALL_PULL):
+    """The nearest working town hall on this chit's land, if one is this near."""
+    halls = [h for h in fx(world)["town_hall"] if h.dist(a.x, a.y) <= radius and world.same_land(a, h)]
+    return min(halls, key=lambda h: (h.dist(a.x, a.y), h.id), default=None)
+
+
+def _plaza(world) -> None:
+    """Evening on the square: the chits within reach of a plaza gather for a moment, and neighbours become friends."""
+    for p in fx(world)["plaza"]:
+        near = [o for o in world.agents.values() if p.dist(o.x, o.y) <= PLAZA_RADIUS and not o.is_child(world.tick)]
+        if len(near) < 3:
+            continue
+        for o in near:
+            o.mood = min(100.0, o.mood + PLAZA_MOOD)
+        for i, o in enumerate(near):
+            for q in near[i + 1:]:
+                o.like(q.id, 0.3)
+                q.like(o.id, 0.3)
+        world.emit("plaza", f"{len(near)} chits gathered on the town square for the evening", 1, None, *p.center(),
+                   structure=p.id, gathered=len(near))
 
 
 def _bell(world) -> None:

@@ -128,7 +128,7 @@ export class WorldView {
   private nextFlash = 0;
   private signViews = new Map<string, { post: Sprite; glyph: Text }>();
   private signsRef: unknown = null;
-  private villages: { id: string; name: string; x: number; y: number }[] = [];
+  private villages: { id: string; name: string; x: number; y: number; rank?: string }[] = [];
   private villageTexts = new Map<string, Text>();
   private villagePoll: ReturnType<typeof setInterval> | null = null;
   // visible eras (eras.ts): the world's age and each age's first maker, and the statues standing for them
@@ -560,7 +560,7 @@ export class WorldView {
     const bottom = (s.y + s.h) * TS;
     v.root.position.set(s.x * TS, bottom);
     // a bridge lies flat on the water: whoever walks over it is drawn on top
-    v.root.zIndex = s.design === "bridge" ? s.y * TS - 2 : bottom - 1;
+    v.root.zIndex = s.design === "bridge" || s.design === "plaza" ? s.y * TS - 2 : bottom - 1;
     if (v.key !== key || !s.complete) {
       v.extra.removeChildren().forEach((c) => c.destroy());
       v.flame = undefined;
@@ -1399,7 +1399,10 @@ export class WorldView {
     for (const v of this.villages) {
       let t = this.villageTexts.get(v.id);
       if (!t) { t = new Text({ text: v.name, style: VILLAGE }); t.anchor.set(0.5); t.alpha = 0.7; this.overlay.addChildAt(t, 0); this.villageTexts.set(v.id, t); }
-      t.text = v.name;
+      // a town or a city says so under its name (sim/settlements.py ranks)
+      t.text = v.rank === "town" || v.rank === "city" ? `${v.name}
+${v.rank === "city" ? "City" : "Town"}` : v.name;
+      t.scale.set(v.rank === "city" ? 1.3 : v.rank === "town" ? 1.15 : 1);
       t.visible = show;
       if (show) { const p = this.worldToScreen((v.x + 0.5) * TS, (v.y + 0.5) * TS); t.position.set(p.x, p.y); }
     }
