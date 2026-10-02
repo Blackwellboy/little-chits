@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, item_name
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-03.1"
+PROMPT_VERSION = "2026-10-03.2"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -206,6 +206,53 @@ def chief_project_messages(world, a: Agent, options: List[Dict[str, Any]]) -> Li
             + (f"{store_line(world, a)}\n" if store_line(world, a) else "")
             + "What should the village work on together next?\n" + "\n".join(rows) + "\nAnswer with one letter.")
     return [{"role": "system", "content": CHIEF_SYSTEM}, {"role": "user", "content": body}]
+
+
+VOTE_SYSTEM = ("You are a creature in a small village choosing its chief. Back the one you want to lead. Answer with "
+               "the letter of your choice only.")
+TRADE_SYSTEM = ("You are a creature in a small village. Someone offers you a trade: take it or turn it down. Answer "
+                "with the letter of your choice only.")
+
+
+def _feeling(a: Agent, o: Agent) -> str:
+    rel = a.affinity.get(o.id, 0.0)
+    if o.id in a.parents or a.id in o.parents:
+        return "family"
+    return ("a close friend" if rel > 30 else "a friend" if rel >= 10 else "you dislike them" if rel < -10
+            else "you hardly know them")
+
+
+def vote_messages(world, a: Agent, cands: List[Agent]) -> List[Dict[str, str]]:
+    """An election, put to a voter as a one-letter choice (sim/ballots.py)."""
+    rows = []
+    for i, o in enumerate(cands):
+        bits = [f"age {o.age(world.tick):.0f}"]
+        if getattr(o, "job", ""):
+            bits.append(o.job)
+        bits.append(_feeling(a, o))
+        if o.id == getattr(world, "leader", ""):
+            bits.append("chief now")
+        if o.deeds:
+            bits.append(o.deeds[-1])
+        rows.append(f"{LETTERS[i]}) {o.name} ({'; '.join(bits)})")
+    body = (f"You are {a.name}. Your nature: {a.personality()}.\n"
+            + (f"{store_line(world, a)}\n" if store_line(world, a) else "")
+            + f"{world.name} is choosing its chief. Who do you back?\n" + "\n".join(rows) + "\nAnswer with one letter.")
+    return [{"role": "system", "content": VOTE_SYSTEM}, {"role": "user", "content": body}]
+
+
+def trade_messages(world, a: Agent, trader: Agent, give: Dict[str, int], get: Dict[str, int]) -> List[Dict[str, str]]:
+    """A trade offered to `a`, put to it as accept (A) or refuse (B)."""
+    def words(bag):
+        return ", ".join(f"{n} {world.item_name(k)}" for k, n in bag.items())
+
+    have = "; ".join(f"you have {a.inventory.get(k, 0)} {world.item_name(k)}" for k in list(get) + list(give))
+    hunger = _level(a.hunger, ("starving", "hungry", "fed", "full"), (15, 45, 75))
+    body = (f"You are {a.name}. Your nature: {a.personality()}. You are {hunger}.\n"
+            f"{trader.name} ({_feeling(a, trader)}) offers you {words(give)} for your {words(get)}. ({have}.)"
+            + (" You're at the market." if world.near_market(a.x, a.y) else "")
+            + "\nA) accept the trade\nB) refuse it\nAnswer with one letter.")
+    return [{"role": "system", "content": TRADE_SYSTEM}, {"role": "user", "content": body}]
 
 
 def lore_line(world, a: Agent) -> str:

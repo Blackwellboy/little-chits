@@ -65,6 +65,9 @@ def tick(world) -> None:
         init(world)
     _track(world)
     _expire_ask(world)
+    from . import ballots
+
+    ballots.tick(world)
     research.tick(world)
     wants.tick(world)
 

@@ -77,7 +77,9 @@ def _compute(brain, recs: List[Dict[str, Any]], dg, days_run: float, discoveries
         return {}
     s = brain.stats
     tokens = (s.tokens_in or 0) + (s.tokens_out or 0)
-    plans = [r for r in recs if r.get("style") != "chief-project"]
+    from ..brain.mind import CIVIC_STYLES
+
+    plans = [r for r in recs if r.get("style") not in CIVIC_STYLES]
     adopted = sum(1 for r in plans if r.get("outcome") == "adopted")
     repairs = sum(1 for r in plans if r.get("style") == "repair")
     done = dg.outcomes.get(("model", "ok"), 0)

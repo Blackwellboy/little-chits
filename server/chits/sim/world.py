@@ -493,33 +493,22 @@ class World:
         if not adults:
             return
         if self.flags.get("say"):
-            votes: Dict[str, int] = {}
+            from . import ballots
+
+            if ballots.poll(self):
+                return  # an election is under way
             # Approval voting: each adult backs every adult it likes (affinity >= 10). With one vote for a
             # single favourite, votes scattered across neighbourhoods and no one could reach the support a
             # chief needs (1-4 votes of 18-44 in every election of today's games).
-            for v in adults:
-                for o in adults:
-                    if o is not v and v.affinity.get(o.id, 0.0) >= 10:
-                        votes[o.id] = votes.get(o.id, 0) + 1
-            if not votes:
+            approvals = {v.id: [o.id for o in adults if o is not v and v.affinity.get(o.id, 0.0) >= 10] for v in adults}
+            # where chits think with a model, each one's own mind casts its vote (one letter; sim/ballots.py)
+            if ballots.open_poll(self, reason, approvals, adults):
                 return
-            best = max(votes.items(), key=lambda kv: (kv[1], -self.agents[kv[0]].born))[0]
-            # a chief needs real backing: "elected with 1 of 18 votes" happened when friendships were new or votes
-            # scattered. Short of a fifth of the adults (and at least 2), there's no chief yet or the old one stays.
-            if votes[best] < max(2, math.ceil(len(adults) * CHIEF_SUPPORT)):
-                return
-            if best != self.leader:
-                if self.leader:
-                    from .. import diag
-
-                    diag.of(self).chief["leader changed"] += 1  # (a question to the old chief can't be answered)
-                self.leader, self.leader_since = best, self.tick
-                a = self.agents[best]
-                self.emit("election", f"{a.name} was elected chief with {votes[best]} of {len(adults)} votes", 4, a.id,
-                          a.x, a.y, votes=votes[best], voters=len(adults), reason=reason)
-                from . import hall
-
-                hall.deed(a, f"was elected chief with {votes[best]} of {len(adults)} votes on day {self.day + 1}")
+            votes: Dict[str, int] = {}
+            for backed in approvals.values():
+                for o in backed:
+                    votes[o] = votes.get(o, 0) + 1
+            self.seat_chief(votes, reason)
         else:
             score = {a.id: sum(o.affinity.get(a.id, 0.0) for o in adults if o is not a) for a in adults}
             best = max(score.items(), key=lambda kv: (kv[1], -self.agents[kv[0]].born))[0]
@@ -527,6 +516,30 @@ class World:
                 self.leader, self.leader_since = best, self.tick
                 a = self.agents[best]
                 self.emit("elder", f"{a.name} is now looked to as the elder", 4, a.id, a.x, a.y, reason=reason)
+
+    def seat_chief(self, votes: Dict[str, int], reason: str = "", ballots: int = 0) -> None:
+        """Count an election: the most-backed adult becomes chief, if it has real backing."""
+        adults = [a for a in self.agents.values() if not a.is_child(self.tick)]
+        votes = {k: n for k, n in votes.items() if k in self.agents}
+        if not votes or not adults:
+            return
+        best = max(votes.items(), key=lambda kv: (kv[1], -self.agents[kv[0]].born))[0]
+        # a chief needs real backing: "elected with 1 of 18 votes" happened when friendships were new or votes
+        # scattered. Short of a fifth of the adults (and at least 2), there's no chief yet or the old one stays.
+        if votes[best] < max(2, math.ceil(len(adults) * CHIEF_SUPPORT)):
+            return
+        if best != self.leader:
+            if self.leader:
+                from .. import diag
+
+                diag.of(self).chief["leader changed"] += 1  # (a question to the old chief can't be answered)
+            self.leader, self.leader_since = best, self.tick
+            a = self.agents[best]
+            self.emit("election", f"{a.name} was elected chief with {votes[best]} of {len(adults)} votes", 4, a.id,
+                      a.x, a.y, votes=votes[best], voters=len(adults), reason=reason, ballots=ballots)
+            from . import hall
+
+            hall.deed(a, f"was elected chief with {votes[best]} of {len(adults)} votes on day {self.day + 1}")
 
     def decree(self, a: Agent, text: str) -> bool:
         if not self.flags.get("say") or a.id != self.leader:
