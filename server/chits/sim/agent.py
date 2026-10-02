@@ -6,6 +6,7 @@ import random
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from .. import theme
 from .items import BASE, DESIGNS, ITEMS, STARTING_DESIGNS, STARTING_RECIPES
 
 TICKS_PER_DAY = 240
@@ -19,6 +20,14 @@ _SYL_B = ["p", "x", "n", "b", "ra", "lo", "mi", "sh", "tt", "ck", "ndo", "va", "
 
 
 def make_name(rng: random.Random, taken: set) -> str:
+    if theme.active() != "norse":
+        return _syllable_name(rng, taken)
+    # drawn as a syllable name against the syllable names of those taken, so the draws match the default theme
+    names = theme.norse_names(tuple(_SYL_A), tuple(_SYL_B))
+    return names.to_norse(_syllable_name(rng, {names.to_syllables(n) for n in taken}))
+
+
+def _syllable_name(rng: random.Random, taken: set) -> str:
     for _ in range(200):
         n = rng.choice(_SYL_A) + rng.choice(_SYL_B)
         if rng.random() < 0.25:

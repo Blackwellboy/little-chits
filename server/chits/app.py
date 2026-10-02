@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import views
+from . import theme, views
 from .brain.llm import BrainConfig, LLMBrain, probe_endpoint, scan_local
 from .brain.mind import INSTINCT
 from .runtime import SPEEDS, Runtime
@@ -96,7 +96,7 @@ def health():
     r = R()
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
-            "autodetected": r.autodetected,
+            "autodetected": r.autodetected, "theme": theme.active(),
             "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()}}
 
 
