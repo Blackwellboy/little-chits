@@ -321,7 +321,8 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     if street is not None:
         have = a.inventory.get("stone", 0) + _stock(world, a).get("stone", 0)
         if have >= 1:
-            steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": 2}]
+            # (one stone paves a tile: asking for two where one was stored failed the take, Codex #30)
+            steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": min(2, have)}]
             out.append((1.2, {"goal": "pave a street", "thought": "Everyone walks this way. It should be paved.",
                               "steps": steps + [{"do": "build", "what": "road", "at": f"{street[0]},{street[1]}"}]}))
     return out

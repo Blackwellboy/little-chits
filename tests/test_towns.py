@@ -211,3 +211,30 @@ def test_a_daughter_village_near_its_mothers_hall_builds_its_own():
     put(w, "town_hall", a, (cx, cy))
     w.tick += 1
     assert not any(s.get("what") == "town_hall" for _, p in BI.town_options(w, a) for s in p["steps"])
+
+
+def test_one_stored_stone_paves_a_street():
+    # a road takes one stone; asking the stores for two where one lay failed the take, and the street (Codex, #30)
+    w, a, hall = town()
+    a.learn("design:road", "taught", w.tick)
+    a.inventory.pop("stone", None)
+    for st in w.structures.values():
+        st.storage.pop("stone", None)
+    pile = put(w, "stockpile", a, (a.x, a.y), 6)
+    pile.storage["stone"] = 1
+    for d in range(6, 12):
+        x, y = hall.x + d, hall.y + hall.h + 3
+        i = y * w.w + x
+        if i not in w.occupied and w.passable(x, y):
+            w.traffic[i] = 40.0 + d
+    w.tick = 4 * TICKS_PER_DAY + 120  # (midday)
+    pave = next(p for _, p in BI.town_options(w, a) if p["goal"] == "pave a street")
+    assert pave["steps"][0] == {"do": "take", "what": "stone", "qty": 1}
+    res = actions.RUNNING
+    s = {}
+    for _ in range(600):
+        w.tick += 1
+        res = actions._do_take(w, a, pave["steps"][0], s)
+        if res != actions.RUNNING:
+            break
+    assert res == actions.DONE and a.inventory.get("stone") == 1
