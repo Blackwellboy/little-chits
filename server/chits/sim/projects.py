@@ -273,9 +273,13 @@ def _utility_site(world, d: str) -> Optional[Tuple[int, int]]:
     else:
         return None
     near = world.structures_near(cx, cy, 25)
-    if d == "steam_pump":
-        farms = [s for s in near if s.design == "farm" and s.functional]
-        return (round(sum(f.x for f in farms) / len(farms)), round(sum(f.y for f in farms) / len(farms))) if len(farms) >= 2 else None
+    if d == "steam_pump":  # between two farms close enough for one pump to water both (an average of all could water none)
+        from .buildings import PUMP_RADIUS
+
+        farms = sorted((s for s in near if s.design == "farm" and s.functional), key=lambda s: (s.dist(cx, cy), s.id))
+        pair = next(((f, g) for i, f in enumerate(farms) for g in farms[i + 1:]
+                     if max(abs(f.x - g.x), abs(f.y - g.y)) <= PUMP_RADIUS), None)
+        return ((pair[0].x + pair[1].x) // 2, (pair[0].y + pair[1].y) // 2) if pair else None
     if d == "sawmill":
         return world.nearest_resource(cx, cy, "wood", 20)
     if d == "printing_press":
@@ -284,10 +288,17 @@ def _utility_site(world, d: str) -> Optional[Tuple[int, int]]:
     if d == "power_station":
         st = next((s for s in near if s.functional and s.stations() & POWERED_STATIONS), None)
         return (st.x, st.y) if st else None
-    if d == "street_lamp":
-        wolves = any(w["kind"] == "wolf" and max(abs(w["x"] - cx), abs(w["y"] - cy)) <= 25
-                     for w in getattr(world, "animals", {}).values())
-        return (cx, cy) if wolves else None
+    if d == "street_lamp":  # by the home nearest where the wolf comes (a lamp's light reaches 6 tiles)
+        wolves = [w for w in getattr(world, "animals", {}).values()
+                  if w["kind"] == "wolf" and max(abs(w["x"] - cx), abs(w["y"] - cy)) <= 25]
+        if not wolves:
+            return None
+        w = min(wolves, key=lambda w: (max(abs(w["x"] - cx), abs(w["y"] - cy)), w["x"], w["y"]))
+        from .buildings import HOMES
+
+        homes = [s for s in near if s.functional and s.design in HOMES]
+        h = min(homes, key=lambda s: (s.dist(w["x"], w["y"]), s.id), default=None)
+        return (h.x, h.y) if h is not None else (w["x"], w["y"])
     return None
 
 

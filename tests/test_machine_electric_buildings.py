@@ -196,3 +196,37 @@ def test_a_utility_project_is_built_where_it_was_sited():
     a.inventory.update(DESIGNS["steam_pump"].material_map)
     [(_, plan)] = civic.project_options(Instinct(), w, a, random.Random(1))
     assert plan["steps"][-1]["do"] == "build" and plan["steps"][-1]["near"] == "37,38"
+
+
+def test_a_pump_project_needs_two_farms_one_pump_can_water():
+    # an average of every farm could water none of them: farms 20 apart put the pump between, out of reach of both
+    # (Codex, #57)
+    from chits.sim import projects as PJ
+
+    w, ags = village(n=4)
+    a = ags[0]
+    hut = put(w, "hut", a)
+    for o in ags:
+        o.home = hut.id
+    far = [put(w, "farm", a, (a.x + dx, a.y + 4), 3) for dx in (-11, 11)]
+    assert max(abs(far[0].x - far[1].x), abs(far[0].y - far[1].y)) > BLD.PUMP_RADIUS
+    w.tick += 1
+    assert PJ._utility_site(w, "steam_pump") is None
+    near = put(w, "farm", a, (far[1].x + 4, far[1].y), 3)
+    w.tick += 1
+    x, y = PJ._utility_site(w, "steam_pump")
+    assert all(max(abs(f.x - x), abs(f.y - y)) <= BLD.PUMP_RADIUS for f in (far[1], near))
+
+
+def test_a_street_lamp_project_goes_where_the_wolf_comes():
+    # at the town's middle, a lamp's six tiles of light missed a wolf at its edge (Codex, #57)
+    from chits.sim import animals as AN
+    from chits.sim import projects as PJ
+
+    w, ags = village(n=4)
+    a = ags[0]
+    home = put(w, "hut", a)
+    edge = put(w, "hut", a, (a.x + 18, a.y), 4)
+    w.animals.clear()
+    AN._add(w, "wolf", edge.x + 2, edge.y)
+    assert PJ._utility_site(w, "street_lamp") == (edge.x, edge.y)

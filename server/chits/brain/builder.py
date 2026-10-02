@@ -435,7 +435,7 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         # (the stores this chit can walk to, around it, as its take looks: the town's, round the hall, offered a brew
         # its take then failed to fetch, Codex #40)
         mine: Dict[str, int] = {}
-        for p in village_stores(world, a.x, a.y, 25, a):
+        for p in village_stores(world, a.x, a.y, 30, a):  # (the take's own reach)
             for k, n in p.storage.items():
                 mine[k] = mine.get(k, 0) + n
         for k, n in (("grain", 2), ("berries", 1)):
