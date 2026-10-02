@@ -52,3 +52,29 @@ def test_instinct_gets_round_to_making_one():
     ins = I.Instinct()
     goals = {(ins._progress(w, a, random.Random(s)) or {}).get("goal") for s in range(200)}
     assert "make a sled" in goals
+
+
+def test_a_village_with_a_cart_takes_up_the_wagon_once_its_within_reach():
+    # no age or building calls for a wagon, so it was never a project and its hunch never ran (Codex, #41)
+    from chits.sim import projects
+
+    w, ags = village(n=4)
+    a = ags[0]
+    projects.init(w)
+
+    def carry():
+        return [c[1:5] for c in projects.candidates(w) if c[3].endswith("to carry more")]
+
+    a.learn("recipe:sled", "taught", w.tick)
+    assert carry() == []  # (the cart is far off: no wheels, no workshop)
+    for k in ("recipe:cart", "recipe:wheel", "recipe:iron"):
+        a.learn(k, "taught", w.tick)
+    assert carry() == []  # no workshop to try it at
+    put(w, "workshop", a)
+    assert carry() == [("make", "cart", "to try for something new, to carry more", {"n": 1, "try": "wagon"})]
+    pile = put(w, "stockpile", a, (a.x + 3, a.y))
+    pile.storage.update({"cart": 1, "wheel": 2, "iron": 1})
+    assert carry() == [("discover", "wagon", "to carry more", {})]
+    assert all(c[0] < projects.NEXT_AGE for c in projects.candidates(w) if c[3].endswith("to carry more"))
+    a.learn("recipe:wagon", "taught", w.tick)
+    assert carry() == []

@@ -33,6 +33,11 @@ LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace
            "steam_pump": 1.6, "sawmill": 1.4, "printing_press": 1.8, "power_station": 2.0, "street_lamp": 0.8,
            "town_hall": 1.8}
 NEXT_AGE = 4.0  # the next step on the road to the next age
+# the transport ladder (issue #9): with one carrier known, the village may look for the next. No age or building calls
+# for a cart or a wagon, so "something that hauls" (brain/civic.py) was never a project and its hunch never ran (Codex,
+# #41). Below every age's step, like a market.
+TRANSPORT = (("sled", "cart"), ("cart", "wagon"))
+TRANSPORT_W = 1.0
 SITE_SIGHT = 12  # where chits can't talk, a building project is known by those who can see its site going up
 STATION_DESIGN = {"fire": "campfire", "kiln": "kiln", "workshop": "workshop", "furnace": "furnace", "forge": "forge",
                   "factory": "factory", "loom": "tailor"}
@@ -285,6 +290,15 @@ def candidates(world) -> List[Cand]:
             elif step[0] == "make":
                 why = "to try for something new, " + why
             add(NEXT_AGE, step[0], step[1], why, step[2])
+    for prev, nxt in TRANSPORT:
+        if prev in recipes and nxt not in recipes:
+            step = next_step(world, designs, recipes, have, "recipe", nxt)
+            # only once it's within reach (its discovery, or making what to try it with, is all that's left): a
+            # village that knew the sled was sent off to find clay towards a workshop for wheels for a cart
+            if step and (step[1] == nxt or step[2].get("try") == nxt):
+                add(TRANSPORT_W, step[0], step[1], "to try for something new, to carry more" if step[0] == "make"
+                    else "to carry more", step[2])
+            break
     for d, score in LACKING.items():
         if next_step(world, designs, recipes, have, "design", d, make=False) != ("build", d, {}):
             continue
