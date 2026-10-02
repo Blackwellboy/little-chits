@@ -32,6 +32,8 @@ def _wanted(world, a: Agent) -> List[str]:
     if a.knows_recipe("copper") or a.knows_recipe("iron") or a.best_tool("pick"):
         if a.best_tool("pick"):
             out.append("ore")
+            if a.knows_recipe("iron"):
+                out.append("iron_ore")
     if a.knows_recipe("brick") or a.knows_recipe("glass"):
         out.append("sand")
     out.append("clay")

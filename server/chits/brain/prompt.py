@@ -379,7 +379,7 @@ def scene(world, a: Agent) -> str:
     lines.append("")
     lines.append(f"AROUND YOU (within {SIGHT} tiles):")
     res_lines = []
-    for kind in ("berries", "wood", "stone", "fiber", "clay", "sand", "ore", "fish"):
+    for kind in ("berries", "wood", "stone", "fiber", "clay", "sand", "ore", "iron_ore", "fish"):
         p = world.nearest_resource(a.x, a.y, kind, SIGHT)
         if p:
             res_lines.append(f"{world.item_name(kind)} {_where(a, *p)}")
@@ -597,7 +597,7 @@ def compact_scene(world, a: Agent) -> str:
     if mems:
         L.append("Remember: " + " | ".join(m.text[:90] for m in mems))
     res = []
-    for kind in ("berries", "wood", "stone", "fiber", "clay", "sand", "ore", "fish"):
+    for kind in ("berries", "wood", "stone", "fiber", "clay", "sand", "ore", "iron_ore", "fish"):
         p = world.nearest_resource(a.x, a.y, kind, SIGHT)
         if p:
             res.append(f"{world.item_name(kind)} {_where(a, *p)}")

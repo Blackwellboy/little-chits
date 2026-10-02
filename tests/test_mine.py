@@ -62,14 +62,14 @@ def test_the_seam_fills_again_every_day_up_to_its_depth():
     m.storage.clear()
     w.tick = 5 * TICKS_PER_DAY
     BLD.step(w)
-    assert m.storage["ore"] == BLD.MINE_PER_DAY
+    assert m.storage["ore"] + m.storage["iron_ore"] == BLD.MINE_PER_DAY and m.storage["iron_ore"] > m.storage["ore"]
     for d in range(6, 12):
         w.tick = d * TICKS_PER_DAY
         BLD.step(w)
-    assert m.storage["ore"] == BLD.MINE_SEAM
-    m.storage["ore"] = BLD.MINE_SEAM - 2
+    assert m.storage["iron_ore"] == BLD.MINE_SEAM and m.storage["ore"] < BLD.MINE_SEAM  # (each ore its own depth)
+    m.storage["iron_ore"] = BLD.MINE_SEAM - 2
     BLD._mines(w)
-    assert m.storage["ore"] == BLD.MINE_SEAM  # never deeper than the seam
+    assert m.storage["iron_ore"] == BLD.MINE_SEAM  # never deeper than the seam
 
 
 def test_with_the_deposits_dug_out_a_chit_digs_ore_from_the_mine_with_a_pick():

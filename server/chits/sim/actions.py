@@ -17,6 +17,7 @@ from . import buildings as BLD
 from . import terrain as T
 from .agent import Agent, TICKS_PER_DAY
 from .items import (
+    ORE_KINDS,
     HOME_STORES,
     ACTION_USES, DESIGNS, GATHER_RULES, ITEMS, RECIPES, STATIONS, STORES, item_name, match_recipe, normalize_design,
     normalize_item,
@@ -79,7 +80,7 @@ SIGN_SYMBOLS = ("food", "wood", "stone", "clay", "ore", "fish", "danger", "home"
 SIGN_ALIASES = {"berries": "food", "berry": "food", "warning": "danger", "gather": "meet", "copper": "ore",
                 "house": "home", "logs": "wood", "rock": "stone"}
 SIGN_TTL = 720  # signs weather away after three days
-SCARCE = ("sand", "clay", "ore")
+SCARCE = ("sand", "clay", "ore", "iron_ore")
 SCARCE_RADIUS = 72  # tiles a chit will walk for a scarce material its mind asked for
 CAMP_SLEEP, CAMP_FAR = 12, 30  # a chit this far from home sleeps at an outpost camp this close
 
@@ -489,9 +490,9 @@ def _do_gather(world, a: Agent, step, s) -> str:
                 camp = " (or an outpost camp beside it)" if a.knows_design("outpost") else ""
                 return (f"there is no {world.item_name(kind)} nearby; you remember some at ({seen[0]},{seen[1]}), "
                         f"{max(abs(seen[0] - a.x), abs(seen[1] - a.y))} tiles away: go there{camp}")
-            if kind == "ore" and any(m.functional for m in world.structures_near(a.x, a.y, 26, "mine")):
+            if kind in ORE_KINDS and any(m.functional for m in world.structures_near(a.x, a.y, 26, "mine")):
                 return "the mine's seam is dug out for today; it fills again tomorrow"
-            if kind == "ore" and a.knows_design("mine"):
+            if kind in ORE_KINDS and a.knows_design("mine"):
                 return f"there is no {world.item_name(kind)} anywhere nearby — a mine dug by the rocks would give some every day"
             return f"there is no {world.item_name(kind)} anywhere nearby — maybe explore"
         tgt = pos[1] * world.w + pos[0]
@@ -590,7 +591,7 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
     stone picks). What it drops stays on the ground."""
     from . import artifacts as ART
 
-    order = ["stone", "sand", "wood", "clay", "fiber", "ore", "seeds"]
+    order = ["stone", "sand", "wood", "clay", "fiber", "ore", "iron_ore", "seeds"]
     order += sorted((k for k, n in a.inventory.items() if k not in order and k not in FOODS and (it := world.item(k))
                      and not it.tool and not it.carry_bonus and not it.food and not ART.is_artifact(k)),
                     key=lambda k: (-a.inventory[k], k))
@@ -938,7 +939,7 @@ def seeds_plenty(world, x: int, y: int) -> bool:
     return sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY
 
 
-KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 4}
+KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 4, "iron_ore": 4}
 REPORT_EVERY = TICKS_PER_DAY // 2  # a station reports its work to the chronicle at most this often
 STATION_WORDS = {"campfire": "fire", "camp fire": "fire", "bonfire": "fire", "hearth": "fire", "fireplace": "fire",
                  "oven": "kiln", "smelter": "furnace", "bench": "workshop", "workbench": "workshop", "millstone": "mill", "windmill": "mill",
@@ -2780,7 +2781,7 @@ def _do_explore(world, a: Agent, step, s) -> str:
         return RUNNING
     # survey the surroundings and remember notable finds
     found = []
-    for kind in ("clay", "ore", "fish", "sand", "berries", "stone", "wood"):
+    for kind in ("clay", "ore", "iron_ore", "fish", "sand", "berries", "stone", "wood"):
         p = world.nearest_resource(a.x, a.y, kind, 8)
         if p:
             found.append(f"{world.item_name(kind)} at ({p[0]},{p[1]})")
@@ -2793,7 +2794,7 @@ def _do_explore(world, a: Agent, step, s) -> str:
 
 PROSPECT_OUT = 40  # how far a prospector walks out
 PROSPECT_LOOK = 12  # and how widely it looks about when it gets there (an explorer looks 8)
-PROSPECT_KINDS = ("ore", "sand", "clay")
+PROSPECT_KINDS = ("ore", "iron_ore", "sand", "clay")
 PROSPECT_DAYS = 2  # one prospector out at a time in a village; the next may set out this long after
 
 

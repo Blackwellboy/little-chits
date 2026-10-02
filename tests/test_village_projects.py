@@ -111,7 +111,8 @@ def test_a_project_makes_enough_of_a_material_before_the_building():
     assert plan["steps"][-2]["do"] in ("craft", "work") and plan["steps"][-2]["what"] == "iron"
     assert plan["steps"][-1] == {"do": "store", "what": "iron"}
     b.inventory["stone_pick"] = 1
-    assert civic.make_plan(w, b, p)["steps"] == [{"do": "gather", "what": "ore", "qty": 4}, {"do": "store", "what": "ore"}]
+    assert civic.make_plan(w, b, p)["steps"] == [{"do": "gather", "what": "iron_ore", "qty": 4},
+                                                {"do": "store", "what": "iron_ore"}]
     pile.storage["iron"] = 4
     w.tick = 10
     projects.tick(w)
