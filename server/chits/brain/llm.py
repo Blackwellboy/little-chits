@@ -89,11 +89,16 @@ class BrainStats:
     consecutive_fail: int = 0
     repaired: int = 0  # replies that only parsed after repairing the JSON
     retries: int = 0   # replies that needed a second "JSON only, please" request
+    skipped: int = 0   # queued requests not sent because the server went down while they waited
     resolved_model: str = ""
 
     def record_latency(self, ms: float) -> None:
         a = 0.2 if self.ok > 1 else 1.0
         self.latency_ms_avg = self.latency_ms_avg * (1 - a) + ms * a
+
+
+class ModelCoolingDown(RuntimeError):
+    """A queued request given up without being sent: its brain is backing off after repeated failures."""
 
 
 class PriorityGate:
@@ -220,6 +225,11 @@ class LLMBrain:
             self.stats.queued -= 1
         queue_ms = (time.monotonic() - queued_at) * 1000
         try:
+            if not self.healthy():
+                # the server went down while this waited for a slot: don't send it into the same 90 s hang (live,
+                # with the 3090's server gone, 111 queued requests each waited their turn to time out)
+                self.stats.skipped += 1
+                raise ModelCoolingDown(f"{self.label} is cooling down after {self.stats.consecutive_fail} failures in a row")
             if callable(messages):
                 messages = messages()
             tape = getattr(self, "tape", None)  # a BrainTape (brain/tape.py): record every reply, or replay them
