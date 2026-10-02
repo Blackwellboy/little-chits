@@ -351,7 +351,7 @@ def palisade_option(world, a: Agent) -> List[Tuple[float, Plan]]:
     if hall is None or a.is_child(world.tick) or not a.knows_design("palisade") or not _wolves_about(world, a) \
             or not _none_near(world, hall.x, hall.y, "palisade", BLD.PALISADE_RADIUS):
         return []
-    plan = _build(world, a, "palisade", _count(world, "palisade") + 1, "Wolves keep coming into the town. A wall would keep them out.",
+    plan = _build(world, a, "palisade", _count_all(world, "palisade") + 1, "Wolves keep coming into the town. A wall would keep them out.",
                   near=(hall.x, hall.y))
     return [(2.0, plan)] if plan else []
 
@@ -457,13 +457,13 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         for d, w, thought in (("university", 1.8, "A city should have a university, so what we know is kept and shared."),
                               ("theatre", 1.2, "A city deserves a theatre.")):
             if a.knows_design(d) and _none_near(world, hall.x, hall.y, d, SE.HALL_REACH):
-                plan = _build(world, a, d, _count(world, d) + 1, thought)  # (one per city: the check above)
+                plan = _build(world, a, d, _count_all(world, d) + 1, thought)  # (one per city: the check above)
                 if plan:
                     out.append((w, plan))
     fish = world.nearest_resource(hall.x, hall.y, "fish", 20) if a.knows_design("harbour") else None
     if fish is not None and _none_near(world, hall.x, hall.y, "harbour", 40):
         # one per town (a share of the world's people kept a second town from its own), by the fish it's for
-        plan = _build(world, a, "harbour", _count(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
+        plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
                       near=fish)
         if plan:
             out.append((1.3, plan))
