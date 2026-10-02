@@ -229,10 +229,46 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know."))
     if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop:
         add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
+    # the Machine and Electric Ages
+    if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
+        add(2.0, _build(world, a, "steam_pump", max(1, pop // 15), "An engine could lift water to every field at once."))
+    if a.knows_design("sawmill") and _none_near(world, a.x, a.y, "sawmill", 20) \
+            and world.nearest_resource(a.x, a.y, "wood", 12) is not None:
+        add(1.5, _build(world, a, "sawmill", max(1, pop // 25), "An engine could drive a saw. Every log would go twice as far."))
+    if a.knows_design("printing_press") and _none_near(world, a.x, a.y, "printing_press", 30) \
+            and any(x.functional for x in world.structures_near(a.x, a.y, 30, "library")):
+        add(1.5, _build(world, a, "printing_press", max(1, pop // 40),
+                        "What only a few of us know should be printed before it is lost."))
+    if a.knows_design("power_station") and _none_near(world, a.x, a.y, "power_station", 25) \
+            and any(s.functional and s.stations() & POWERED for s in world.structures_near(a.x, a.y, 20)):
+        add(2.0, _build(world, a, "power_station", max(1, pop // 25), "Dynamos could drive every bench and furnace in town."))
+    if a.knows_design("street_lamp") and _wolves_about(world, a) and _none_near(world, a.x, a.y, "street_lamp", 6):
+        add(1.5, _build(world, a, "street_lamp", max(2, pop // 6), "A light here would keep the wolves off."))
     add(2.5, bridge_plan(world, a, rng))
+    opts += _paper_for_the_press(world, a)
     opts += _mill_and_bake(world, a)
     opts += _at_the_smithy(world, a)
     return opts
+
+
+POWERED = {"workshop", "kiln", "furnace", "forge", "mill", "factory"}
+
+
+def _paper_for_the_press(world, a: Agent) -> List[Tuple[float, Plan]]:
+    """A printing press nearby with no paper in the stores beside it: make some at a workshop and store it there."""
+    from .instinct import _craft_steps
+
+    pr = next((x for x in world.structures_near(a.x, a.y, 25, "printing_press") if x.functional), None)
+    if pr is None or not a.knows_recipe("paper"):
+        return []
+    near = village_stores(world, pr.x, pr.y, BLD.PRESS_REACH)
+    if not near or sum(p.storage.get("paper", 0) for p in near) >= 3:
+        return []
+    steps = _craft_steps(a, "paper", 2, world=world)
+    if not steps:
+        return []
+    return [(1.5, {"goal": "make paper for the press", "thought": "The press has no paper left to print on.",
+                   "steps": steps + [{"do": "store", "what": "paper", "target": near[0].id}]})]
 
 
 def _mill_and_bake(world, a: Agent) -> List[Tuple[float, Plan]]:

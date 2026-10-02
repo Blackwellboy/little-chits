@@ -41,8 +41,15 @@ TOWER_RADIUS = 12
 SCHOOL_RADIUS, SCHOOL_EVERY, SCHOOL_P = 8, 20, 0.15
 BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 # a building of the same kind this close is used instead of starting another (actions.REUSE_WITHIN)
-REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25}
-_FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse")
+REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
+                "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4}
+_FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
+       "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp")
+PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
+SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
+POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station goes faster
+LAMP_RADIUS = 6  # no wolf bites this near a street lamp
+PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
 LIBRARY_REACH, STUDY_MULT = 40, 2.0  # study within this reach of a great library goes twice as far
 AQUEDUCT_RADIUS, AQUEDUCT_GROWTH = 20, 1.3  # farms this near an aqueduct grow faster, and through a drought
@@ -93,6 +100,7 @@ def step(world) -> None:
         _mice(world)
         _mines(world)
         _mills(world)
+        _presses(world)
 
 
 # ---------------------------------------------------------------------------- homes
@@ -594,12 +602,33 @@ def rest_mult(world, a: Agent) -> float:
 
 def growth_mult(world, farm) -> float:
     m = WELL_GROWTH if any(gap(farm, w) <= WELL_RADIUS for w in fx(world)["well"]) else 1.0
-    return m * (AQUEDUCT_GROWTH if watered(world, farm) else 1.0)
+    m *= PUMP_GROWTH if pumped(world, farm) else 1.0
+    return m * (AQUEDUCT_GROWTH if any(gap(farm, q) <= AQUEDUCT_RADIUS for q in fx(world)["aqueduct"]) else 1.0)
+
+
+def pumped(world, farm) -> bool:
+    return any(gap(farm, p) <= PUMP_RADIUS for p in fx(world)["steam_pump"])
 
 
 def watered(world, farm) -> bool:
-    """A farm an aqueduct reaches: it grows faster, and keeps growing through a drought."""
-    return any(gap(farm, q) <= AQUEDUCT_RADIUS for q in fx(world)["aqueduct"])
+    """A farm an aqueduct or a steam pump reaches: it grows faster, and keeps growing through a drought."""
+    return any(gap(farm, q) <= AQUEDUCT_RADIUS for q in fx(world)["aqueduct"]) or pumped(world, farm)
+
+
+def sawn(world, x: int, y: int) -> bool:
+    """Wood cut here goes to a sawmill: each log gives twice the wood."""
+    return any(s.dist(x, y) <= SAW_RADIUS for s in fx(world)["sawmill"])
+
+
+def powered(world, x: int, y: int) -> bool:
+    return any(p.dist(x, y) <= POWER_RADIUS for p in fx(world)["power_station"])
+
+
+def lamp_near(world, x: int, y: int):
+    for lp in fx(world)["street_lamp"]:
+        if lp.dist(x, y) <= LAMP_RADIUS:
+            return lp
+    return None
 
 
 def study_mult(world, a: Agent) -> float:
@@ -675,11 +704,15 @@ def _spoil(world) -> None:
 
 
 def craft_speed(world, a: Agent, key: str) -> float:
-    """Metal tools come quicker off a smithy's anvil."""
+    """Metal tools come quicker off a smithy's anvil; work at a station goes quicker with a power station near."""
     it = world.item(key)
-    if it is None or not it.tool or "metal" not in it.props:
-        return 1.0
-    return SMITHY_SPEED if any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]) else 1.0
+    m = 1.0
+    if it is not None and it.tool and "metal" in it.props and any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]):
+        m = SMITHY_SPEED
+    r = world.recipe(key)
+    if r is not None and r.station and powered(world, a.x, a.y):
+        m *= POWER_SPEED
+    return m
 
 
 def tower_near(world, x: int, y: int):
@@ -721,6 +754,46 @@ def _school(world) -> None:
                 k, ad = opts[rng.randrange(len(opts))]
                 if world.learned(kid, k, how, ad):
                     kid.bump("school_lessons")
+
+
+def _presses(world) -> None:
+    """Once a day each printing press prints one recipe that only one or two living chits still know and no tablet
+    anyone can reach holds, on a sheet of paper from a store near it, and shelves it in the nearest library."""
+    from . import lore
+    from .actions import village_stores
+    from .world import Tablet
+
+    presses = fx(world)["printing_press"]
+    if not presses:
+        return
+    keep = lore.keepers(world)
+    libs = [s for s in world.structures.values() if s.design in ("library", "great_library") and s.functional]
+    readable = {world.tablets[t].knowledge for lib in libs for t in lib.shelf if t in world.tablets}
+    readable |= {t.knowledge for t in world.tablets.values() if t.in_structure is None}
+    for pr in presses:
+        thin = sorted((len(ks), k) for k, ks in keep.items() if len(ks) <= 2 and k not in readable)
+        if not thin:
+            return
+        store = next((p for p in village_stores(world, pr.x, pr.y, PRESS_REACH) if p.storage.get("paper", 0) > 0), None)
+        if store is None:
+            continue
+        k = thin[0][1]
+        store.storage["paper"] -= 1
+        if not store.storage["paper"]:
+            store.storage.pop("paper")
+        world.dirty_struct.add(store.id)
+        lib = min((x for x in libs if x.dist(pr.x, pr.y) <= 30), key=lambda x: (x.dist(pr.x, pr.y), x.id), default=None)
+        tid = world._new_id("tablet")
+        key = k.split(":", 1)[1]
+        text = world.catalog.describe(world.recipe(key))
+        tb = Tablet(tid, k, pr.id, "the printing press", world.tick, pr.x, pr.y, lib.id if lib else None, text)
+        world.tablets[tid] = tb
+        if lib is not None:
+            lib.shelf.append(tid)
+            world.dirty_struct.add(lib.id)
+        readable.add(k)
+        world.emit("printed", f"The printing press printed how to make {world.item_name(key)}"
+                   + (" for the library" if lib else ""), 3, None, pr.x, pr.y, structure=pr.id, knowledge=k)
 
 
 def _bell(world) -> None:
