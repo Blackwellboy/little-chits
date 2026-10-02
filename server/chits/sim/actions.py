@@ -614,7 +614,8 @@ def tool_wear_limit(tool: str) -> int:
 # a metal tool's metal: what mending keeps and smelting gives back (issue #5: worn tools only ever vanished, and in long
 # runs the iron went into replacement axes and picks instead of steel)
 METAL_OF: Dict[str, str] = {k: m for k, r in RECIPES.items() if "metal" in (ITEMS[k].props if k in ITEMS else ())
-                            and ITEMS[k].tool for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
+                            and (ITEMS[k].tool or "tool" in ITEMS[k].props)  # (the plough too, Codex #18)
+                            for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
 MEND_AT, SMELT_AT = "workshop", "furnace"
 
 
