@@ -91,3 +91,15 @@ def test_one_tick_cant_overfill_the_queue(style):
 
     assert asyncio.run(run()) == (M.QUEUE_PER_SLOT + 1) * 2
     assert m.plans_out["test"] == 0  # each one counted back in when it finished
+
+
+def test_a_shed_plan_is_counted_once_as_shed():
+    # counted as instinct as well as shed, a shed plan still diluted the model's share (Codex, #29)
+    from chits import diag
+
+    w, a, m, b, asked = _setup()
+    b.stats.queued = M.QUEUE_PER_SLOT * 2
+    d = diag.of(w)
+    d.plans.clear()
+    m.hook(w, a)
+    assert asked == [] and a.plan and dict(d.plans) == {"shed": 1}

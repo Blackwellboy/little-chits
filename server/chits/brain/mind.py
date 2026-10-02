@@ -323,9 +323,8 @@ class Mind:
                                     or self.plans_out[brain.id] >= (QUEUE_PER_SLOT + 1) * slots):
                 # the model is far behind: a request now would wait a minute and come back stale (live, 229 queued
                 # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
-                if not a.plan:
-                    self._instinct_plan(world, a, f"instinct ({brain.label} queue full)")
-                diag.of(world).plans["shed"] += 1
+                if not a.plan:  # (counted once, as shed: counted as instinct too, it still diluted the model's share)
+                    self._instinct_plan(world, a, f"instinct ({brain.label} queue full)", kind="shed")
                 return
             self._ask(world, a, brain)
         if not a.plan and a.thinking and world.tick - a.think_started > self.patience_ticks:
@@ -419,7 +418,7 @@ class Mind:
         diag.plan_from(world, "routine")
         return True
 
-    def _instinct_plan(self, world, a: Agent, source: str, filler: bool = False) -> None:
+    def _instinct_plan(self, world, a: Agent, source: str, filler: bool = False, kind: str = "") -> None:
         p = self.instinct.plan(world, a)
         steps = p["steps"]  # the whole plan: cut to its first step, "gather clay" never reached "experiment"
         if filler:
@@ -429,7 +428,7 @@ class Mind:
         if not filler or not a.goal:
             a.goal = p["goal"]
             a.thought = p["thought"]
-        kind = "filler" if filler else ("fallback" if "unavailable" in source else "instinct")
+        kind = kind or ("filler" if filler else ("fallback" if "unavailable" in source else "instinct"))
         a.plan_source = {"filler": "instinct-filler", "fallback": "instinct-fallback"}.get(kind, "instinct")
         a.plan_started = world.tick
         a.plan_id = uuid.uuid4().hex
