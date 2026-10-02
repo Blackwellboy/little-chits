@@ -42,6 +42,27 @@ def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
 
 
+CARRIERS = ("wagon", "cart", "sled")  # best first; the basket is made with the first tools
+
+
+def _better_carrier(world, a: Agent) -> Optional[tuple]:
+    """Make (or fetch from the stores) the best carrier this chit knows, if it beats the best it holds."""
+    held = max((a._item(k).carry_bonus - a._item(k).weight for k, n in a.inventory.items()
+                if n > 0 and a._item(k) and a._item(k).carry_bonus), default=0)
+    for k in CARRIERS:
+        it = world.item(k)
+        if not a.knows_recipe(k) or a.has(k) or it.carry_bonus - it.weight <= held:
+            continue
+        if _stock_near(world, a, k) > 0:
+            return (2.5, {"goal": f"fetch a {item_name(k)}", "thought": f"There's a {item_name(k)} in the stores. I could carry more.",
+                          "steps": [{"do": "take", "what": k, "qty": 1}]})
+        steps = _craft_steps(a, k, world=world)
+        if steps and len(steps) <= 5:
+            return (2.0, {"goal": f"make a {item_name(k)}", "thought": f"With a {item_name(k)} I could carry far more.",
+                          "steps": steps})
+    return None
+
+
 LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what nobody alive still knows
 
 
@@ -856,6 +877,11 @@ class Instinct:
                 steps = _craft_steps(a, tool, world=world)
                 if steps:
                     opts.append((3.0, {"goal": f"make a {item_name(tool)}", "thought": f"A {item_name(tool)} would make life easier.", "steps": steps}))
+        # something better to carry with (issue #9): basket 8, sled 10, cart 16, wagon 28 (less what it weighs); the
+        # two best count. Carts were known by a dozen chits in each live world and none was ever made.
+        carry = _better_carrier(world, a)
+        if carry is not None:
+            opts.append(carry)
         # a hunt: spears sat unused (World B: 12 spears, 1 hunt in 260 days) because instinct hunted only when starving
         if getattr(world, "animals", None) and (a.best_tool("spear") or a.best_tool("weapon")) and a.hunger < 85:
             from ..sim import animals as AN

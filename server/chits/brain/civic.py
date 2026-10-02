@@ -201,12 +201,13 @@ def _handled(world, a: Agent) -> List[str]:
 
 # what the thing the village is looking for is like -> where one would try to make it
 RIDDLE_STATION = (("metal", "furnace"), ("fired", "kiln"), ("black", "kiln"), ("baked", "fire"), ("hot", "fire"),
-                  ("makes lightning", "factory"))
+                  ("makes lightning", "factory"), ("hauls", "workshop"))
 # hunches with counts, for what takes more than three things: "something that makes lightning" is a machine that
-# turns, something that pulls iron, and wire to carry it. No hunch could form the dynamo's four-ingredient bag, and
-# a random try held at most three: the Electric Age could never come.
+# turns, something that pulls iron, and wire to carry it (no hunch could form the dynamo's four-ingredient bag, and a
+# random try held at most three); "something that hauls" is a cart with more wheels and iron to hold them
 COUNTED_HUNCHES = (
     ("makes lightning", (({"turns wheels"}, 1), ({"pulls iron"}, 1), ({"conducts lightning"}, 2))),
+    ("hauls", (({"large"}, 1), ({"round"}, 2), ({"dark"}, 1))),
 )
 # ...and what it might be made of: one ingredient with any of each set of properties (the last one maybe not)
 HUNCHES = (
