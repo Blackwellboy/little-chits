@@ -70,7 +70,10 @@ def rank_of(world, members, n: int):
     hall = halls[0]
     if n < TOWN_POP:
         return small, hall.id
-    kinds = {s.design for s in world.structures_near(hall.x, hall.y, HALL_REACH) if s.functional and s.design in CIVIC}
+    # the town's public buildings, wherever in it they stand (an old town's hall went up at its edge, 20+ tiles from
+    # the market and library it grew up around), and any near the hall
+    near = world.structures_near(hall.x, hall.y, HALL_REACH)
+    kinds = {s.design for s in list(members) + near if s.functional and s.design in CIVIC}
     if n >= CITY_POP and len(kinds) >= CITY_CIVIC and streets_near(world, hall.x, hall.y) >= CITY_STREETS:
         return "city", hall.id
     return "town", hall.id
