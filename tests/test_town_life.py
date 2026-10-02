@@ -190,3 +190,23 @@ def test_the_taverns_words_say_how_much_ale_cheers():
     # the blurb said twice as much; it's three times (Codex, #33). The model reads these words.
     times = {2: "twice", 3: "three times", 4: "four times"}[round((BLD.TAVERN_MOOD + BLD.ALE_MOOD) / BLD.TAVERN_MOOD)]
     assert f"spirits lift {times} as much" in DESIGNS["tavern"].blurb
+
+
+def test_brewing_counts_only_the_stores_the_brewer_can_reach():
+    # the town's stores round its hall were counted, though the brewer's take looks only at stores it can walk to:
+    # the brew was offered and failed at once (Codex, #40)
+    w, a, hall = town()
+    a.learn("design:town_hall", "taught", w.tick)
+    a.inventory.clear()
+    ws = put(w, "workshop", a, near=(a.x, a.y), radius=12)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(ws)))
+    for st in w.structures.values():
+        st.storage.pop("grain", None)
+        st.storage.pop("berries", None)
+    pile = put(w, "stockpile", a, near=(hall.x, hall.y), radius=10)
+    pile.storage.update({"grain": 4, "berries": 2})
+    w.tick = 4 * TICKS_PER_DAY + 120
+    a.reflex_rest["unreach:" + pile.id] = w.tick + TICKS_PER_DAY  # (it just failed to get there)
+    assert not any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))
+    a.reflex_rest.clear()
+    assert any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))

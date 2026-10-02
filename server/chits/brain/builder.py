@@ -432,9 +432,15 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     if not a.knows_recipe("ale") and a.knows_design("town_hall") \
             and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
         fetch = []
+        # (the stores this chit can walk to, around it, as its take looks: the town's, round the hall, offered a brew
+        # its take then failed to fetch, Codex #40)
+        mine: Dict[str, int] = {}
+        for p in village_stores(world, a.x, a.y, 25, a):
+            for k, n in p.storage.items():
+                mine[k] = mine.get(k, 0) + n
         for k, n in (("grain", 2), ("berries", 1)):
             short = n - a.inventory.get(k, 0)
-            if short > 0 and stock.get(k, 0) >= short:
+            if short > 0 and mine.get(k, 0) >= short:
                 fetch.append({"do": "take", "what": k, "qty": short})
             elif short > 0:
                 fetch = None
