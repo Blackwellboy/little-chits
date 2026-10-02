@@ -538,6 +538,7 @@ export class WorldView {
     if (s.design === "stockpile" || s.design === "outpost") st = s.stored <= 0 ? 0 : s.stored < 40 ? 1 : s.stored < 120 ? 2 : 3;
     if (s.design === "warehouse") st = s.stored <= 0 ? 0 : s.stored < 160 ? 1 : s.stored < 480 ? 2 : 3;  // four times the room
     if (s.design === "mine") st = s.stored <= 0 ? 0 : s.stored < 6 ? 1 : s.stored < 12 ? 2 : 3;  // ore in the seam
+    if (s.design === "sand_pit") st = s.stored <= 0 ? 0 : 1;  // sand to dig (an empty pit showed its heap, Codex #32)
     if (s.design === "bridge") st = (s.h > s.w ? 10 : 0) + Math.max(s.w, s.h); // which way it runs, how long
     // a home being rebuilt bigger: scaffolding redrawn as the work goes on
     const up = s.upgrade ? `:u${Math.round(s.upgrade.progress * 8)}${Object.keys(s.upgrade.needs).length ? "n" : ""}` : "";
