@@ -307,6 +307,22 @@ DESIGNS: Dict[str, Design] = {
         _d("bell_tower", "bell tower", {"brick": 8, "wood": 6, "copper": 4}, 70, (("recipe", "copper"),),
            blurb="its bell rings every morning: everyone within 20 tiles gathers for a moment, lifting spirits and "
                  "friendships (and hearing the chief's plan)", decay=0.5, min_pop=10),
+        # the Machine Age: what an engine, gears and paper are for (issue #12: after the forge nothing new stood)
+        _d("steam_pump", "steam pump", {"brick": 8, "steel": 2, "engine": 1}, 60, (("recipe", "engine"), ("design", "well")),
+           size=(2, 2), blurb="an engine that lifts water to the fields: farms within 10 tiles grow half as fast again, "
+                              "even through a drought"),
+        _d("sawmill", "sawmill", {"brick": 6, "steel": 2, "engine": 1, "wood": 8}, 60, (("recipe", "engine"),), size=(2, 2),
+           blurb="an engine-driven saw: every log cut within 12 tiles gives twice the wood"),
+        _d("printing_press", "printing press", {"wood": 6, "iron": 2, "gear": 2, "paper": 4}, 50,
+           (("recipe", "gear"), ("recipe", "paper"), ("design", "library")), size=(2, 2),
+           blurb="type and a press: each day it prints, on a sheet of paper from the stores, a recipe only one or two "
+                 "chits still know, and shelves it in the nearest library"),
+        # the Electric Age
+        _d("power_station", "power station", {"brick": 16, "steel": 4, "dynamo": 1, "wire": 4}, 90, (("recipe", "dynamo"),),
+           size=(2, 2), blurb="humming dynamos: work at every workshop, kiln, furnace, forge, mill and factory within "
+                              "20 tiles goes half as fast again"),
+        _d("street_lamp", "street lamp", {"iron": 1, "lightbulb": 1, "wire": 1}, 10, (("recipe", "lightbulb"),),
+           blurb="an electric light on an iron post: no wolf comes within 6 tiles of it", decay=1.0),
     ]
 }
 

@@ -470,8 +470,6 @@ def _do_gather(world, a: Agent, step, s) -> str:
     if tgt is None or world.res_amt[tgt] <= 0:
         pos = world.nearest_resource(a.x, a.y, kind, 34 if kind in ("berries", "fish") else 26, set(s.setdefault("avoid", [])))
         if pos is None and kind == "ore":
-            from . import buildings as BLD
-
             mine = BLD.mine_near(world, a, 26)
             if mine is not None:  # the deposits near here are dug out: the mine's seam
                 s["mine"] = mine.id
@@ -527,6 +525,8 @@ def _do_gather(world, a: Agent, step, s) -> str:
         world.dirty_res.add(i)
         if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y):
             a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
+        if kind == "wood" and n and BLD.sawn(world, a.x, a.y):
+            n *= 2  # (the sawmill cuts each log into twice the wood: the forest isn't felled any faster)
     added = a.add(kind, n) if n else 0
     s["got"] = got + added
     a.practice("gathering", 0.4)

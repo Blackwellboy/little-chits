@@ -147,8 +147,8 @@ def attacks(world) -> None:
     for w in world.animals.values():
         if w["kind"] != "wolf" or w.get("fled") == night:
             continue
-        if BLD.tower_near(world, w["x"], w["y"]) is not None:
-            continue  # (under a watchtower's eye no wolf gets close enough to bite)
+        if BLD.tower_near(world, w["x"], w["y"]) is not None or BLD.lamp_near(world, w["x"], w["y"]) is not None:
+            continue  # (under a watchtower's eye, or in a street lamp's light, no wolf gets close enough to bite)
         for c in world.agents.values():
             if max(abs(c.x - w["x"]), abs(c.y - w["y"])) > 1 or world.in_home(c):
                 continue
