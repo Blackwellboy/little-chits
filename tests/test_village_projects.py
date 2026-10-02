@@ -501,3 +501,31 @@ def test_a_chit_that_cant_make_it_only_hears_what_it_needs_where_chits_talk():
         for o in w.agents.values():
             o.knows.pop("recipe:iron", None)
         assert civic.make_plan(w, b, p) is None
+
+
+def test_a_project_asks_for_iron_ore_only_from_a_chit_with_a_pick():
+    # iron ore needs a pick like copper ore, but only copper ore was checked: a chit without one was sent to gather
+    # it and failed at once (Codex, #46)
+    w = _world()
+    a, b = list(w.agents.values())[:2]
+    b.learn("recipe:iron", "taught", w.tick)
+    a.inventory.clear()
+    _build(w, a, "stockpile")
+    p = {"kind": "make", "key": "iron", "n": 4, "for": ""}
+    assert civic.make_plan(w, a, p) is None
+    a.inventory["stone_pick"] = 1
+    assert civic.make_plan(w, a, p)["steps"][0] == {"do": "gather", "what": "iron_ore", "qty": 4}
+
+
+def test_an_ingredient_to_try_isnt_put_into_a_building_site():
+    # with no building to make it for, any unfinished site needing it took it: an engine meant for the dynamo went
+    # into a steam pump (Codex, #39)
+    w = _world()
+    a = next(iter(w.agents.values()))
+    a.learn("recipe:cord", "taught", w.tick)
+    _build(w, a, "stockpile")
+    pos = w.find_site("palisade", a.x + 5, a.y, 12)
+    site = w.place_site("palisade", pos[0], pos[1], a)
+    assert not site.complete and site.needs.get("cord")
+    plan = civic.make_plan(w, a, {"kind": "make", "key": "cord", "n": 2, "try": "wagon"})
+    assert plan and plan["steps"][-1] == {"do": "store", "what": "cord"}

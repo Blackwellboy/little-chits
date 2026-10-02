@@ -614,7 +614,8 @@ def tool_wear_limit(tool: str) -> int:
 # a metal tool's metal: what mending keeps and smelting gives back (issue #5: worn tools only ever vanished, and in long
 # runs the iron went into replacement axes and picks instead of steel)
 METAL_OF: Dict[str, str] = {k: m for k, r in RECIPES.items() if "metal" in (ITEMS[k].props if k in ITEMS else ())
-                            and ITEMS[k].tool for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
+                            and (ITEMS[k].tool or "tool" in ITEMS[k].props)  # (the plough too, Codex #18)
+                            for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
 MEND_AT, SMELT_AT = "workshop", "furnace"
 
 
@@ -1705,11 +1706,23 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def _who(world, a: Agent, s, name) -> Optional[Agent]:
+    """The chit called `name` for this action: the nearest namesake, found once and kept. Looked up every tick, a
+    nearer namesake could take over mid-way, and get a lesson nine ticks of which went to the other (Codex, #35)."""
+    key = str(name or "").strip().lower()
+    if s.get("_who") and s.get("_who_name") == key:
+        return world.agents.get(s["_who"])  # (gone: the action fails rather than turning to another of that name)
+    o = world.agent_by_name(name, near=a)
+    if o is not None:
+        s["_who"], s["_who_name"] = o.id, key
+    return o
+
+
 def _do_trade(world, a: Agent, step, s) -> str:
     """Barter (T25): no words needed, so it works in both worlds. The partner judges the deal by what it's worth to them."""
     if str(step.get("at") or "").strip().lower() in ("stores", "stockpile", "the stores"):
         return _trade_at_stores(world, a, step, s)
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} to trade with"
     give = _trade_bag(world, step.get("give"))
@@ -1854,7 +1867,7 @@ def _strength(a: Agent) -> float:
 
 def _do_fight(world, a: Agent, step, s) -> str:
     """A scuffle (T27): it hurts and leaves grudges, but nobody is killed in a fight."""
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} here"
     mv = _approach_agent(world, a, s, other, 1)
@@ -2375,7 +2388,7 @@ def _approach_agent(world, a: Agent, s, other: Agent, dist: int = 1) -> str:
 
 
 def _do_give(world, a: Agent, step, s) -> str:
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     st = world.structures.get(str(step.get("to") or step.get("target") or "")) if not other else None
     if st is not None and st.design in STORES and st.complete:
         return _do_store(world, a, dict(step, do="store", target=st.id), s)
@@ -2414,7 +2427,7 @@ def _do_say(world, a: Agent, step, s) -> str:
     if not text:
         return "had nothing to say"
     to = step.get("to")
-    other = world.agent_by_name(to, near=a) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
+    other = _who(world, a, s, to) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
     if other and not s.get("close"):
         mv = _approach_agent(world, a, s, other, 4)
         if mv == "blocked" or s["ticks"] > 150:
@@ -2490,7 +2503,7 @@ def _do_teach(world, a: Agent, step, s) -> str:
     if not kk:
         return f"'{step.get('what')}' isn't something that can be taught"
     who = str(step.get("to") or step.get("target") or "").strip()
-    other = world.agent_by_name(who, near=a) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
+    other = _who(world, a, s, who) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
     if other is None and who.lower() in ("", "all", "everyone", "anyone", "others"):
         near = [o for o in world.agents.values() if o is not a and kk not in o.knows and o.activity != "sleeping"
                 and max(abs(o.x - a.x), abs(o.y - a.y)) <= 8]
@@ -2693,7 +2706,7 @@ def _do_inspect(world, a: Agent, step, s) -> str:
             s["note"] = f"Studied my {world.item_name(k)} but couldn't work out how it was made"
             a.remember(world.tick, s["note"], 2, "learn")
         return DONE
-    other = world.agent_by_name(ref, near=a)
+    other = _who(world, a, s, ref)
     if other and other.id != a.id:
         mv = _approach_agent(world, a, s, other, 2)
         if mv == "blocked" or s["ticks"] > 200:

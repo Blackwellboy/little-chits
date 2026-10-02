@@ -152,3 +152,16 @@ def test_a_village_takes_on_a_steam_pump_as_a_project_once_it_can_make_what_it_n
     w.check_insights(a)
     assert a.knows_design("steam_pump")
     assert any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+
+
+def test_a_power_station_doesnt_speed_a_cooking_fire():
+    # its words name workshops, kilns, furnaces, forges, mills and factories; cooking went half as fast again too
+    # (Codex, #23)
+    from chits.sim.items import RECIPES
+
+    w, (a, _) = village()
+    put(w, "power_station", a)
+    w.tick += 1
+    fire = next(k for k, r in RECIPES.items() if r.station == "fire")
+    assert BLD.craft_speed(w, a, fire) == 1.0
+    assert BLD.craft_speed(w, a, "brick") == BLD.POWER_SPEED

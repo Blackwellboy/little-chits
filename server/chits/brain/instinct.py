@@ -77,14 +77,16 @@ def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
 
 
 def _keeper_counts(world) -> Dict[str, int]:
-    """How many living chits know each thing, counted once a tick."""
+    """How many living chits know each thing, counted again whenever anyone learns, forgets or dies (a count kept
+    for the whole tick ranked a recipe taught to five watchers mid-tick as still rare, Codex #26)."""
+    stamp = (world.tick, len(world.agents), sum(len(o.knows) for o in world.agents.values()))
     c = getattr(world, "_keepers_n", None)
-    if c is None or c[0] != world.tick:
+    if c is None or c[0] != stamp:
         n: Dict[str, int] = {}
         for o in world.agents.values():
             for k in o.knows:
                 n[k] = n.get(k, 0) + 1
-        c = (world.tick, n)
+        c = (stamp, n)
         world._keepers_n = c
     return c[1]
 
@@ -105,21 +107,28 @@ def tool_care_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
 
     if a.is_child(world.tick):
         return None
-    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
+    mine = sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0)
+
+    def better(tool):
+        it = a._item(tool)
+        return [t for t in a.inventory if t != tool and a.inventory[t] > 0 and it.tool and a._item(t)
+                and a._item(t).tool == it.tool and a._item(t).tool_power > it.tool_power]
+
+    for tool in mine:
+        if better(tool):
+            continue  # (smelted below, not mended first: a wood and a workshop visit spent on a pick about to melt)
         worn = a.tool_wear.get(tool, 0) >= tool_wear_limit(tool) // 2
         wood = a.has("wood") or any(p.storage.get("wood", 0) > 0 for p in village_stores(world, a.x, a.y, 25, a))
         if worn and wood and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
             steps = [] if a.has("wood") else [{"do": "take", "what": "wood", "qty": 1}]
             return {"goal": f"mend my {item_name(tool)}", "thought": f"My {item_name(tool)} is getting worn. A new haft will save the metal.",
                     "steps": steps + [{"do": "repair", "what": tool}]}
-    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
-        it = a._item(tool)
-        better = [t for t in a.inventory if t != tool and a.inventory[t] > 0 and a._item(t) and a._item(t).tool == it.tool
-                  and a._item(t).tool_power > it.tool_power]
-        if better and world.nearest_station(a.x, a.y, "furnace", STATION_NEAR):
+    for tool in mine:
+        best = better(tool)
+        if best and world.nearest_station(a.x, a.y, "furnace", STATION_NEAR):
             metal = METAL_OF[tool]
             return {"goal": f"smelt down my old {item_name(tool)}",
-                    "thought": f"I don't need the {item_name(tool)} now I have a {item_name(better[0])}. The {item_name(metal)} is worth more.",
+                    "thought": f"I don't need the {item_name(tool)} now I have a {item_name(best[0])}. The {item_name(metal)} is worth more.",
                     "steps": [{"do": "smelt", "what": tool}]}
     return None
 

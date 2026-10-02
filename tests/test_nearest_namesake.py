@@ -38,3 +38,32 @@ def test_a_chit_never_means_itself_by_a_name_it_shares():
     a.name = other.name = "Chit2154"  # (the asker shares the name: "watch Chit2154" means the other one)
     other.x, other.y = a.x + 10, a.y
     assert w.agent_by_name("Chit2154", near=a) is other
+
+
+def test_a_namesake_is_kept_for_the_whole_action():
+    # looked up every tick, a nearer namesake could take over a lesson half given to the other (Codex, #35)
+    w = World("A", "A", 5, "direct", 96, 4)
+    a, first, second, _ = list(w.agents.values())
+    first.name = second.name = "Chit2154"
+    first.x, first.y = a.x + 1, a.y
+    second.x, second.y = a.x + 5, a.y
+    s = {}
+    assert actions._who(w, a, s, "Chit2154") is first
+    second.x, second.y = a.x, a.y + 1  # now the nearer one
+    first.x, first.y = a.x + 3, a.y
+    assert actions._who(w, a, s, "Chit2154") is first  # (the same action: the same chit)
+    assert actions._who(w, a, {}, "Chit2154") is second  # (a new action: the nearest)
+    assert actions._who(w, a, s, first.id) is first and s["_who_name"] == first.id
+
+
+def test_a_namesake_that_left_fails_the_action_rather_than_switching():
+    # gone mid-action (dead, or off to sea), the pinned one was looked up again and another took its place (Codex, #56)
+    w = World("A", "A", 5, "direct", 96, 4)
+    a, first, second, _ = list(w.agents.values())
+    first.name = second.name = "Chit2154"
+    first.x, first.y = a.x + 1, a.y
+    second.x, second.y = a.x + 5, a.y
+    s = {}
+    assert actions._who(w, a, s, "Chit2154") is first
+    del w.agents[first.id]
+    assert actions._who(w, a, s, "Chit2154") is None

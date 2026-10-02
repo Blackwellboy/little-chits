@@ -223,9 +223,11 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         if plan:
             opts.append((w, plan))
 
-    if a.knows_design("mine") and (a.knows_recipe("copper") or a.knows_recipe("iron")) \
-            and _none_near(world, a.x, a.y, "mine", 30) and world.nearest_resource(a.x, a.y, "ore", 26) is None \
-            and world.nearest_resource(a.x, a.y, "iron_ore", 26) is None:
+    # the ores it smelts: one dug out is reason enough (iron is the commoner, and copper ran out first while iron
+    # deposits kept the mine from being built, Codex #46)
+    smelts = [k for k, metal in (("ore", "copper"), ("iron_ore", "iron")) if a.knows_recipe(metal)]
+    if a.knows_design("mine") and smelts and _none_near(world, a.x, a.y, "mine", 30) \
+            and any(world.nearest_resource(a.x, a.y, k, 26) is None for k in smelts):
         add(2.0, _build(world, a, "mine", max(1, pop // 15), "The ore near home is dug out. A mine in the rocks would give more."))
     if a.knows_design("sand_pit") and a.reflex_rest.get("scarce:sand", 0) > world.tick \
             and _none_near(world, a.x, a.y, "sand_pit", BLD.PIT_REACH):
