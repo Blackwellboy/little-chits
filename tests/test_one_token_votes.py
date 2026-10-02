@@ -184,3 +184,40 @@ def test_the_mind_asks_each_voter_and_the_partner_with_one_token():
     recs = [r for r in m.decisions if r["style"] in ("vote", "trade-offer")]
     assert len(recs) == 6 and all(r["outcome"] == "adopted" for r in recs if r["style"] == "trade-offer")
     assert _run(w2, ta, step, s) != RUNNING and ta.inventory.get("stone") == 4
+
+
+def test_in_an_experiment_elections_and_trades_stay_the_simulators():
+    # F1: nothing may silently replace a model's decision. A poll or an offer that went unanswered would fall back to
+    # the simulator's rule, so in an experiment the model isn't asked and the simulator decides, as before (Codex, #48)
+    w, (a, b, c, d, e) = _town()
+    w.__dict__["_mind_strict"] = True
+    for v in (b, c, d, e):
+        _likes(v, a)
+    w.choose_leader("test")
+    assert not ballots.poll(w) and w.leader == a.id
+    w, ta, tb, step = _trade_pair()
+    w.__dict__["_mind_strict"] = True
+    assert "didn't want" in _run(w, ta, step, {}) and not (w.civic.get("offers") or {})
+
+
+def test_an_offer_left_behind_is_cleared_or_replaced():
+    # the partner fell asleep while the trader waited: its pending offer went with the trade, or a reply arriving later
+    # sat there unread and every other trader's offer to it skipped its mind (Codex, #48)
+    w, a, b, step = _trade_pair()
+    s = {}
+    _run(w, a, step, s, 6)
+    assert ballots.pending_offer(w, b.id)
+    b.activity = "sleeping"
+    assert "didn't want" in _run(w, a, step, s) and not w.civic["offers"]
+    # an offer whose trader went away is replaced once its time is up
+    b.activity = "idle"
+    _run(w, a, step, {}, 6)
+    c = next(o for o in w.agents.values() if o not in (a, b))
+    c.x, c.y = b.x + 1, b.y
+    c.inventory["wood"] = 5
+    t0 = ballots.pending_offer(w, b.id)["tick"]
+    assert ballots.offer_verdict(w, c, b, {"wood": 1}, {"stone": 4}, {}) is False  # someone else's is being weighed
+    w.tick = t0 + ballots.OFFER_TICKS
+    s2 = {}
+    assert ballots.offer_verdict(w, c, b, {"wood": 1}, {"stone": 4}, s2) is None
+    assert ballots.pending_offer(w, b.id)["from"] == c.id

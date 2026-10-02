@@ -29,6 +29,13 @@ def model_minded(a: Agent) -> bool:
     return getattr(a, "brain", "instinct") != "instinct"
 
 
+def _experiment(world) -> bool:
+    """An experiment run (F1): nothing may silently replace a model's decision, and a vote or an offer whose answer
+    didn't come would fall back to the simulator's rule. There, elections and trades stay the simulator's, as before
+    (the model is never asked, so nothing of its is replaced). The Mind sets the flag each tick (brain/mind.py)."""
+    return bool(world.__dict__.get("_mind_strict"))
+
+
 def _civic(world) -> Dict[str, Any]:
     if not hasattr(world, "civic"):
         from . import projects
@@ -50,7 +57,7 @@ def open_poll(world, reason: str, approvals: Dict[str, List[str]], voters: List[
         for c in backed:
             counts[c] = counts.get(c, 0) + 1
     minded = [v.id for v in voters if model_minded(v)]
-    if not counts or not minded:
+    if not counts or not minded or _experiment(world):
         return False
     ranked = sorted(counts, key=lambda c: (-counts[c], world.agents[c].born))
     cands = ranked[:POLL_N]
@@ -122,15 +129,19 @@ def offer_verdict(world, trader: Agent, partner: Agent, give: Dict[str, int], ge
                   s: Dict[str, Any]) -> Optional[bool]:
     """Does `partner` take the deal? None: still waiting for its mind's answer (the trader keeps waiting).
     A sleeping or hostile partner refuses without being asked; an instinct partner judges by value."""
-    if partner.activity == "sleeping" or partner.affinity.get(trader.id, 0.0) < -20 or not model_minded(partner):
-        return world.accepts_trade(partner, trader, give, get)
-    offers = _civic(world).setdefault("offers", {})
+    offers = _civic(world).get("offers") or {}
     o = offers.get(partner.id)
+    mine = o is not None and o["from"] == trader.id and o["tick"] == s.get("offer")
+    if partner.activity == "sleeping" or partner.affinity.get(trader.id, 0.0) < -20 or not model_minded(partner) \
+            or _experiment(world):
+        if mine:
+            del offers[partner.id]  # (an answer arriving later would sit there, unread, blocking other traders)
+        return world.accepts_trade(partner, trader, give, get)
     if s.get("offer") is None:
-        if o is not None and o["from"] != trader.id:
+        if o is not None and o["from"] != trader.id and world.tick - o["tick"] < OFFER_TICKS:
             return world.accepts_trade(partner, trader, give, get)  # someone else's offer is being weighed
         s["offer"] = world.tick
-        offers[partner.id] = {"from": trader.id, "give": dict(give), "get": dict(get), "tick": world.tick,
+        world.civic.setdefault("offers", {})[partner.id] = {"from": trader.id, "give": dict(give), "get": dict(get), "tick": world.tick,
                               "sent": False}
         return None
     if o is None or o["from"] != trader.id or o["tick"] != s["offer"]:
