@@ -185,10 +185,20 @@ def _build(world, a: Agent, design: str, cap: int, thought: str, near=None) -> O
     if a.reflex_rest.get("nobuild:" + design, 0) > world.tick or _count(world, design) >= cap:
         return None
     mats = DESIGNS[design].material_map
+    step = {"do": "build", "what": design, "_cap": cap}
+    if sum(mats.values()) > a.capacity():
+        # more than anyone can carry (a town hall is 38 things, a chit carries 12): fetching it all first failed
+        # before the site was ever started. Start the site; its builders bring the rest from the stores a load at a
+        # time. Only when the stores hold every made material it needs (raw ones can be gathered for it).
+        stock = _stock(world, a)
+        if any(k not in GATHER_RULES and a.inventory.get(k, 0) + stock.get(k, 0) < n for k, n in mats.items()):
+            return None
+        if near is not None:
+            step["near"] = f"{near[0]},{near[1]}"
+        return {"goal": f"build a {DESIGNS[design].name}", "thought": thought, "steps": [step]}
     steps = _need_steps(a, mats, world)
     if not steps and any(a.inventory.get(k, 0) < n for k, n in mats.items()):
         return None  # something it needs can't be had
-    step = {"do": "build", "what": design, "_cap": cap}
     if near is not None:
         step["near"] = f"{near[0]},{near[1]}"
     return {"goal": f"build a {DESIGNS[design].name}", "thought": thought, "steps": steps[:4] + [step]}

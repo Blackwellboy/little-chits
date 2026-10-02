@@ -144,3 +144,21 @@ def test_a_village_of_twenty_plans_its_town_hall():
 def test_chits_say_they_live_in_a_town():
     w, a, hall = town()
     assert f"town of {village_of(w, a).name}" in P.scene(w, a)
+
+
+def test_a_building_bigger_than_a_load_is_started_and_supplied_from_the_stores():
+    # a town hall is 38 things and a chit carries 12: fetching it all first failed before the site was started
+    w, v = _full_village(24)
+    a = w.agents[v.residents[0]]
+    for k in ("recipe:clay_tablet", "recipe:brick", "recipe:glass"):
+        a.learn(k, "taught", w.tick)
+    w.check_insights(a)
+    a.inventory.clear()
+    plan = BI._build(w, a, "town_hall", 1, "x", near=(int(v.x), int(v.y)))
+    assert plan is None  # no brick or glass anywhere: nothing to build it from
+    pile = put(w, "stockpile", a, (a.x, a.y), 6)
+    pile.storage.update({"brick": 16, "glass": 2})
+    plan = BI._build(w, a, "town_hall", 1, "x", near=(int(v.x), int(v.y)))
+    assert plan["steps"] == [{"do": "build", "what": "town_hall", "_cap": 1, "near": f"{int(v.x)},{int(v.y)}"}]
+    small = BI._build(w, a, "well", 3, "x") if a.knows_design("well") else None
+    assert small is None or small["steps"][-1]["what"] == "well"  # (small buildings plan as before)
