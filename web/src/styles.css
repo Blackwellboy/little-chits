@@ -80,10 +80,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .rail button span { font-size: 18px; }
 .rail button small { font-size: 9px; color: var(--muted); }
 .rail button.on { border-color: rgba(255,226,122,0.5); box-shadow: 0 0 0 1px rgba(255,226,122,0.25), 0 6px 20px rgba(0,0,0,0.4); }
-.panel { position: absolute; left: 72px; top: 66px; bottom: 10px; width: 360px; max-width: calc(100vw - 90px); overflow: auto; z-index: 8;
+.panel { position: absolute; left: 72px; top: 66px; bottom: 10px; width: 360px; min-width: 320px; max-width: calc(100vw - 90px); resize: horizontal; overflow: auto; z-index: 8;
   background: var(--glass); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(12px); padding: 12px 14px; }
 .panel::-webkit-scrollbar, .inspector::-webkit-scrollbar { width: 6px; } .panel::-webkit-scrollbar-thumb, .inspector::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
-.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
 .panel h3 { margin: 0; font-family: Silkscreen, monospace; font-weight: 400; font-size: 15px; letter-spacing: 1px; }
 .panel h3 small { font-family: Inter, sans-serif; font-size: 12px; letter-spacing: 0; }
 .filters { margin-bottom: 8px; width: fit-content; }
@@ -215,7 +215,7 @@ select, input { background: #0b0f1a; color: var(--text); border: 1px solid var(-
 .speed-ok { color: #ffc85a; }
 .speed-slow { color: var(--bad); }
 .actions { display: flex; gap: 6px; }
-.actions button, .presets button, .form button, .inline button, .modal .row button, .matchups button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.actions button, .presets button, .form button, .inline button, .modal .row button, .matchups button, .panel .row button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
 button.primary, .modal .row button.primary, .presets button.primary, .form button.primary, .actions button.primary { background: linear-gradient(90deg, #ffb86b, #ff8a8a); color: #1a1020; border: 0; font-weight: 600; }
 button.danger { color: var(--bad); }
 .presets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
@@ -396,6 +396,8 @@ button.danger { color: var(--bad); }
 .rec-state.on { color: #ff6b6b; }
 .rec-run h3 { text-transform: none; letter-spacing: 0; font-size: 13px; }
 .rec-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.rec-items button, .rec-moments button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--text); }
+.rec-items button:hover, .rec-moments button:hover { background: rgba(255,255,255,0.12); }
 .rec-items button.on, .rec-moments button.on { background: rgba(255, 184, 107, 0.2); border-color: rgba(255, 184, 107, 0.6); }
 .rec-sub { font-size: 12px; margin: 12px 0 6px; text-transform: none; letter-spacing: 0; }
 .rec-moments { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 240px; overflow-y: auto; }
