@@ -18,7 +18,7 @@ from ..sim.actions import (FOODS, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCK
                            food_items, plan_bill, remembered_place, stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
-from ..sim.buildings import HOME_CAP, HOMES  # beyond its cap a family home is crowded
+from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
 from . import outposts as OP
 from . import voyages as VOY
@@ -451,12 +451,25 @@ class Instinct:
         if any(not s.complete or s.upgrade for s in stores):
             return None  # one is going up (or being rebuilt) already: its builder is on it
         if a.knows_design("warehouse"):  # rebuild the fullest stockpile as a warehouse, keeping all it holds
-            full = [s for s in stores if s.design == "stockpile" and s.functional and world.same_land(a, s)]
+            # only one with clear ground beside it: a hemmed-in stockpile can't grow, and offering it anyway failed
+            # 1.6 million times in one 2,600-day world while the stores stayed full
+            full = [s for s in stores if s.design == "stockpile" and s.functional and world.same_land(a, s)
+                    and upgrade_spot(world, s, "warehouse") is not None]
             if full:
                 pile = min(full, key=lambda s: (stockpile_room(s), s.id))
                 return {"goal": "make the stockpile a warehouse",
                         "thought": "Every stockpile is full. A warehouse would hold four times as much.",
                         "steps": [{"do": "upgrade", "to": "warehouse", "target": pile.id}]}
+            # none can grow where it stands: a new warehouse beside them (its site is supplied from the stores, so
+            # full hands don't matter), rather than the load dropped on the ground
+            piles = [s for s in stores if s.functional and world.same_land(a, s)]
+            cap = max(3, len(world.agents) // 6)
+            if piles and len(world.agents) >= DESIGNS["warehouse"].min_pop \
+                    and sum(1 for s in world.structures.values() if s.design == "warehouse") < cap:
+                pile = min(piles, key=lambda s: (stockpile_room(s), s.id))
+                return {"goal": "build a warehouse",
+                        "thought": "Every store is full and there's no room to make one bigger. A new warehouse, then.",
+                        "steps": [{"do": "build", "what": "warehouse", "near": f"{pile.x},{pile.y}", "_cap": cap}]}
         if not a.knows_design("stockpile"):
             return None
         if sum(1 for s in world.structures.values() if s.design == "stockpile") >= max(5, len(world.agents) // 12):
