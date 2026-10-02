@@ -1343,8 +1343,10 @@ def _do_work(world, a: Agent, step, s) -> str:
             if all(a.inventory.get(k, 0) >= q for k, q in r.inputs):
                 q = _make_one(world, a, r)
                 kept_up(world, st, 5)  # a station in use is looked after as it's used
+                # goods (a bakery's batch is two for one, Codex #33); a shift saved before they were counted made as
+                # many in each batch so far
+                s["out"] = s.get("out", s["made"] * q) + q
                 s["made"] += 1  # (batches, against the bill's n)
-                s["out"] = s.get("out", 0) + q  # (goods: a bakery's batch is two for one, Codex #33)
                 st.produced[r.key] = st.produced.get(r.key, 0) + q
                 a.bump("produced", q)
                 a.bump(f"produced_{r.key}", q)

@@ -161,3 +161,26 @@ def test_a_shift_at_a_bakery_stores_counts_and_reports_every_loaf():
     assert not a.inventory.get("bread") and bk.produced == {"bread": bread} and a.stats["produced_bread"] == bread
     ev = [e for e in evs if e.kind == "produced"][-1]
     assert actions._count_words(w, "bread", bread) in ev.text
+
+
+def test_a_bakery_shift_saved_before_loaves_were_counted_counts_them_all():
+    # a shift saved mid-way by an older version has batches made but no goods counted: resumed, its earlier loaves
+    # were left out of the store and the tally (Codex, #51)
+    from test_production import _build, _run, _world
+
+    w, a = _world()
+    _build(w, a, "bakery", 5)
+    pile = _build(w, a, "stockpile", -4, 0, {"grain": 30})
+    w.learned(a, "recipe:bread", "taught")
+    step = {"do": "work", "at": "bakery"}
+    s = None
+    for _ in range(700):
+        actions.advance(w, a, step)
+        w.tick += 1
+        s = step.get("_s") or {}
+        if s.get("made") == 1:
+            break
+    assert s.get("made") == 1 and s.pop("out") == BLD.BAKERY_MULT  # (saved now, by the older version)
+    assert _run(w, a, step) == actions.DONE
+    bread = pile.storage.get("bread", 0)
+    assert bread >= 4 and not a.inventory.get("bread"), (bread, a.inventory)
