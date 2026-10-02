@@ -397,10 +397,20 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         out.append((3.0, {"goal": "rest at the healer's", "thought": "I'm badly hurt. The healer will see to me.",
                           "steps": [{"do": "go", "to": f"{hl.x},{hl.y}"}, {"do": "rest"}]}))
     # a town's first ale: try brewing grain and berries at a workshop
-    if not a.knows_recipe("ale") and a.knows_design("town_hall") and a.inventory.get("grain", 0) >= 2 \
-            and a.inventory.get("berries", 0) >= 1 and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
-        out.append((0.8, {"goal": "try brewing", "thought": "Grain and berries left to sit... might they make a drink?",
-                          "steps": [{"do": "experiment", "with": ["grain", "grain", "berries"], "at": "workshop"}]}))
+    # (from the stores too: only a chit that happened to carry both ever tried, and no tavern rose in 20-day runs)
+    if not a.knows_recipe("ale") and a.knows_design("town_hall") \
+            and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
+        fetch = []
+        for k, n in (("grain", 2), ("berries", 1)):
+            short = n - a.inventory.get(k, 0)
+            if short > 0 and stock.get(k, 0) >= short:
+                fetch.append({"do": "take", "what": k, "qty": short})
+            elif short > 0:
+                fetch = None
+                break
+        if fetch is not None:
+            out.append((0.8, {"goal": "try brewing", "thought": "Grain and berries left to sit... might they make a drink?",
+                              "steps": fetch + [{"do": "experiment", "with": ["grain", "grain", "berries"], "at": "workshop"}]}))
     return out
 
 
