@@ -516,9 +516,193 @@ const bellTower: Painter = () => {
   return c;
 };
 
+// ---------------------------------------------------------------- the later ages (issue #12)
+// The forge, factory, market, shrine, pen and launch pad had no painter: finished, they were drawn as nothing.
+
+function smoke(ctx: CanvasRenderingContext2D, x: number, y: number, n = 3) {
+  for (let i = 0; i < n; i++) px(ctx, i % 2 ? "rgba(200,200,205,0.55)" : "rgba(170,170,178,0.5)", x + i, y - i * 3, 3, 2);
+}
+
+function gearAt(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, col = "#8a8f99") {
+  for (let a = 0; a < 8; a++) {
+    const t = (a / 8) * Math.PI * 2;
+    px(ctx, col, Math.round(cx + Math.cos(t) * r) - 1, Math.round(cy + Math.sin(t) * r) - 1, 2, 2);
+  }
+  px(ctx, shade(col, 0.15), cx - r + 1, cy - r + 1, 2 * r - 1, 2 * r - 1);
+  px(ctx, "#2a2a30", cx - 1, cy - 1, 2, 2);
+}
+
+/** A blast forge: a squat brick hearth roaring white-hot, a tall chimney, an anvil and a quench trough. */
+const forge: Painter = () => {
+  const [c, ctx] = canvas(32, 48);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 45, 30, 3);
+  bricks(ctx, 2, 22, 22, 24, "#7e3a2c");
+  bricks(ctx, 19, 2, 6, 22, "#6e3226");
+  smoke(ctx, 20, 2);
+  px(ctx, "#140806", 5, 28, 13, 12);
+  px(ctx, "#ff5a1f", 6, 31, 11, 9); px(ctx, "#ffb04a", 8, 33, 7, 6); px(ctx, "#fff6c8", 10, 35, 3, 3);
+  px(ctx, "#3a3a44", 25, 38, 6, 2); px(ctx, "#2a2a30", 26, 40, 4, 5); px(ctx, "#6a6a78", 25, 38, 6, 1);
+  px(ctx, "#4a6a8a", 3, 42, 6, 3); px(ctx, "#6a8aaa", 3, 42, 6, 1);
+  return c;
+};
+
+/** A factory: a long brick hall with saw-tooth roof lights, two smoking stacks and a great gear by the door. */
+const factory: Painter = () => {
+  const [c, ctx] = canvas(48, 62);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 59, 46, 3);
+  bricks(ctx, 2, 30, 44, 30, "#9a4a36");
+  for (let i = 0; i < 4; i++) {
+    const x0 = 3 + i * 11;
+    for (let y = 0; y < 8; y++) px(ctx, "#4a4f5a", x0 + y, 22 + y, 11 - y, 1);
+    px(ctx, "#a8d0f0", x0, 23, 1, 7); px(ctx, "#cfe6f8", x0 + 1, 24, 1, 6);
+  }
+  bricks(ctx, 8, 4, 5, 20, "#7a3a2a"); bricks(ctx, 34, 0, 5, 24, "#7a3a2a");
+  px(ctx, "#2a2a30", 8, 4, 5, 1); px(ctx, "#2a2a30", 34, 0, 5, 1);
+  smoke(ctx, 9, 3); smoke(ctx, 35, 0, 2);
+  for (const x of [5, 15, 29, 39]) { px(ctx, "#f2c86a", x, 38, 4, 5); px(ctx, "#5a3020", x, 38, 4, 1); }
+  px(ctx, "#2e1d10", 20, 46, 8, 13); px(ctx, "#4a3020", 20, 46, 8, 1);
+  gearAt(ctx, 41, 51, 4);
+  return c;
+};
+
+/** A market: striped awnings over stalls of fruit, cloth and pots. */
+const market: Painter = (v) => {
+  const [c, ctx] = canvas(32, 34);
+  px(ctx, "rgba(0,0,0,0.22)", 1, 31, 30, 3);
+  const awn = [["#c84a3a", "#f2e2b8"], ["#3a7ac8", "#f2e2b8"], ["#3a9a5a", "#f2e2b8"]][v % 3];
+  for (const x0 of [1, 17]) {
+    px(ctx, "#6b4526", x0 + 1, 14, 1, 17); px(ctx, "#6b4526", x0 + 13, 14, 1, 17);
+    for (let x = 0; x < 15; x++) px(ctx, awn[Math.floor(x / 3) % 2], x0 + x, 10, 1, 5);
+    for (let x = 0; x < 15; x += 3) px(ctx, awn[0], x0 + x, 15, 2, 1);
+    px(ctx, "#a0703e", x0 + 1, 24, 13, 3); px(ctx, "#c08a50", x0 + 1, 24, 13, 1);
+  }
+  for (const [x, col] of [[3, "#d84a4a"], [6, "#e8a43a"], [9, "#8ac84a"]] as [number, string][]) px(ctx, col, x, 22, 2, 2);
+  px(ctx, "#b8704e", 20, 20, 3, 4); px(ctx, "#8a4a30", 20, 20, 3, 1); px(ctx, "#6a8ad8", 25, 21, 5, 3);
+  return c;
+};
+
+/** A shrine: a small stone house with a pitched roof and a candle burning at its open door. */
+const shrine: Painter = () => {
+  const [c, ctx] = canvas(16, 28);
+  px(ctx, "rgba(0,0,0,0.22)", 1, 25, 14, 3);
+  px(ctx, "#8f929a", 1, 24, 14, 2); px(ctx, "#b9bcc4", 1, 24, 14, 1);
+  px(ctx, "#a6a9b1", 3, 12, 10, 12); px(ctx, "#8f929a", 12, 12, 1, 12);
+  for (let y = 0; y < 7; y++) { const w = 2 + y * 2; px(ctx, y % 2 ? "#6e2e2a" : "#7e3a32", 8 - w / 2, 5 + y, w, 1); }
+  px(ctx, "#1a120c", 6, 16, 4, 8); px(ctx, "#f2e2b8", 7, 20, 2, 3); px(ctx, "#ffd06a", 7, 18, 2, 2);
+  px(ctx, "#e0b04a", 7, 2, 2, 4); px(ctx, "#e0b04a", 6, 3, 4, 1);
+  return c;
+};
+
+/** A pen: a split-rail fence round a patch of trodden grass, its gate ajar. */
+const pen: Painter = () => {
+  const [c, ctx] = canvas(32, 32);
+  px(ctx, "#7aa04a", 2, 12, 28, 18); px(ctx, "#8ab05a", 4, 14, 24, 2);
+  for (const y of [12, 29]) for (let x = 1; x < 31; x += 6) px(ctx, "#5e3b1d", x, y - 4, 2, 6);
+  for (const x of [1, 29]) for (let y = 12; y < 30; y += 6) px(ctx, "#5e3b1d", x, y - 4, 2, 6);
+  for (const y of [9, 26]) { px(ctx, "#8a5a2e", 1, y, 30, 1); px(ctx, "#8a5a2e", 1, y + 2, 30, 1); }
+  for (const x of [1, 29]) { px(ctx, "#8a5a2e", x, 9, 1, 20); px(ctx, "#8a5a2e", x + 1, 9, 1, 20); }
+  px(ctx, "#7aa04a", 13, 26, 7, 3);
+  px(ctx, "#a07a4a", 19, 25, 1, 5);
+  return c;
+};
+
+/** The launch pad: a lattice gantry beside a white rocket on a scorched concrete apron. */
+const launchPad: Painter = () => {
+  const [c, ctx] = canvas(48, 96);
+  px(ctx, "rgba(0,0,0,0.3)", 1, 93, 46, 3);
+  px(ctx, "#8a8a8a", 2, 84, 44, 10); px(ctx, "#a8a8a8", 2, 84, 44, 1); px(ctx, "#3a3a3a", 16, 86, 16, 6);
+  for (let y = 6; y < 84; y++) {
+    px(ctx, "#b84a2a", 4, y, 1, 1); px(ctx, "#b84a2a", 12, y, 1, 1);
+    if (y % 6 === 0) { px(ctx, "#b84a2a", 4, y, 9, 1); for (let i = 0; i < 8; i++) px(ctx, "#a8402a", 4 + i, y + Math.round(i * 0.7), 1, 1); }
+  }
+  px(ctx, "#8a3a20", 12, 30, 12, 2);
+  for (let y = 0; y < 76; y++) {
+    const w = y < 14 ? Math.round(2 + y * 0.6) : 10;
+    px(ctx, y % 9 === 0 ? "#d8d8de" : "#f2f2f6", 30 - Math.floor(w / 2), 8 + y, w, 1);
+    px(ctx, "#c2c2c8", 30 + Math.ceil(w / 2) - 1, 8 + y, 1, 1);
+  }
+  px(ctx, "#c84a3a", 25, 40, 10, 3); px(ctx, "#3a5ac8", 28, 58, 4, 4);
+  for (const dx of [-1, 1]) for (let i = 0; i < 6; i++) px(ctx, "#c84a3a", 30 + dx * (5 + i), 74 + i, 1, 10 - i);
+  return c;
+};
+
+/** A steam pump: a brick engine house, a rocking beam over the well shaft and a pipe running off to the fields. */
+const steamPump: Painter = () => {
+  const [c, ctx] = canvas(32, 46);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 43, 30, 3);
+  bricks(ctx, 2, 22, 18, 22, "#a8503a");
+  for (let y = 0; y < 6; y++) px(ctx, y % 2 ? "#4a4f5a" : "#5a606c", 1, 16 + y, 20, 1);
+  bricks(ctx, 15, 2, 4, 16, "#7a3a2a"); smoke(ctx, 15, 2);
+  px(ctx, "#2e1d10", 8, 34, 6, 10);
+  px(ctx, "#3a3a44", 12, 12, 18, 2); px(ctx, "#6a6a78", 12, 12, 18, 1);
+  px(ctx, "#2a2a30", 20, 13, 2, 9);
+  px(ctx, "#3a3a44", 28, 14, 1, 16); px(ctx, "#8f929a", 25, 30, 6, 14); px(ctx, "#b9bcc4", 25, 30, 6, 1);
+  px(ctx, "#4a6a8a", 20, 40, 12, 2); px(ctx, "#6a8aaa", 20, 40, 12, 1);
+  return c;
+};
+
+/** A sawmill: an open timber shed, a spinning blade on its bench, a log on the carriage and a stack of planks. */
+const sawmill: Painter = () => {
+  const [c, ctx] = canvas(32, 40);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 37, 30, 3);
+  for (const x of [2, 15, 28]) px(ctx, "#6b4526", x, 14, 2, 24);
+  for (let y = 0; y < 7; y++) px(ctx, y % 2 ? "#5a606c" : "#4a4f5a", 0, 8 + y, 32, 1);
+  px(ctx, "#33333b", 0, 15, 32, 1);
+  bricks(ctx, 24, 1, 4, 8, "#7a3a2a"); smoke(ctx, 24, 1, 2);
+  px(ctx, "#a0703e", 3, 28, 24, 3); px(ctx, "#6b4526", 4, 31, 2, 6); px(ctx, "#6b4526", 24, 31, 2, 6);
+  px(ctx, "#8a5a2e", 4, 25, 12, 3); px(ctx, "#c08a50", 4, 25, 1, 3); px(ctx, "#c08a50", 15, 25, 1, 3);
+  gearAt(ctx, 20, 25, 4, "#c2c5cc");
+  for (let i = 0; i < 4; i++) { px(ctx, "#d8b070", 21, 33 - i * 2, 10, 1); px(ctx, "#b88a50", 21, 34 - i * 2, 10, 1); }
+  return c;
+};
+
+/** A printing press: a timber workshop with a great screw press in its window and sheets drying on a line. */
+const printingPress: Painter = () => {
+  const [c, ctx] = canvas(32, 44);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 41, 30, 3);
+  px(ctx, "#a8784a", 2, 20, 28, 22);
+  for (let x = 2; x < 30; x += 4) px(ctx, "#6b4526", x, 20, 1, 22);
+  px(ctx, "#6b4526", 2, 30, 28, 1);
+  for (let y = 0; y < 12; y++) { const w = 6 + y * 2; px(ctx, y % 2 ? "#5a6576" : "#4a5566", 16 - w / 2, 8 + y, w, 1); }
+  px(ctx, "#1a120c", 5, 23, 12, 10);
+  px(ctx, "#3a3a44", 7, 24, 8, 2); px(ctx, "#8f929a", 10, 26, 2, 4); px(ctx, "#3a3a44", 7, 30, 8, 2);
+  px(ctx, "#5e3b1d", 18, 23, 10, 1);
+  for (const x of [19, 23]) { px(ctx, "#f6f0e0", x, 24, 3, 5); px(ctx, "#9a9aa2", x, 25, 3, 1); px(ctx, "#9a9aa2", x, 27, 2, 1); }
+  px(ctx, "#2e1d10", 20, 33, 6, 9);
+  return c;
+};
+
+/** A power station: a brick turbine hall, a tall stack, and lightning-bright windows over a humming dynamo. */
+const powerStation: Painter = () => {
+  const [c, ctx] = canvas(32, 56);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 53, 30, 3);
+  bricks(ctx, 1, 26, 30, 28, "#8a4030");
+  px(ctx, "#4a4f5a", 0, 22, 32, 4); px(ctx, "#5a606c", 0, 22, 32, 1);
+  bricks(ctx, 23, 0, 6, 24, "#6e3226"); px(ctx, "#e8e8ee", 23, 6, 6, 1); px(ctx, "#e8e8ee", 23, 12, 6, 1);
+  for (const x of [4, 12]) { px(ctx, "#fff2a0", x, 30, 5, 8); px(ctx, "#ffd84a", x, 34, 5, 4); px(ctx, "#5a3020", x, 30, 5, 1); }
+  px(ctx, "#2a2a30", 19, 40, 9, 14); px(ctx, "#3a3a44", 19, 40, 9, 1);
+  px(ctx, "#ffe86a", 22, 43, 2, 3); px(ctx, "#ffe86a", 21, 45, 2, 1); px(ctx, "#ffe86a", 23, 46, 2, 3);
+  for (const x of [2, 30]) { px(ctx, "#3a3a44", x, 4, 1, 22); px(ctx, "#3a3a44", x - 2, 6, 5, 1); }
+  px(ctx, "#2a2a30", 0, 6, 32, 1);
+  return c;
+};
+
+/** A street lamp: a slim iron post with a glowing glass head. */
+const streetLamp: Painter = () => {
+  const [c, ctx] = canvas(16, 40);
+  px(ctx, "rgba(0,0,0,0.22)", 4, 37, 8, 3);
+  px(ctx, "#2a2a30", 6, 34, 4, 4); px(ctx, "#3a3a44", 7, 10, 2, 25);
+  px(ctx, "#2a2a30", 4, 8, 8, 2); px(ctx, "#2a2a30", 5, 2, 6, 1);
+  px(ctx, "rgba(255,240,160,0.35)", 1, 1, 14, 12);
+  px(ctx, "#fff6c8", 5, 3, 6, 5); px(ctx, "#ffe86a", 6, 4, 4, 3);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
+  forge, factory, market, shrine, pen, launch_pad: launchPad,
+  steam_pump: steamPump, sawmill, printing_press: printingPress, power_station: powerStation, street_lamp: streetLamp,
 };
 
 /** Great works are seen going up: their site shows the building rising with the work. */
