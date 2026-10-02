@@ -46,10 +46,17 @@ def test_a_save_with_tablets_in_a_vanished_library_lets_them_go():
     assert w2.tablets["t1"].in_structure is None
 
 
-def test_instinct_goes_to_read_a_loose_tablet_nearby():
+def test_instinct_goes_to_read_a_loose_tablet_of_what_nobody_still_knows():
     w, lib, tb, b = library_with_steel()
     w.remove_structure(lib)
     b.x, b.y = tb.x + 3, tb.y
     ins = Instinct()
+    for o in w.agents.values():
+        o.knows.pop("recipe:steel", None)
     goals = {(ins._communal(w, b, random.Random(s)) or {}).get("goal") for s in range(300)}
     assert "read an old tablet" in goals
+    # someone alive still knows it: it can be taught, so nobody walks off to read it
+    other = next(o for o in w.agents.values() if o is not b)
+    other.learn("recipe:steel", "discovered", w.tick)
+    goals = {(ins._communal(w, b, random.Random(s)) or {}).get("goal") for s in range(300)}
+    assert "read an old tablet" not in goals
