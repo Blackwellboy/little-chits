@@ -617,7 +617,10 @@ def _mills(world) -> None:
         world.counters["mill_sand"] = world.counters.get("mill_sand", 0) + n
 
 
-def mine_near(world, a: Agent, radius: int = 26, kind: str = "ore"):
+PIT_REACH = 30  # a mine or sand pit is sited up to this far from its builder (World.find_site), and used from as far
+
+
+def mine_near(world, a: Agent, radius: int = PIT_REACH, kind: str = "ore"):
     """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to."""
     for s in world.structures_near(a.x, a.y, radius, PIT_OF[kind]):
         if s.functional and (s.storage.get(kind, 0) > 0 or kind in DEEP_DIG) and world.same_land(a, s) \

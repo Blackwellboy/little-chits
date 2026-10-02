@@ -471,7 +471,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
     if tgt is None or world.res_amt[tgt] <= 0:
         pos = world.nearest_resource(a.x, a.y, kind, 34 if kind in ("berries", "fish") else 26, set(s.setdefault("avoid", [])))
         if pos is None and kind in BLD.PIT_OF:
-            mine = BLD.mine_near(world, a, 26, kind)
+            mine = BLD.mine_near(world, a, BLD.PIT_REACH, kind)  # (26 left pits sited 27-30 away unused, Codex #32)
             if mine is not None:  # the deposits near here are dug out: the mine's seam (or the sand pit)
                 s["mine"] = mine.id
                 return _dig_mine(world, a, s, mine, tool, rule, kind)

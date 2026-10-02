@@ -228,7 +228,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
             and world.nearest_resource(a.x, a.y, "iron_ore", 26) is None:
         add(2.0, _build(world, a, "mine", max(1, pop // 15), "The ore near home is dug out. A mine in the rocks would give more."))
     if a.knows_design("sand_pit") and a.reflex_rest.get("scarce:sand", 0) > world.tick \
-            and _none_near(world, a.x, a.y, "sand_pit", 30):
+            and _none_near(world, a.x, a.y, "sand_pit", BLD.PIT_REACH):
         # (it just found no sand within reach: dig a pit by the nearest water)
         add(2.0, _build(world, a, "sand_pit", max(1, pop // 20), "There's no sand left near home. A pit by the water would give some every day."))
     if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):

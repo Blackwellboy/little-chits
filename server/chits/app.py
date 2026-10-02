@@ -734,11 +734,14 @@ def _locked_brain(bid: str) -> None:
 def upsert_brain(b: BrainBody):
     # updating a brain changes only what was sent: filled in with the body's defaults, a request that set the model
     # and slots also reset the live World B brain's prompt_style from "cascade" to "full"
-    existing = b.id and b.id in R().mind.brains
-    data = {k: v for k, v in b.model_dump(exclude_unset=bool(existing)).items() if v is not None}
-    if not data.get("id"):
-        base = (data.get("label") or data.get("model") or "brain").lower()
-        data["id"] = "".join(ch if ch.isalnum() else "-" for ch in base).strip("-")[:24] or "brain"
+    # (the id first: a body with no id but a label naming an existing brain was filled in with defaults, Codex #42)
+    bid = b.id
+    if not bid:
+        base = (b.label or b.model or "brain").lower()
+        bid = "".join(ch if ch.isalnum() else "-" for ch in base).strip("-")[:24] or "brain"
+    existing = bid in R().mind.brains
+    data = {k: v for k, v in b.model_dump(exclude_unset=existing).items() if v is not None}
+    data["id"] = bid
     _locked_brain(data["id"])
     br = R().mind.upsert(data)
     return {"ok": True, "brain": br.cfg.public()}

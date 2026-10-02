@@ -76,3 +76,23 @@ def test_a_chit_that_found_no_sand_plans_a_pit():
     assert not any(p["goal"] == "build a sand pit" for _, p in BI.building_options(w, a, random.Random(1)))
     a.reflex_rest["scarce:sand"] = w.tick + TICKS_PER_DAY  # (as a failed "gather sand" leaves it)
     assert any(p["goal"] == "build a sand pit" for _, p in BI.building_options(w, a, random.Random(1)))
+
+
+def test_a_pit_sited_as_far_as_sites_go_is_used_from_there():
+    # pits (and mines) are sited up to 30 tiles away, but gathering looked for one within 26: one 27-30 tiles off was
+    # never dug, and none was built nearer because one stood within 30 (Codex, #32)
+    w, a = shore_village()
+    no_sand(w)
+    pit = w.place_site("sand_pit", *w.find_site("sand_pit", a.x, a.y, 8), a)
+    w.complete_structure(pit, a)
+    pit.storage["sand"] = 6
+    far = [(x, y) for y in range(w.h) for x in range(w.w) if 27 <= pit.dist(x, y) <= BLD.PIT_REACH and w.tile_free(x, y)]
+    goals = w.stand_tiles_for_structure(pit)
+    for a.x, a.y in far:
+        if w.same_land(a, pit) and w.find_path(a.x, a.y, goals):
+            break
+    assert 27 <= pit.dist(a.x, a.y) and w.find_path(a.x, a.y, goals)
+    s = {}
+    actions._do_gather(w, a, {"do": "gather", "what": "sand", "qty": 3}, s)
+    assert s.get("mine") == pit.id
+    assert not BI._none_near(w, a.x, a.y, "sand_pit", BLD.PIT_REACH)  # (and no second pit is planned)
