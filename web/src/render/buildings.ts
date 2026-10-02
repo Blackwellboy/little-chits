@@ -698,7 +698,43 @@ const streetLamp: Painter = () => {
   return c;
 };
 
+// ---------------------------------------------------------------- towns
+
+/** A town hall: a broad brick hall with columns, tall glass windows, a clock in its pediment and a flag on top. */
+const townHall: Painter = () => {
+  const [c, ctx] = canvas(48, 60);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 57, 46, 3);
+  px(ctx, "#a89a78", 1, 54, 46, 3); px(ctx, "#c9bc98", 1, 54, 46, 1);
+  bricks(ctx, 3, 28, 42, 26, "#b5523a");
+  for (const x of [5, 13, 32, 40]) { px(ctx, "#efe6d0", x, 28, 3, 26); px(ctx, "#bfb49a", x + 2, 28, 1, 26); }
+  for (const x of [9, 36]) { px(ctx, "#a8d0f0", x, 33, 3, 12); px(ctx, "#cfe6f8", x, 33, 1, 12); px(ctx, "#5e3b1d", x, 39, 3, 1); }
+  px(ctx, "#3b2415", 20, 40, 8, 14); px(ctx, "#5a3822", 20, 40, 8, 1); px(ctx, "#e0b04a", 26, 47, 1, 2);
+  px(ctx, "#d9cba8", 1, 25, 46, 3); px(ctx, "#a89a78", 1, 27, 46, 1);
+  for (let y = 0; y < 12; y++) { const w = 4 + Math.round(y * 3.6); px(ctx, y % 3 ? "#d9cba8" : "#bfb49a", 24 - Math.floor(w / 2), 13 + y, w, 1); }
+  px(ctx, "#f6f0e0", 21, 17, 6, 6); px(ctx, "#3a3a44", 23, 18, 1, 3); px(ctx, "#3a3a44", 24, 20, 2, 1);
+  px(ctx, "#5e3b1d", 23, 1, 1, 13); px(ctx, "#c84a3a", 24, 2, 7, 4); px(ctx, "#e8d070", 26, 3, 2, 2);
+  return c;
+};
+
+/** A plaza: a square of paving stones with a stone fountain at its middle, flat on the ground. */
+const plaza: Painter = (v) => {
+  const [c, ctx] = canvas(48, 48);
+  const r = rng(v + 51);
+  const slab = ["#b9b4a8", "#aaa59a", "#c4bfb2", "#a09b90"];
+  for (let y = 1; y < 47; y += 4) for (let x = 1 + ((y / 4) % 2 ? 2 : 0); x < 47; x += 5) {
+    px(ctx, slab[Math.floor(r() * slab.length)], x, y, 4, 3);
+  }
+  px(ctx, "#8f8a80", 0, 0, 48, 1); px(ctx, "#8f8a80", 0, 47, 48, 1); px(ctx, "#8f8a80", 0, 0, 1, 48); px(ctx, "#8f8a80", 47, 0, 1, 48);
+  // the fountain
+  px(ctx, "#8f929a", 16, 18, 16, 14); px(ctx, "#b9bcc4", 16, 18, 16, 1);
+  px(ctx, "#4a8ad8", 18, 20, 12, 10); px(ctx, "#6aa8f0", 19, 21, 6, 2);
+  px(ctx, "#a6a9b1", 22, 13, 4, 9); px(ctx, "#c4c7cf", 22, 13, 4, 1);
+  px(ctx, "#9ad0ff", 21, 11, 6, 2); px(ctx, "#cfeaff", 23, 10, 2, 1);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
+  town_hall: townHall, plaza,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
   forge, factory, market, shrine, pen, launch_pad: launchPad,

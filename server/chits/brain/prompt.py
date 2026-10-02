@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, item_name
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-02.1"
+PROMPT_VERSION = "2026-10-03.1"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -284,7 +284,8 @@ def scene(world, a: Agent) -> str:
     age = a.age(t)
     lines.append("")
     vil = world.settlement_of(a) if hasattr(world, "settlement_of") else None
-    where = f" in the village of {vil.name}" if vil else ""
+    rank = getattr(vil, "rank", "village")
+    where = f" in the {rank if rank in ('town', 'city') else 'village'} of {vil.name}" if vil else ""
     job = f" You work as a {a.job}." if getattr(a, "job", "") else ""
     lines.append(f"YOU: {a.name}, {age:.0f} days old{' (a child)' if a.is_child(t) else ''}, at ({a.x},{a.y}){where} on {T.TILE_NAMES[world.tile(a.x, a.y)]}.{job}")
     if a.objective:

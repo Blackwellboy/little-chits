@@ -307,6 +307,15 @@ DESIGNS: Dict[str, Design] = {
         _d("bell_tower", "bell tower", {"brick": 8, "wood": 6, "copper": 4}, 70, (("recipe", "copper"),),
            blurb="its bell rings every morning: everyone within 20 tiles gathers for a moment, lifting spirits and "
                  "friendships (and hearing the chief's plan)", decay=0.5, min_pop=10),
+        # towns: a hall at the heart of a big village makes it a town; its square is where everyone meets
+        _d("town_hall", "town hall", {"brick": 16, "wood": 10, "stone": 10, "glass": 2}, 120,
+           (("recipe", "clay_tablet"), ("recipe", "brick"), ("recipe", "glass")), size=(3, 2),
+           blurb="the heart of a town: a village of 20 or more with a hall becomes a town, its market, library, school "
+                 "and other public buildings go up around it, and its busiest paths get paved into streets",
+           decay=0.5, min_pop=20),
+        _d("plaza", "plaza", {"stone": 12}, 20, (("design", "town_hall"),), size=(3, 3),
+           blurb="a paved town square beside the hall: everyone within 12 tiles gathers there in the evening, which "
+                 "lifts spirits and makes neighbours friends", decay=0.3),
         # the Machine Age: what an engine, gears and paper are for (issue #12: after the forge nothing new stood)
         _d("steam_pump", "steam pump", {"brick": 8, "steel": 2, "engine": 1}, 60, (("recipe", "engine"), ("design", "well")),
            size=(2, 2), blurb="an engine that lifts water to the fields: farms within 10 tiles grow half as fast again, "
