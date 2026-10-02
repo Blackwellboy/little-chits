@@ -365,8 +365,10 @@ class Recorder:
         warning = ""
         if free_bytes >= 0 and free_bytes < 5 * 1024 ** 3:
             warning = f"low disk space: {free_bytes / 1024 ** 3:.1f} GiB free"
-        if limit_bytes and run_bytes >= int(limit_bytes * 0.9):
-            near = f"recording archive {run_bytes / 1024 ** 3:.1f}/{limit_bytes / 1024 ** 3:.1f} GiB"
+        # pruning (every 5 minutes) holds the archive at its cap, so being near or at it is the normal state: say so
+        # only when it runs well past the cap, i.e. pruning isn't keeping up (live, "20.0/20.0 GiB" warned for good)
+        if limit_bytes and run_bytes > int(limit_bytes * 1.1):
+            near = f"recording archive {run_bytes / 1024 ** 3:.1f}/{limit_bytes / 1024 ** 3:.1f} GiB: old runs aren't being pruned"
             warning = f"{warning}; {near}" if warning else near
         out = {"bytes": run_bytes + frames_bytes, "run_bytes": run_bytes, "active_bytes": active_bytes,
                "frames_bytes": frames_bytes, "free_bytes": free_bytes, "limit_bytes": limit_bytes,
