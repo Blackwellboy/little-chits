@@ -49,6 +49,7 @@ class StaleMatch(Exception):
 
 REFLECT_EVERY_DAYS = 7  # a chit sits down to draw lessons (and maybe a belief or a decree) once a week
 STALE_TICKS = 120  # a model plan older than this (in world ticks) is out of date
+QUEUE_PER_SLOT = 3  # plan requests waiting per parallel slot before more are shed to instinct
 TICKS_PER_SEC = 2.0  # the world's pace at 1x (speed_scale stretches it)
 SLOW_TICKS = 12  # a model whose reply takes this many world ticks or more is asked two steps before a plan runs out
 ROUTINE = frozenset({"eat", "sleep", "rest", "shelter", "store", "drop", "refuel"})  # (and "go", with one of these)
@@ -306,6 +307,13 @@ class Mind:
         if need and not a.thinking and a.pending_plan is None:
             if not a.plan and self.focused(brain) and self._routine(world, a):
                 return  # eating and sleeping don't need the model
+            if not self.strict and brain.stats.queued >= QUEUE_PER_SLOT * max(1, brain.cfg.max_concurrency):
+                # the model is far behind: a request now would wait a minute and come back stale (live, 229 queued
+                # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
+                if not a.plan:
+                    self._instinct_plan(world, a, f"instinct ({brain.label} queue full)")
+                diag.of(world).plans["shed"] += 1
+                return
             self._ask(world, a, brain)
         if not a.plan and a.thinking and world.tick - a.think_started > self.patience_ticks:
             if self.strict:
