@@ -246,6 +246,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
     # towns: a hall for a big village, a square beside it, and streets along its worn trails
     opts += town_options(world, a)
     opts += town_life_options(world, a)
+    opts += city_options(world, a)
     # the Machine and Electric Ages
     if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
         add(2.0, _build(world, a, "steam_pump", max(1, pop // 15), "An engine could lift water to every field at once."))
@@ -400,6 +401,33 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
             and a.inventory.get("berries", 0) >= 1 and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
         out.append((0.8, {"goal": "try brewing", "thought": "Grain and berries left to sit... might they make a drink?",
                           "steps": [{"do": "experiment", "with": ["grain", "grain", "berries"], "at": "workshop"}]}))
+    return out
+
+
+def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
+    """A city raises a university and a theatre around its hall; a town by the water builds a harbour."""
+    from ..sim import settlements as SE
+
+    out: List[Tuple[float, Plan]] = []
+    if a.is_child(world.tick):
+        return out
+    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    if hall is None:
+        return out
+    pop = len(world.agents)
+    if BLD.city_of(world, hall.x, hall.y) is not None:
+        for d, w, thought in (("university", 1.8, "A city should have a university, so what we know is kept and shared."),
+                              ("theatre", 1.2, "A city deserves a theatre.")):
+            if a.knows_design(d) and _none_near(world, hall.x, hall.y, d, SE.HALL_REACH):
+                plan = _build(world, a, d, max(1, pop // 40), thought)
+                if plan:
+                    out.append((w, plan))
+    if a.knows_design("harbour") and _none_near(world, hall.x, hall.y, "harbour", 40) \
+            and world.nearest_resource(hall.x, hall.y, "fish", 20) is not None:
+        plan = _build(world, a, "harbour", max(1, pop // 40), "Boats and a quay would bring in twice the fish.",
+                      near=(hall.x, hall.y))
+        if plan:
+            out.append((1.3, plan))
     return out
 
 

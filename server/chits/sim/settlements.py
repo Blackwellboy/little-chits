@@ -15,7 +15,7 @@ RANKS = ("hamlet", "village", "town", "city")
 HAMLET_POP, TOWN_POP, CITY_POP = 8, 20, 40
 CIVIC = ("market", "library", "school", "bell_tower", "great_library", "monument", "well", "granary", "smithy", "mill",
          "plaza", "shrine", "printing_press", "lighthouse", "aqueduct", "watchtower", "tavern", "bakery", "healer",
-         "tailor", "park", "fountain")
+         "tailor", "park", "fountain", "university", "theatre", "harbour")
 HALL_REACH = 25  # civic buildings this near the hall count towards a city
 CITY_CIVIC, CITY_STREETS, STREET_REACH = 5, 30, 20  # kinds of civic building; paved tiles within STREET_REACH
 

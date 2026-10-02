@@ -835,8 +835,51 @@ const apartment: Painter = (v) => {
   return c;
 };
 
+/** A university: a grand stone hall with a dome, rows of arched windows and broad steps. */
+const university: Painter = () => {
+  const [c, ctx] = canvas(48, 66);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 63, 46, 3);
+  px(ctx, "#a89a78", 2, 59, 44, 4); px(ctx, "#c9bc98", 2, 59, 44, 1); px(ctx, "#bfb49a", 6, 56, 36, 3);
+  bricks(ctx, 3, 28, 42, 28, "#c9b48a");
+  for (let i = 0; i < 6; i++) { const x = 6 + i * 6; px(ctx, "#a8d0f0", x, 33, 3, 9); px(ctx, "#a8d0f0", x + 1, 32, 1, 1); px(ctx, "#efe6d0", x, 42, 3, 1); }
+  for (let i = 0; i < 6; i++) { const x = 6 + i * 6; px(ctx, "#a8d0f0", x, 46, 3, 7); }
+  px(ctx, "#3b2415", 21, 44, 6, 12); px(ctx, "#efe6d0", 20, 43, 8, 1);
+  px(ctx, "#d9cba8", 1, 25, 46, 3);
+  for (let y = 0; y < 14; y++) { const w = Math.round(Math.sqrt(Math.max(0, 1 - ((y - 14) / 14) ** 2)) * 22); px(ctx, y % 4 === 0 ? "#6a8a7a" : "#7a9a8a", 24 - w / 2, 11 + y, w, 1); }
+  px(ctx, "#e0b04a", 23, 6, 2, 5); px(ctx, "#e0b04a", 22, 7, 4, 1);
+  return c;
+};
+
+/** A theatre: a red-and-gold facade with a curtained arch, columns and lanterns either side. */
+const theatre: Painter = () => {
+  const [c, ctx] = canvas(48, 54);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 51, 46, 3);
+  bricks(ctx, 2, 18, 44, 33, "#8a3a3a");
+  for (const x of [4, 12, 33, 41]) { px(ctx, "#e8d8b0", x, 20, 3, 31); px(ctx, "#c8b890", x + 2, 20, 1, 31); }
+  px(ctx, "#2a1010", 16, 24, 16, 27);
+  for (let y = 0; y < 6; y++) px(ctx, "#2a1010", 16 + y, 24 - y, 16 - y * 2, 1);
+  px(ctx, "#c83a3a", 16, 24, 6, 27); px(ctx, "#c83a3a", 26, 24, 6, 27); px(ctx, "#e85a5a", 17, 25, 1, 25); px(ctx, "#e85a5a", 30, 25, 1, 25);
+  px(ctx, "#e0b04a", 2, 15, 44, 3); px(ctx, "#a8802a", 2, 17, 44, 1);
+  for (let y = 0; y < 9; y++) { const w = 6 + y * 4; px(ctx, y % 2 ? "#e0b04a" : "#d0a03a", 24 - w / 2, 6 + y, w, 1); }
+  for (const x of [8, 37]) { px(ctx, "#3a3a44", x, 30, 1, 6); px(ctx, "#ffd06a", x - 1, 28, 3, 3); }
+  return c;
+};
+
+/** A harbour: a timber quay on posts, a moored fishing boat and stacked crates and nets. */
+const harbour: Painter = () => {
+  const [c, ctx] = canvas(32, 34);
+  px(ctx, "#3a6aa8", 0, 24, 32, 10); px(ctx, "#5a8ac8", 2, 26, 8, 1); px(ctx, "#5a8ac8", 18, 30, 10, 1);
+  px(ctx, "#8a5a2e", 0, 16, 32, 5); px(ctx, "#a0703e", 0, 16, 32, 1);
+  for (let x = 1; x < 32; x += 5) px(ctx, "#5e3b1d", x, 21, 2, 10);
+  px(ctx, "#a0703e", 20, 10, 5, 6); px(ctx, "#c08a50", 20, 10, 5, 1); px(ctx, "#a0703e", 25, 12, 5, 4);
+  px(ctx, "#6a8a6a", 3, 12, 8, 4); px(ctx, "#4a6a4a", 4, 13, 6, 1);
+  for (let x = 0; x < 14; x++) px(ctx, "#7a4a2a", 9 + x, 27 + Math.round(Math.abs(x - 7) / 4), 1, 2);
+  px(ctx, "#5e3b1d", 15, 18, 1, 9); px(ctx, "#f2e2b8", 16, 19, 5, 6);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
-  town_hall: townHall, plaza, sand_pit: sandPit, tavern, bakery, healer, tailor, park, apartment,
+  town_hall: townHall, plaza, sand_pit: sandPit, tavern, bakery, healer, tailor, park, apartment, university, theatre, harbour,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
   forge, factory, market, shrine, pen, launch_pad: launchPad,

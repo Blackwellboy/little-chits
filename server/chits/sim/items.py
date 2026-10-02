@@ -343,6 +343,18 @@ DESIGNS: Dict[str, Design] = {
            (("design", "two_storey_house"), ("recipe", "iron"), ("design", "town_hall")), size=(2, 2),
            blurb="a tall brick block of flats: a home for up to 12 on the ground of one house (a crowded two-storey "
                  "house can be rebuilt as one)"),
+        # cities: what only a city can raise (the build itself checks), and a harbour for a town on the coast
+        _d("university", "university", {"brick": 30, "stone": 20, "glass": 6, "paper": 8}, 160,
+           (("design", "library"), ("recipe", "paper"), ("design", "town_hall")), size=(3, 3),
+           blurb="a city's university: grown-ups within 20 tiles learn from each other what any of them has made "
+                 "work, so what one knows doesn't die with them (only a city can build one)", decay=0.4),
+        _d("theatre", "theatre", {"wood": 20, "brick": 12, "stone": 8, "glass": 2}, 120,
+           (("design", "town_hall"), ("recipe", "glass")), size=(3, 2),
+           blurb="a city's theatre: a show every evening lifts the spirits of everyone within 15 tiles and brings them "
+                 "together (only a city can build one)", decay=0.5),
+        _d("harbour", "harbour", {"wood": 20, "stone": 12, "cord": 6}, 80, (("design", "boat"), ("design", "town_hall")),
+           size=(2, 2), blurb="quays and fishing boats for a town by the water: fish caught within 12 tiles come in "
+                              "twice as many"),
         # the Machine Age: what an engine, gears and paper are for (issue #12: after the forge nothing new stood)
         _d("steam_pump", "steam pump", {"brick": 8, "steel": 2, "engine": 1}, 60, (("recipe", "engine"), ("design", "well")),
            size=(2, 2), blurb="an engine that lifts water to the fields: farms within 10 tiles grow half as fast again, "

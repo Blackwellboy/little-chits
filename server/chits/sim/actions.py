@@ -527,6 +527,8 @@ def _do_gather(world, a: Agent, step, s) -> str:
             a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
         if kind == "wood" and n and BLD.sawn(world, a.x, a.y):
             n *= 2  # (the sawmill cuts each log into twice the wood: the forest isn't felled any faster)
+        if kind == "fish" and n and BLD.fished(world, a.x, a.y):
+            n *= 2  # (a harbour's boats bring in as many again)
     added = a.add(kind, n) if n else 0
     s["got"] = got + added
     a.practice("gathering", 0.4)
@@ -2074,6 +2076,9 @@ def _do_build(world, a: Agent, step, s) -> str:
     need_pop = DESIGNS[key].min_pop
     if need_pop and len(world.agents) < need_pop:
         return f"a {DESIGNS[key].name} is a great work: it needs at least {need_pop} people living here (there are {len(world.agents)})"
+    if key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None:
+        return (f"only a city can build a {DESIGNS[key].name}: a town of 40 or more with five kinds of public building "
+                f"around its hall and paved streets")
     # models kept starting a second hut beside their own (53 huts for 26 chits); a pioneer's new home is the exception
     from . import pioneers as PI
 
