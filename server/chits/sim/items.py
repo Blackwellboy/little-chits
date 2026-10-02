@@ -84,10 +84,13 @@ ITEMS: Dict[str, Item] = {
         # a mill's work (sim/buildings.py)
         Item("flour", "flour", ("fine", "powdery", "can be baked"), icon="🥣"),
         Item("loaf", "loaf", ("edible", "baked", "soft", "very filling"), food=75, icon="🥖"),
+        # town life
+        Item("ale", "ale", ("drink", "brewed", "cheering"), food=8, icon="🍺"),
+        Item("clothes", "warm clothes", ("wearable", "warm", "woven"), icon="👕"),
     ]
 }
 
-STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill")
+STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "loom")
 STORES = ("stockpile", "warehouse", "outpost")  # what holds a village's goods: its stockpiles and warehouses, and the
 # store at each outpost camp
 HOME_STORES = ("stockpile", "warehouse")  # ...of which these stand in the village
@@ -158,6 +161,8 @@ RECIPES: Dict[str, Recipe] = {
         _r("rocket_part", {"alloy": 2, "engine": 1}, station="factory", work=24),
         _r("flour", {"grain": 1}, station="mill", work=4),
         _r("loaf", {"flour": 2}, station="fire", work=6),
+        _r("ale", {"grain": 2, "berries": 1}, station="workshop", qty=2, work=6),
+        _r("clothes", {"fiber": 4, "cord": 1}, station="loom", work=8),
     ]
 }
 
@@ -171,6 +176,8 @@ ACTION_USES: Dict[str, str] = {
     "clay_tablet": "write knowledge on it (at a library it lasts)",
     "paper": "write knowledge on it",
     "seeds": "plant them in a farm",
+    "ale": "drink it at the tavern in the evening (more cheer than without)",
+    "clothes": "wear them: a warm thing to wear halves the cold",
     "grain": "eat it, or bake bread at a fire",
     "plough": "carry it while harvesting a farm to double the base grain yield",
 }
@@ -318,6 +325,24 @@ DESIGNS: Dict[str, Design] = {
         _d("plaza", "plaza", {"stone": 12}, 20, (("design", "town_hall"),), size=(3, 3),
            blurb="a paved town square beside the hall: everyone within 12 tiles gathers there in the evening, which "
                  "lifts spirits and makes neighbours friends", decay=0.3),
+        # town life: each needs the idea of a town hall, so nothing changes until a world has towns
+        _d("tavern", "tavern", {"wood": 12, "brick": 6, "stone": 4}, 50, (("recipe", "ale"), ("design", "town_hall")),
+           size=(2, 2), blurb="ale and company: in the evening everyone within 10 tiles drops in, and with ale from the "
+                              "stores nearby spirits lift twice as much and friendships grow"),
+        _d("bakery", "bakery", {"brick": 10, "stone": 4, "wood": 4}, 40, (("design", "mill"), ("design", "town_hall")),
+           size=(2, 2), station="fire", blurb="a baker's oven: bread, loaves and tarts baked here come out two for one"),
+        _d("healer", "healer's house", {"wood": 10, "stone": 6, "pot": 2}, 40, (("recipe", "pot"), ("design", "town_hall")),
+           size=(2, 2), blurb="a place to mend: the hurt and sick within 10 tiles heal three times as fast, and the badly "
+                              "hurt go there to rest"),
+        _d("tailor", "tailor", {"wood": 8, "stone": 4, "cord": 4}, 35, (("recipe", "cord"), ("design", "town_hall")),
+           size=(2, 2), station="loom", blurb="a loom and a cutting table: warm clothes are woven here from plant fiber "
+                                              "and cord, and a warm thing to wear halves the cold"),
+        _d("park", "park", {"wood": 4, "stone": 4, "seeds": 6}, 25, (("design", "town_hall"),), size=(2, 2),
+           blurb="trees, flowers and a bench: everyone within 6 tiles is in better spirits, as by a monument", decay=1.0),
+        _d("apartment", "apartment block", {"brick": 24, "wood": 8, "glass": 6, "iron": 2}, 140,
+           (("design", "two_storey_house"), ("recipe", "iron"), ("design", "town_hall")), size=(2, 2),
+           blurb="a tall brick block of flats: a home for up to 12 on the ground of one house (a crowded two-storey "
+                 "house can be rebuilt as one)"),
         # the Machine Age: what an engine, gears and paper are for (issue #12: after the forge nothing new stood)
         _d("steam_pump", "steam pump", {"brick": 8, "steel": 2, "engine": 1}, 60, (("recipe", "engine"), ("design", "well")),
            size=(2, 2), blurb="an engine that lifts water to the fields: farms within 10 tiles grow half as fast again, "

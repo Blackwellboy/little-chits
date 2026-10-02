@@ -1617,6 +1617,9 @@ class World:
             elif s.design == "monument" and s.functional:
                 r = 10
                 tgt = joy
+            elif s.design == "park" and s.functional:
+                r = 6  # (BLD.PARK_RADIUS)
+                tgt = joy
             else:
                 continue
             for y in range(s.y - r, s.y + s.h + r):
@@ -1675,7 +1678,7 @@ class World:
             a.health -= dmg
         elif a.hunger > 40 and a.warmth > 40:
             heal = 0.08 + (0.12 if self.inventions and self.invention_effect(a, "heal") else 0.0)  # a remedy
-            a.health = min(100.0, a.health + heal)
+            a.health = min(100.0, a.health + heal * BLD.heal_mult(self, a))  # (a healer's house nearby)
         # mood: comfort + monuments + company
         target = (a.hunger + a.energy + a.warmth) / 3.0
         if (a.y * self.w + a.x) in self._zones()[1]:

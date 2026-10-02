@@ -904,9 +904,10 @@ def _make_one(world, a: Agent, r) -> None:
     limit (nothing vanishes silently)."""
     for k, n in r.inputs:
         a.remove(k, n)
-    got = a.add(r.key, r.qty)
-    if got < r.qty:
-        a.inventory[r.key] = a.inventory.get(r.key, 0) + (r.qty - got)
+    qty = r.qty * BLD.bake_mult(world, a, r.key)  # (a bakery's oven: two for one)
+    got = a.add(r.key, qty)
+    if got < qty:
+        a.inventory[r.key] = a.inventory.get(r.key, 0) + (qty - got)
     a.made_it_work(f"recipe:{r.key}", world.tick)
     a.practice("crafting", 1.0)
     world.notice_items(a)
