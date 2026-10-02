@@ -66,6 +66,16 @@ def _better_carrier(world, a: Agent) -> Optional[tuple]:
 LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what nobody alive still knows
 
 
+def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
+    """Two wood for a fire: in hand, from the stores, or (only with none stored nearby) chopped. Fires were fed with
+    freshly chopped wood while 7,600 lay in World A's stores: 88 trips in two days."""
+    if a.has("wood", 2):
+        return []
+    if _stock_near(world, a, "wood") >= 2:
+        return [{"do": "take", "what": "wood", "qty": 2 - a.inventory.get("wood", 0)}]
+    return [{"do": "gather", "what": "wood", "qty": 2}]
+
+
 def _keeper_counts(world) -> Dict[str, int]:
     """How many living chits know each thing, counted once a tick."""
     c = getattr(world, "_keepers_n", None)
@@ -588,7 +598,7 @@ class Instinct:
             lit = [f for f in fires if f.lit and f.dist(a.x, a.y) <= 10]
             if not lit:
                 if fires and fires[0].complete:
-                    st = [{"do": "gather", "what": "wood", "qty": 2}] if not a.has("wood", 2) else []
+                    st = _fuel_steps(world, a)
                     return {"goal": "keep the fire going", "thought": "The campfire's gone out and it's getting cold.",
                             "steps": st + [{"do": "refuel", "target": fires[0].id}]}
                 # (under 9, not 10: chits deciding on the same tick can each start one)
@@ -598,7 +608,7 @@ class Instinct:
                     return {"goal": "build a campfire", "thought": "The nights are getting cold. We need a fire.",
                             "steps": steps + [{"do": "build", "what": "campfire", "_cap": 10}]}
             elif lit[0].fuel < 35 and rng.random() < 0.5 + a.traits["diligence"] * 0.5:
-                st = [{"do": "gather", "what": "wood", "qty": 2}] if not a.has("wood", 2) else []
+                st = _fuel_steps(world, a)
                 return {"goal": "keep the fire going", "thought": "The fire is burning low.",
                         "steps": st + [{"do": "refuel", "target": lit[0].id}]}
         return None
