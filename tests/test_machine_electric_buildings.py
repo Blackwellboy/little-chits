@@ -151,7 +151,16 @@ def test_a_village_takes_on_a_steam_pump_as_a_project_once_it_can_make_what_it_n
         a.learn(k, "discovered", w.tick)
     w.check_insights(a)
     assert a.knows_design("steam_pump")
-    assert any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    # only where it would water something: a pump with no farm near went up wherever its builder stood (Codex, #23)
+    hut = put(w, "hut", a)
+    for o in ags:
+        o.home = hut.id
+    assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    farms = [put(w, "farm", a, (a.x + dx, a.y + 4)) for dx in (-4, 4)]
+    w.tick += 1  # (the villages are looked up once a tick)
+    pump = next(c for c in PJ.candidates(w) if c[1] == "build" and c[2] == "steam_pump")
+    x, y = map(int, pump[4]["near"].split(","))
+    assert all(max(abs(f.x - x), abs(f.y - y)) <= 10 for f in farms)  # among the fields it waters
 
 
 def test_a_power_station_doesnt_speed_a_cooking_fire():
@@ -166,17 +175,6 @@ def test_a_power_station_doesnt_speed_a_cooking_fire():
     assert BLD.craft_speed(w, a, fire) == 1.0
     assert BLD.craft_speed(w, a, "brick") == BLD.POWER_SPEED
 
-
-    # only where it would water something: a pump with no farm near went up wherever its builder stood (Codex, #23)
-    hut = put(w, "hut", a)
-    for o in ags:
-        o.home = hut.id
-    assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
-    farms = [put(w, "farm", a, (a.x + dx, a.y + 4)) for dx in (-4, 4)]
-    w.tick += 1  # (the villages are looked up once a tick)
-    pump = next(c for c in PJ.candidates(w) if c[1] == "build" and c[2] == "steam_pump")
-    x, y = map(int, pump[4]["near"].split(","))
-    assert all(max(abs(f.x - x), abs(f.y - y)) <= 10 for f in farms)  # among the fields it waters
 
 
 def test_a_utility_project_is_built_where_it_was_sited():
