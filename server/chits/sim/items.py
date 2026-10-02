@@ -70,6 +70,9 @@ ITEMS: Dict[str, Item] = {
         Item("plough", "plough", ("tool", "tills soil", "metal", "farming"), icon="🟁"),
         Item("wheel", "wheel", ("round", "rolls", "sturdy"), icon="☸️"),
         Item("cart", "cart", ("container", "rolls", "large"), carry_bonus=16, weight=3, icon="🛒"),
+        # transport (issue #9): a sled before the cart, a wagon after it
+        Item("sled", "sled", ("container", "slides", "wooden"), carry_bonus=10, weight=2, icon="🛷"),
+        Item("wagon", "wagon", ("container", "rolls", "hauls"), carry_bonus=28, weight=4, icon="🐂"),
         Item("paper", "paper", ("thin", "flat", "can be inscribed", "light"), icon="📄"),
         Item("steel", "steel", ("metal", "very hard", "springy"), icon="🔗"),
         Item("gear", "gear", ("toothed", "precise", "metal"), icon="⚙️"),
@@ -148,6 +151,8 @@ RECIPES: Dict[str, Recipe] = {
         _r("plough", {"iron": 2, "wood": 1}, station="workshop", work=12),
         _r("wheel", {"wood": 2, "iron": 1}, station="workshop", work=10),
         _r("cart", {"wheel": 2, "wood": 2}, station="workshop", work=12),
+        _r("sled", {"wood": 2, "cord": 1}, work=6),
+        _r("wagon", {"cart": 1, "wheel": 2, "iron": 1}, station="workshop", work=16),
         _r("paper", {"fiber": 3}, station="workshop", qty=2, work=8),
         _r("steel", {"iron": 2, "charcoal": 1}, station="forge", work=14),
         _r("gear", {"steel": 1}, station="workshop", qty=2, work=10),
