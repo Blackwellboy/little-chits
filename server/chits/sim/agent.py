@@ -27,7 +27,9 @@ def make_name(rng: random.Random, taken: set) -> str:
         if n not in taken and 3 <= len(n) <= 7:
             return n
     # a long-lived world uses up the short names (both live worlds were naming babies "Chit2154" by day 2,600): a
-    # longer one, then a short one with a number, never one already taken
+    # longer one, then a short one with a number, never one already taken. Drawn from a stream of its own: from the
+    # caller's (births, for a child) these draws moved every trait and lifespan after it (Codex, #19)
+    rng = random.Random(f"names:{len(taken)}")
     for _ in range(400):
         n = (rng.choice(_SYL_A) + rng.choice(_SYL_A) + rng.choice(_SYL_B)).capitalize()
         if n not in taken and len(n) <= 9:
