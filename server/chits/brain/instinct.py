@@ -69,11 +69,12 @@ LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what
 def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
     """Two wood for a fire: in hand, from the stores, or (only with none stored nearby) chopped. Fires were fed with
     freshly chopped wood while 7,600 lay in World A's stores: 88 trips in two days."""
-    if a.has("wood", 2):
+    held = a.inventory.get("wood", 0)
+    if held >= 2:
         return []
-    if _stock_near(world, a, "wood") >= 2:
-        return [{"do": "take", "what": "wood", "qty": 2 - a.inventory.get("wood", 0)}]
-    return [{"do": "gather", "what": "wood", "qty": 2}]
+    if _stock_near(world, a, "wood") >= 2 - held:  # (one in hand and one stored is enough, Codex #44)
+        return [{"do": "take", "what": "wood", "qty": 2 - held}]
+    return [{"do": "gather", "what": "wood", "qty": 2 - held}]
 
 
 def _keeper_counts(world) -> Dict[str, int]:

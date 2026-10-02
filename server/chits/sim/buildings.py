@@ -621,12 +621,17 @@ PIT_REACH = 30  # a mine or sand pit is sited up to this far from its builder (W
 
 
 def mine_near(world, a: Agent, radius: int = PIT_REACH, kind: str = "ore"):
-    """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to."""
+    """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to; failing
+    that, the nearest whose seam is out for the day, to dig deep (three times the work: a stocked mine a little
+    farther came second to it, Codex #43)."""
+    deep = None
     for s in world.structures_near(a.x, a.y, radius, PIT_OF[kind]):
-        if s.functional and (s.storage.get(kind, 0) > 0 or kind in DEEP_DIG) and world.same_land(a, s) \
-                and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
-            return s
-    return None
+        if s.functional and world.same_land(a, s) and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
+            if s.storage.get(kind, 0) > 0:
+                return s
+            if deep is None and kind in DEEP_DIG:
+                deep = s
+    return deep
 
 
 DEEP_DIG = {"ore": 3.0, "iron_ore": 3.0}  # a mine whose seam is dug out for the day can still be dug, this many times as slowly (#6)

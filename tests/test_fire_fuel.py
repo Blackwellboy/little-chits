@@ -31,3 +31,15 @@ def test_a_cold_chit_feeds_the_fire_from_the_stores(monkeypatch):
     plan = I.Instinct()._survive(w, a, random.Random(1))
     assert plan and plan["goal"] == "keep the fire going"
     assert plan["steps"][0] == {"do": "take", "what": "wood", "qty": 2}
+
+
+def test_one_in_hand_and_one_stored_is_enough():
+    # a chit holding one wood went chopping two while one lay in the stores (Codex, #44)
+    w, (a, _) = village()
+    a.inventory.clear()
+    a.inventory["wood"] = 1
+    pile = put(w, "stockpile", a)
+    pile.storage["wood"] = 1
+    assert I._fuel_steps(w, a) == [{"do": "take", "what": "wood", "qty": 1}]
+    pile.storage["wood"] = 0
+    assert I._fuel_steps(w, a) == [{"do": "gather", "what": "wood", "qty": 1}]
