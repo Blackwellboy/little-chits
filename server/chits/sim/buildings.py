@@ -67,6 +67,7 @@ POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station go
 POWERED = ("workshop", "kiln", "furnace", "forge", "mill", "factory")  # (as its blurb says: not the fire, Codex #23)
 LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
+PRESS_READ = 30  # a copy this near a press is one its people can read (a tablet on another island is none)
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
 LIBRARY_REACH, STUDY_MULT = 40, 2.0  # study within this reach of a great library goes twice as far
 AQUEDUCT_RADIUS, AQUEDUCT_GROWTH = 20, 1.3  # farms this near an aqueduct grow faster, and through a drought
@@ -813,12 +814,16 @@ def _presses(world) -> None:
         return
     keep = lore.keepers(world)
     libs = [s for s in world.structures.values() if s.design in ("library", "great_library") and s.functional]
-    readable = {world.tablets[t].knowledge for lib in libs for t in lib.shelf if t in world.tablets}
-    readable |= {t.knowledge for t in world.tablets.values() if t.in_structure is None}
     for pr in presses:
+        # the copies its own people can read: every shelf and loose tablet on the map counted, so one on another
+        # island kept a press from printing a recipe dying out round it (Codex, #23)
+        readable = {world.tablets[t].knowledge for lib in libs if lib.dist(pr.x, pr.y) <= PRESS_READ
+                    for t in lib.shelf if t in world.tablets}
+        readable |= {t.knowledge for t in world.tablets.values()
+                     if t.in_structure is None and max(abs(t.x - pr.x), abs(t.y - pr.y)) <= PRESS_READ}
         thin = sorted((len(ks), k) for k, ks in keep.items() if len(ks) <= 2 and k not in readable)
         if not thin:
-            return
+            continue
         store = next((p for p in village_stores(world, pr.x, pr.y, PRESS_REACH) if p.storage.get("paper", 0) > 0), None)
         if store is None:
             continue
@@ -836,7 +841,6 @@ def _presses(world) -> None:
         if lib is not None:
             lib.shelf.append(tid)
             world.dirty_struct.add(lib.id)
-        readable.add(k)
         world.emit("printed", f"The printing press printed how to make {world.item_name(key)}"
                    + (" for the library" if lib else ""), 3, None, pr.x, pr.y, structure=pr.id, knowledge=k)
 

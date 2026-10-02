@@ -228,3 +228,16 @@ def test_a_street_lamp_project_goes_where_the_wolf_comes():
     w.animals.clear()
     AN._add(w, "wolf", edge.x + 2, edge.y)
     assert PJ._utility_site(w, "street_lamp") == (edge.x, edge.y)
+
+
+def test_a_tablet_far_away_doesnt_stop_the_press_printing():
+    # every shelf and loose tablet on the map counted as readable: one on another island kept a press from printing a
+    # recipe dying out round it (Codex, #23)
+    from chits.sim.world import Tablet
+
+    w, lib, pile = _press_village(paper=2)
+    press = next(s for s in w.structures.values() if s.design == "printing_press")
+    far = (press.x + BLD.PRESS_READ + 10, press.y) if press.x + BLD.PRESS_READ + 10 < w.w else (press.x - BLD.PRESS_READ - 10, press.y)
+    w.tablets["t_far"] = Tablet("t_far", "recipe:steel", "x", "a smith", w.tick, far[0], far[1], None, "steel")
+    BLD._presses(w)
+    assert any(w.tablets[t].knowledge == "recipe:steel" for t in lib.shelf if t in w.tablets)
