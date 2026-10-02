@@ -77,14 +77,16 @@ def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
 
 
 def _keeper_counts(world) -> Dict[str, int]:
-    """How many living chits know each thing, counted once a tick."""
+    """How many living chits know each thing, counted again whenever anyone learns, forgets or dies (a count kept
+    for the whole tick ranked a recipe taught to five watchers mid-tick as still rare, Codex #26)."""
+    stamp = (world.tick, len(world.agents), sum(len(o.knows) for o in world.agents.values()))
     c = getattr(world, "_keepers_n", None)
-    if c is None or c[0] != world.tick:
+    if c is None or c[0] != stamp:
         n: Dict[str, int] = {}
         for o in world.agents.values():
             for k in o.knows:
                 n[k] = n.get(k, 0) + 1
-        c = (world.tick, n)
+        c = (stamp, n)
         world._keepers_n = c
     return c[1]
 

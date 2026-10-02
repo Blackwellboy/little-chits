@@ -64,6 +64,7 @@ HALL_PULL = 30  # a hall this near the builder draws them
 PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
 SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
 POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station goes faster
+POWERED = ("workshop", "kiln", "furnace", "forge", "mill", "factory")  # (as its blurb says: not the fire, Codex #23)
 LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
@@ -754,7 +755,7 @@ def craft_speed(world, a: Agent, key: str) -> float:
     if it is not None and it.tool and "metal" in it.props and any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]):
         m = SMITHY_SPEED
     r = world.recipe(key)
-    if r is not None and r.station and powered(world, a.x, a.y):
+    if r is not None and r.station in POWERED and powered(world, a.x, a.y):
         m *= POWER_SPEED
     return m
 
