@@ -228,7 +228,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
             and world.nearest_resource(a.x, a.y, "iron_ore", 26) is None:
         add(2.0, _build(world, a, "mine", max(1, pop // 15), "The ore near home is dug out. A mine in the rocks would give more."))
     if a.knows_design("sand_pit") and a.reflex_rest.get("scarce:sand", 0) > world.tick \
-            and _none_near(world, a.x, a.y, "sand_pit", 30):
+            and _none_near(world, a.x, a.y, "sand_pit", BLD.PIT_REACH):
         # (it just found no sand within reach: dig a pit by the nearest water)
         add(2.0, _build(world, a, "sand_pit", max(1, pop // 20), "There's no sand left near home. A pit by the water would give some every day."))
     if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):
@@ -352,7 +352,7 @@ def palisade_option(world, a: Agent) -> List[Tuple[float, Plan]]:
     if hall is None or a.is_child(world.tick) or not a.knows_design("palisade") or not _wolves_about(world, a) \
             or not _none_near(world, hall.x, hall.y, "palisade", BLD.PALISADE_RADIUS):
         return []
-    plan = _build(world, a, "palisade", max(1, len(world.agents) // SE.TOWN_POP), "Wolves keep coming into the town. A wall would keep them out.",
+    plan = _build(world, a, "palisade", _count_all(world, "palisade") + 1, "Wolves keep coming into the town. A wall would keep them out.",
                   near=(hall.x, hall.y))
     return [(2.0, plan)] if plan else []
 
@@ -458,13 +458,14 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         for d, w, thought in (("university", 1.8, "A city should have a university, so what we know is kept and shared."),
                               ("theatre", 1.2, "A city deserves a theatre.")):
             if a.knows_design(d) and _none_near(world, hall.x, hall.y, d, SE.HALL_REACH):
-                plan = _build(world, a, d, max(1, pop // 40), thought)
+                plan = _build(world, a, d, _count_all(world, d) + 1, thought)  # (one per city: the check above)
                 if plan:
                     out.append((w, plan))
-    if a.knows_design("harbour") and _none_near(world, hall.x, hall.y, "harbour", 40) \
-            and world.nearest_resource(hall.x, hall.y, "fish", 20) is not None:
-        plan = _build(world, a, "harbour", max(1, pop // 40), "Boats and a quay would bring in twice the fish.",
-                      near=(hall.x, hall.y))
+    fish = world.nearest_resource(hall.x, hall.y, "fish", 20) if a.knows_design("harbour") else None
+    if fish is not None and _none_near(world, hall.x, hall.y, "harbour", 40):
+        # one per town (a share of the world's people kept a second town from its own), by the fish it's for
+        plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
+                      near=fish)
         if plan:
             out.append((1.3, plan))
     return out

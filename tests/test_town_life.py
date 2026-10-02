@@ -184,3 +184,9 @@ def test_a_bakery_shift_saved_before_loaves_were_counted_counts_them_all():
     assert _run(w, a, step) == actions.DONE
     bread = pile.storage.get("bread", 0)
     assert bread >= 4 and not a.inventory.get("bread"), (bread, a.inventory)
+
+
+def test_the_taverns_words_say_how_much_ale_cheers():
+    # the blurb said twice as much; it's three times (Codex, #33). The model reads these words.
+    times = {2: "twice", 3: "three times", 4: "four times"}[round((BLD.TAVERN_MOOD + BLD.ALE_MOOD) / BLD.TAVERN_MOOD)]
+    assert f"spirits lift {times} as much" in DESIGNS["tavern"].blurb

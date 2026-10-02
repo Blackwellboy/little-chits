@@ -29,7 +29,7 @@ def prospect_plan(world, a: Agent) -> Plan | None:
         if kind in ("ore", "iron_ore"):
             from ..sim import buildings as BLD
 
-            if BLD.mine_near(world, a, 30, kind) is not None:
+            if BLD.mine_near(world, a, BLD.PIT_REACH, kind) is not None:
                 continue
         return {"goal": f"go prospecting for {item_name(kind)}",
                 "thought": f"There's no {item_name(kind)} left near home. Somewhere out there, there must be.",

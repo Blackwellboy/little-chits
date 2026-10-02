@@ -118,3 +118,22 @@ def test_with_the_seam_dug_out_for_today_the_mine_is_dug_deeper_three_times_as_s
     slow, still = ticks_for_ore(0)
     assert left == 6 and still == 0  # (deep digging takes nothing from the seam)
     assert 2.5 * fast <= slow <= 3.5 * fast, (fast, slow)
+
+
+def test_a_stocked_mine_comes_before_digging_deep_in_a_nearer_one():
+    # digging deep is three times the work: the nearest mine was chosen though its seam was out and one a little
+    # farther had ore (Codex, #43)
+    w, a = _by_the_rocks()
+    near = _mine(w, a)
+    far = None
+    for dx in range(8, 20):
+        pos = w.find_site("mine", a.x + dx, a.y, 6, reach=(a.x, a.y))
+        if pos and near.dist(*pos) > 4:
+            far = w.place_site("mine", *pos, a)
+            w.complete_structure(far, a)
+            break
+    assert far is not None and far.dist(a.x, a.y) > near.dist(a.x, a.y)
+    near.storage["ore"], far.storage["ore"] = 0, 5
+    assert BLD.mine_near(w, a, BLD.PIT_REACH, "ore") is far
+    far.storage["ore"] = 0
+    assert BLD.mine_near(w, a, BLD.PIT_REACH, "ore") is near  # (none stocked: the nearest, to dig deep)
