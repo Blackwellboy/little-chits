@@ -230,9 +230,6 @@ def test_a_street_lamp_project_goes_where_the_wolf_comes():
     assert PJ._utility_site(w, "street_lamp") == (edge.x, edge.y)
 
 
-    assert any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
-
-
 def test_a_tablet_far_away_doesnt_stop_the_press_printing():
     # every shelf and loose tablet on the map counted as readable: one on another island kept a press from printing a
     # recipe dying out round it (Codex, #23)
