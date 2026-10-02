@@ -87,3 +87,17 @@ def test_recorder_disk_warning_is_visible_in_diagnostics(tmp_path, monkeypatch):
     assert any("Recorder: low disk space" in w for w in report["warnings"])
     assert report["recordings"]["bytes"] == 123
     close(rt)
+
+
+def test_an_archive_held_at_its_cap_is_not_a_warning_but_one_past_it_is(tmp_path):
+    # pruning holds the archive at its cap, so at the cap is normal; live, "20.0/20.0 GiB" warned for good
+    rt = Runtime(tmp_path)
+    rec = rt.recorder
+    run_dir(rec.dir, "old-run", 1, 1000)
+    gib = 1024 ** 3
+    total = rec.storage_status(force=True)["run_bytes"]
+    rec.settings["retention_gb"] = total / gib  # exactly at the cap
+    assert "recording archive" not in rec.storage_status(force=True)["warning"]
+    rec.settings["retention_gb"] = total / gib / 1.5  # half as much again over it: pruning isn't keeping up
+    assert "recording archive" in rec.storage_status(force=True)["warning"]
+    close(rt)
