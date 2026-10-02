@@ -341,8 +341,10 @@ def report(rt) -> Dict[str, Any]:
         bid = rt.mind.world_brain.get(wid, "instinct")
         plans = dict(d.plans)
         total_plans = sum(plans.values())
-        # routine plans are left to instinct on purpose (a brain's focus), and so is a pioneer's duty
-        decided = total_plans - plans.get("routine", 0) - plans.get("duty", 0)
+        # routine plans are left to instinct on purpose (a brain's focus), and so is a pioneer's duty; so are the plans
+        # shed while the model's queue was full (one for every chit that would have queued: counted with the rest, the
+        # share read 2.1% on the live game at the same 47 adopted plans a day as before)
+        decided = total_plans - plans.get("routine", 0) - plans.get("duty", 0) - plans.get("shed", 0)
         steps_ok = sum(n for (v, r), n in d.steps.items() if r == "ok")
         steps_fail = sum(n for (v, r), n in d.steps.items() if r == "fail")
         by_verb: Dict[str, Dict[str, int]] = {}
@@ -386,7 +388,8 @@ def report(rt) -> Dict[str, Any]:
         if bid != "instinct" and decided >= 20 and wd["model_share_pct"] < 70:
             warn.append(f"{name}: only {wd['model_share_pct']}% of the plans that weren't routine came from the model; the "
                         f"rest were instinct ({plans.get('fallback', 0)} while the model was down, {plans.get('filler', 0)} "
-                        f"while waiting)")
+                        f"while waiting)" + (f"; {plans['shed']} more were left to instinct because its queue was full"
+                                             if plans.get("shed") else ""))
         if bid != "instinct" and d.model_ticks > 2000 and wd["waiting_on_model_pct"] > 40:
             warn.append(f"{name}: for {wd['waiting_on_model_pct']}% of the time a chit's model was still thinking and its "
                         f"instinct kept it busy")
