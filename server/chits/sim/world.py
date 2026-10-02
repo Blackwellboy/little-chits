@@ -1183,6 +1183,8 @@ class World:
         margin = 0 if design in ("road", "boat") else 1
         if design in ("boat", "lighthouse"):
             radius = max(radius, 60)  # the shore may be a long walk from the village
+        if design == "sand_pit":
+            radius = max(radius, 30)  # the nearest shore or riverbank
         if design == "mine":
             radius = max(radius, 30)  # the rocks may be a walk from the village
         comp = self._components() if reach and self.inb(*reach) and not self.block[reach[1] * self.w + reach[0]] else None
@@ -1191,7 +1193,7 @@ class World:
         for dy in range(-radius, radius + 1):
             for dx in range(-radius, radius + 1):
                 nx, ny = x + dx, y + dy
-                if design in ("boat", "lighthouse") and not self.coastal(nx, ny):
+                if design in ("boat", "lighthouse", "sand_pit") and not self.coastal(nx, ny):
                     continue
                 if design == "mine" and not self.near_rock(nx, ny, w, h):
                     continue

@@ -463,17 +463,17 @@ def _do_gather(world, a: Agent, step, s) -> str:
         return DONE if got else "my hands are full"
     if s.get("mine"):
         mine = world.structures.get(s["mine"])
-        if mine is not None and mine.functional and mine.storage.get("ore", 0) > 0:
-            return _dig_mine(world, a, s, mine, tool, rule)
+        if mine is not None and mine.functional and mine.storage.get(kind, 0) > 0:
+            return _dig_mine(world, a, s, mine, tool, rule, kind)
         s.pop("mine", None)
     tgt = s.get("tile")
     if tgt is None or world.res_amt[tgt] <= 0:
         pos = world.nearest_resource(a.x, a.y, kind, 34 if kind in ("berries", "fish") else 26, set(s.setdefault("avoid", [])))
-        if pos is None and kind == "ore":
-            mine = BLD.mine_near(world, a, 26)
-            if mine is not None:  # the deposits near here are dug out: the mine's seam
+        if pos is None and kind in BLD.PIT_OF:
+            mine = BLD.mine_near(world, a, 26, kind)
+            if mine is not None:  # the deposits near here are dug out: the mine's seam (or the sand pit)
                 s["mine"] = mine.id
-                return _dig_mine(world, a, s, mine, tool, rule)
+                return _dig_mine(world, a, s, mine, tool, rule, kind)
         if pos is None and kind in SCARCE and (str(a.plan_source).startswith("model")):
             # sand lies only by coasts and lakes: on a 512 map World B's village was 32 tiles from it, and "no sand
             # anywhere nearby" kept every brick house from being built. When its mind decides sand is worth the
@@ -543,34 +543,36 @@ def _do_gather(world, a: Agent, step, s) -> str:
     return RUNNING
 
 
-def _dig_mine(world, a: Agent, s, mine, tool, rule) -> str:
-    """Dig ore from a mine's seam: like working a deposit (the same work per swing, tool and wear)."""
+def _dig_mine(world, a: Agent, s, mine, tool, rule, kind: str = "ore") -> str:
+    """Dig ore from a mine's seam (or sand from a sand pit): like working a deposit (the same work per swing, tool and
+    wear)."""
+    place = DESIGNS[mine.design].name
     mv = _goto_structure(world, a, s, mine)
     if mv == "blocked":
         a.reflex_rest["unreach:" + mine.id] = world.tick + TICKS_PER_DAY
         s.pop("mine", None)
-        return "couldn't reach the mine"
+        return f"couldn't reach the {place}"
     if mv != "arrived":
         return RUNNING
-    a.activity = "digging in the mine"
+    a.activity = f"digging in the {place}"
     power = world.item(tool).tool_power if tool else 1.0
     if not _work(a, a.skill_speed("gathering") * (1.1 if a.mood > 70 else 1.0), float(rule["work"])):
         return RUNNING
-    n = min(mine.storage.get("ore", 0), max(1, int(round(power))), s["want"] - s["got"])
-    mine.storage["ore"] = mine.storage.get("ore", 0) - n
+    n = min(mine.storage.get(kind, 0), max(1, int(round(power))), s["want"] - s["got"])
+    mine.storage[kind] = mine.storage.get(kind, 0) - n
     world.dirty_struct.add(mine.id)
-    added = a.add("ore", n) if n > 0 else 0
+    added = a.add(kind, n) if n > 0 else 0
     s["got"] += added
     a.practice("gathering", 0.4)
-    a.bump("gathered_ore", added)
+    a.bump(f"gathered_{kind}", added)
     a.bump("mined", added)
     if tool:
         _wear(world, a, tool)
     world.notice_items(a)
     if not added:
-        return "my hands are full" if a.free_space() <= 0 else "the mine's seam is dug out for today"
+        return "my hands are full" if a.free_space() <= 0 else f"the {place} is dug out for today"
     if s["got"] >= s["want"]:
-        s["note"] = f"Dug {s['got']} {world.item_name('ore')} from the mine"
+        s["note"] = f"Dug {s['got']} {world.item_name(kind)} from the {place}"
         return DONE
     return RUNNING
 
