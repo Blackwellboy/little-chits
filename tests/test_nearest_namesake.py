@@ -54,3 +54,16 @@ def test_a_namesake_is_kept_for_the_whole_action():
     assert actions._who(w, a, s, "Chit2154") is first  # (the same action: the same chit)
     assert actions._who(w, a, {}, "Chit2154") is second  # (a new action: the nearest)
     assert actions._who(w, a, s, first.id) is first and s["_who_name"] == first.id
+
+
+def test_a_namesake_that_left_fails_the_action_rather_than_switching():
+    # gone mid-action (dead, or off to sea), the pinned one was looked up again and another took its place (Codex, #56)
+    w = World("A", "A", 5, "direct", 96, 4)
+    a, first, second, _ = list(w.agents.values())
+    first.name = second.name = "Chit2154"
+    first.x, first.y = a.x + 1, a.y
+    second.x, second.y = a.x + 5, a.y
+    s = {}
+    assert actions._who(w, a, s, "Chit2154") is first
+    del w.agents[first.id]
+    assert actions._who(w, a, s, "Chit2154") is None

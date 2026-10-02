@@ -1710,9 +1710,8 @@ def _who(world, a: Agent, s, name) -> Optional[Agent]:
     """The chit called `name` for this action: the nearest namesake, found once and kept. Looked up every tick, a
     nearer namesake could take over mid-way, and get a lesson nine ticks of which went to the other (Codex, #35)."""
     key = str(name or "").strip().lower()
-    pinned = world.agents.get(s.get("_who", "")) if s.get("_who_name") == key else None
-    if pinned is not None:
-        return pinned
+    if s.get("_who") and s.get("_who_name") == key:
+        return world.agents.get(s["_who"])  # (gone: the action fails rather than turning to another of that name)
     o = world.agent_by_name(name, near=a)
     if o is not None:
         s["_who"], s["_who_name"] = o.id, key
