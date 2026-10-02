@@ -157,6 +157,15 @@ def next_step(world, designs: set, recipes: set, have: set, kind: str, key: str,
         st = _station_missing(have, r.station)
         if st:
             return next_step(world, designs, recipes, have, "design", st, depth + 1, make)
+        if make:
+            # its made ingredients, in hand or in store, before anyone can try for it: World A sought the dynamo for
+            # 700 days with no steam engine anywhere in its stores
+            for k, n in r.inputs:
+                if k in RECIPES and stock(world, k) < n:
+                    st = _station_missing(have, RECIPES[k].station)
+                    if st:
+                        return next_step(world, designs, recipes, have, "design", st, depth + 1, make)
+                    return "make", k, {"n": n, "try": key}
         return "discover", key, {}
     d = DESIGNS.get(key)
     if d is None or key in have:
@@ -268,8 +277,10 @@ def candidates(world) -> List[Cand]:
         step = next_step(world, designs, recipes, have, kind, key)
         if step:
             why = f"on the road to the {ERAS[i + 1][0]}"
-            if step[0] in ("make", "find"):
+            if step[0] in ("make", "find") and step[2].get("for") in DESIGNS:
                 why = f"for a {DESIGNS[step[2]['for']].name}, " + why
+            elif step[0] == "make":
+                why = "to try for something new, " + why
             add(NEXT_AGE, step[0], step[1], why, step[2])
     for d, score in LACKING.items():
         if next_step(world, designs, recipes, have, "design", d, make=False) != ("build", d, {}):
@@ -287,6 +298,8 @@ def title(p: Dict[str, Any]) -> str:
     if p["kind"] == "build":
         return f"build a {DESIGNS[p['key']].name}"
     if p["kind"] == "make":
+        if p.get("for") not in DESIGNS:  # (an ingredient to try for a discovery, not a building's material)
+            return f"make {p['n']} {item_name(p['key'])} to try for something new"
         return f"make {p['n']} {item_name(p['key'])} for a {DESIGNS[p['for']].name}"
     if p["kind"] == "find":
         return f"find {item_name(p['key'])} for a {DESIGNS[p['for']].name}"
@@ -558,7 +571,8 @@ def complete(world, structure) -> None:
         for aid in contrib:
             wants.add_renown(world, world.agents[aid], 1.0)
         names = [world.agents[aid].name for aid in sorted(contrib, key=lambda i: -made.get(i, 0))]
-        text = (f"Village project done: {p['n']} {item_name(p['key'])} are ready for the {DESIGNS[p['for']].name}"
+        text = (f"Village project done: {p['n']} {item_name(p['key'])} are ready "
+                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "to try for something new")
                 + (f", made by {_join_names(names)}" if names else ""))
         actor = max(contrib, key=lambda i: made.get(i, 0)) if contrib else None
     elif p["kind"] == "find":

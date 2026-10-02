@@ -200,7 +200,14 @@ def _handled(world, a: Agent) -> List[str]:
 
 
 # what the thing the village is looking for is like -> where one would try to make it
-RIDDLE_STATION = (("metal", "furnace"), ("fired", "kiln"), ("black", "kiln"), ("baked", "fire"), ("hot", "fire"))
+RIDDLE_STATION = (("metal", "furnace"), ("fired", "kiln"), ("black", "kiln"), ("baked", "fire"), ("hot", "fire"),
+                  ("makes lightning", "factory"))
+# hunches with counts, for what takes more than three things: "something that makes lightning" is a machine that
+# turns, something that pulls iron, and wire to carry it. No hunch could form the dynamo's four-ingredient bag, and
+# a random try held at most three: the Electric Age could never come.
+COUNTED_HUNCHES = (
+    ("makes lightning", (({"turns wheels"}, 1), ({"pulls iron"}, 1), ({"conducts lightning"}, 2))),
+)
 # ...and what it might be made of: one ingredient with any of each set of properties (the last one maybe not)
 HUNCHES = (
     ("tool", ({"sturdy", "long"}, {"hard", "sharp"}, {"binding", "strong"})),  # a handle, a hard head, a binding
@@ -210,6 +217,12 @@ HUNCHES = (
 
 
 def _hunch(world, rng, props: set, pool: List[str]) -> Optional[List[str]]:
+    for p, roles in COUNTED_HUNCHES:
+        if p not in props:
+            continue
+        picks = [[k for k in pool if world.item(k).props and set(world.item(k).props) & r] for r, _ in roles]
+        if all(picks):
+            return [x for (_, n), ks in zip(roles, picks) for x in [rng.choice(ks)] * n]
     for p, roles in HUNCHES:
         if p not in props:
             continue
