@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../net/socket";
 import { useUI } from "../state/store";
+import { themeFor } from "../theme";
+import { BrandMark } from "./BrandMark";
 
 /** First visit (T29): what this is, what was found on this machine, and where to go next. */
 export function Welcome() {
@@ -9,6 +11,7 @@ export function Welcome() {
   const [story, setStory] = useState<any>(null);
   const set = useUI((s) => s.set);
   const view = useUI((s) => s.view);
+  const theme = themeFor(useUI((s) => s.theme));
   // the story of the world in view (it was always World A's)
   const wid = view === "B" ? "B" : view === "split" ? (() => { try { return localStorage.getItem("chits:panelWorld") || "A"; } catch { return "A"; } })() : "A";
   useEffect(() => { if (show) api("/api/health").then(setH).catch(() => {}); }, [show]);
@@ -23,10 +26,10 @@ export function Welcome() {
   return (
     <div className="modal-bg" onClick={close}>
       <div className="modal welcome" onClick={(e) => e.stopPropagation()}>
-        <h2>Welcome to Little Chits</h2>
-        <p>Tiny creatures wake up on an island knowing almost nothing. They get hungry and cold, experiment with what
-          they find, build, teach each other and grow old. An AI model is the mind inside each chit: put different
-          models in two identical worlds and watch how differently their civilisations grow.</p>
+        {theme.welcome.eyebrow
+          ? <div className="welcome-brand"><BrandMark /><div><span className="eyebrow">{theme.welcome.eyebrow}</span><h2>{theme.welcome.heading}</h2></div></div>
+          : <h2>{theme.welcome.heading}</h2>}
+        {theme.welcome.body.map((p, i) => <p key={i}>{p}</p>)}
         <p className="found">
           {found.length >= 2 ? <>Found <b>{name(found[0])}</b> on {port(found[0].base_url)} and <b>{name(found[1])}</b> on {port(found[1].base_url)}: model vs model on the same island.</>
             : found.length === 1 ? <>Found <b>{name(found[0])}</b> on {port(found[0].base_url)}: a single-model world.</>
@@ -41,7 +44,7 @@ export function Welcome() {
           </div>
         )}
         <div className="row">
-          <button className="primary" onClick={close}>Watch</button>
+          <button className="primary" onClick={close}>{theme.welcome.watch}</button>
           <button onClick={() => { close(); set({ brainsOpen: true }); }}>Open Brains</button>
           <button onClick={() => { close(); set({ newWorldOpen: true }); }}>New game</button>
         </div>

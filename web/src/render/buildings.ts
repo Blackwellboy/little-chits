@@ -1,13 +1,13 @@
 import { canvas, rng, shade, TS } from "./art";
 
 /** Each painter returns a canvas whose bottom edge sits on the footprint's bottom edge. */
-type Painter = (variant: number, state: number) => HTMLCanvasElement;
+export type Painter = (variant: number, state: number) => HTMLCanvasElement;
 
-function px(ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w = 1, h = 1) {
+export function px(ctx: CanvasRenderingContext2D, c: string, x: number, y: number, w = 1, h = 1) {
   ctx.fillStyle = c; ctx.fillRect(x, y, w, h);
 }
 
-function bricks(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, base = "#b5523a") {
+export function bricks(ctx: CanvasRenderingContext2D, x0: number, y0: number, w: number, h: number, base = "#b5523a") {
   px(ctx, shade(base, -0.35), x0, y0, w, h);
   for (let y = 0; y < h; y += 3) {
     const off = (y / 3) % 2 ? 2 : 0;

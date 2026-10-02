@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { pixelCanvas } from "../render/art";
 import { useUI, worlds } from "../state/store";
+import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
 
 const ICON: Record<string, string> = { discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
@@ -51,10 +52,6 @@ export function Banner() {
   );
 }
 
-const MM_COLORS: Record<number, string> = {
-  0: "#1c4a82", 1: "#2f86bd", 2: "#e0cc92", 3: "#6fae4f", 4: "#8cc053", 5: "#3f7a31", 6: "#98a95f", 7: "#7f8189", 8: "#b8704e",
-};
-
 export function Minimap({ worldId }: { worldId: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | null>(null);
@@ -70,9 +67,10 @@ export function Minimap({ worldId }: { worldId: string }) {
       const cv = ref.current;
       if (!w?.ready || !cv) return;
       const n = w.size;
-      const key = `${worldId}:${w.meta.seed}:${n}`;
+      const look = theme();
+      const key = `${worldId}:${w.meta.seed}:${n}:${look.id}`;
       if (baseFor.current !== key) {
-        base.current = pixelCanvas(w.tiles, n, MM_COLORS); // (one fillRect per tile was ~150 ms on a 512 island)
+        base.current = pixelCanvas(w.tiles, n, look.terrain.minimap); // (one fillRect per tile was ~150 ms on a 512 island)
         baseFor.current = key;
       }
       const ctx = cv.getContext("2d")!;
@@ -84,7 +82,7 @@ export function Minimap({ worldId }: { worldId: string }) {
         ctx.fillRect(s.x * k, s.y * k, Math.max(2, s.w * k), Math.max(2, s.h * k));
       }
       for (const a of w.agents.values()) {
-        ctx.fillStyle = `hsl(${a.hue} 70% 65%)`;
+        ctx.fillStyle = look.chit.dot(a.hue);
         ctx.fillRect(a.x * k - 1, a.y * k - 1, 3, 3);
       }
       const c = cameras[worldId];

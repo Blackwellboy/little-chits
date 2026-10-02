@@ -11,6 +11,8 @@ import { Inspector } from "./ui/Inspector";
 import { Minimap, Toasts, Banner } from "./ui/Overlays";
 import { SidePanel } from "./ui/SidePanel";
 import { TopBar } from "./ui/TopBar";
+import { BrandMark } from "./ui/BrandMark";
+import { themeFor } from "./theme";
 import { views, WorldCanvas } from "./ui/WorldCanvas";
 
 const REC = parseRecordParams(window.location.search);
@@ -37,6 +39,7 @@ function RecordOverlay({ cards = true }: { cards?: boolean }) {
   useUI((s) => s.tick);
   const view = useUI((s) => s.view);
   const brains = useUI((s) => s.brains);
+  const brand = themeFor(useUI((s) => s.theme)).brand;
   const wid = view === "split" ? "A" : view;
   const clock = worlds[wid]?.clock;
   const day = clock?.day ?? 0;
@@ -50,7 +53,7 @@ function RecordOverlay({ cards = true }: { cards?: boolean }) {
   const label = view === "split" ? "Worlds A & B" : `World ${wid} · ${brains[wid]?.label || "Instinct"}`;
   return (
     <>
-      <div className="watermark">LITTLE CHITS · {label}{day ? ` · Day ${day}` : ""}</div>
+      <div className="watermark">{brand} · {label}{day ? ` · Day ${day}` : ""}</div>
       {card && <div className="day-card">Day {card.day} · {card.season[0].toUpperCase() + card.season.slice(1)}</div>}
     </>
   );
@@ -83,6 +86,7 @@ export default function App() {
   const view = useUI((s) => s.view);
   const metas = useUI((s) => s.worlds);
   const conn = useUI((s) => s.conn);
+  const theme = themeFor(useUI((s) => s.theme));
   const ids = view === "split" ? metas.map((m) => m.id) : [view];
   if (REC.record) {
     const box = stageSize(REC.aspect, vp.w, vp.h);
@@ -126,8 +130,9 @@ export default function App() {
       {!metas.length && (
         <div className="boot">
           <div className="boot-card">
-            <div className="boot-chit">●</div>
-            <h1>LITTLE CHITS</h1>
+            <BrandMark className="boot-chit" block />
+            <h1>{theme.brand}</h1>
+            {theme.subtitle && <p className="boot-subtitle">{theme.subtitle}</p>}
             <p>{conn === "offline" ? "Can't reach the world server. Is it running?" : "Waking the world…"}</p>
           </div>
         </div>
