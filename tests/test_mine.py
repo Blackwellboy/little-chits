@@ -95,10 +95,26 @@ def test_instinct_digs_a_mine_only_when_the_ore_near_home_is_gone():
     assert not any(s.get("what") == "mine" for p in plans for s in p["steps"] if s.get("do") == "build")
 
 
-def test_with_the_seam_dug_out_for_today_the_mine_says_so():
-    w, a = _by_the_rocks()
-    a.inventory["stone_pick"] = 1
-    m = _mine(w, a)
-    m.storage["ore"] = 0
-    msg = actions.advance(w, a, {"do": "gather", "what": "ore", "qty": 2})
-    assert "seam is dug out for today" in msg and "would give" not in msg
+def test_with_the_seam_dug_out_for_today_the_mine_is_dug_deeper_three_times_as_slowly():
+    # issue #6: mining limited by work, not a daily cap ("the mine's seam is dug out for today" was World B's
+    # commonest failure: 214 in ten late-game days)
+    def ticks_for_ore(seam):
+        w, a = _by_the_rocks()
+        a.inventory["stone_pick"] = 1
+        m = _mine(w, a)
+        m.storage["ore"] = seam
+        a.x, a.y = next(iter(w.stand_tiles_for_structure(m)))
+        s, step = {}, {"do": "gather", "what": "ore", "qty": 2}
+        for t in range(1, 2000):
+            w.tick += 1
+            a.hunger = a.energy = a.warmth = 95.0
+            res = actions._do_gather(w, a, step, s)
+            if res != actions.RUNNING:
+                assert res == actions.DONE and a.inventory.get("ore", 0) == 2, res
+                return t, m.storage.get("ore", 0)
+        raise AssertionError("never dug any")
+
+    fast, left = ticks_for_ore(8)
+    slow, still = ticks_for_ore(0)
+    assert left == 6 and still == 0  # (deep digging takes nothing from the seam)
+    assert 2.5 * fast <= slow <= 3.5 * fast, (fast, slow)

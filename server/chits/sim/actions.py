@@ -463,7 +463,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
         return DONE if got else "my hands are full"
     if s.get("mine"):
         mine = world.structures.get(s["mine"])
-        if mine is not None and mine.functional and mine.storage.get(kind, 0) > 0:
+        if mine is not None and mine.functional and (mine.storage.get(kind, 0) > 0 or kind in BLD.DEEP_DIG):
             return _dig_mine(world, a, s, mine, tool, rule, kind)
         s.pop("mine", None)
     tgt = s.get("tile")
@@ -556,12 +556,17 @@ def _dig_mine(world, a: Agent, s, mine, tool, rule, kind: str = "ore") -> str:
         return f"couldn't reach the {place}"
     if mv != "arrived":
         return RUNNING
-    a.activity = f"digging in the {place}"
+    deep = mine.storage.get(kind, 0) <= 0 and kind in BLD.DEEP_DIG  # the day's seam is out: dig deeper, slowly
+    a.activity = f"digging {'deep ' if deep else ''}in the {place}"
     power = world.item(tool).tool_power if tool else 1.0
-    if not _work(a, a.skill_speed("gathering") * (1.1 if a.mood > 70 else 1.0), float(rule["work"])):
+    work = float(rule["work"]) * (BLD.DEEP_DIG[kind] if deep else 1.0)
+    if not _work(a, a.skill_speed("gathering") * (1.1 if a.mood > 70 else 1.0), work):
         return RUNNING
-    n = min(mine.storage.get(kind, 0), max(1, int(round(power))), s["want"] - s["got"])
-    mine.storage[kind] = mine.storage.get(kind, 0) - n
+    if deep:
+        n = min(max(1, int(round(power))), s["want"] - s["got"])
+    else:
+        n = min(mine.storage.get(kind, 0), max(1, int(round(power))), s["want"] - s["got"])
+        mine.storage[kind] = mine.storage.get(kind, 0) - n
     world.dirty_struct.add(mine.id)
     added = a.add(kind, n) if n > 0 else 0
     s["got"] += added
