@@ -90,6 +90,7 @@ def step(world) -> None:
         _bell(world)
     if t % TICKS_PER_DAY == 0:
         _spoil(world)
+        _mice(world)
         _mines(world)
         _mills(world)
 
@@ -613,6 +614,28 @@ def voyage_ticks(world) -> int:
 
 def keeps_fresh(world, pile) -> bool:
     return any(gap(pile, g) <= GRANARY_RADIUS for g in fx(world)["granary"])
+
+
+SEED_KEEP, MICE_SHARE = 30, 0.1  # a store's first 30 seeds are safe; mice eat a tenth of any more each day
+
+
+def _mice(world) -> None:
+    """Once a day, mice get at the seed piled in a store beyond what any village sows, unless a granary keeps it."""
+    eaten, where = 0, None
+    for p in list(world.structures.values()):
+        if p.design not in STORES or not p.functional:
+            continue
+        extra = p.storage.get("seeds", 0) - SEED_KEEP
+        if extra <= 0 or keeps_fresh(world, p):
+            continue
+        n = max(1, int(extra * MICE_SHARE))
+        p.storage["seeds"] -= n
+        world.dirty_struct.add(p.id)
+        eaten += n
+        where = where or p
+    if eaten >= 20 and where is not None:
+        world.emit("spoiled", f"Mice got into the stores and ate {eaten} seeds nobody was going to sow", 1, None,
+                   *where.center(), lost=eaten, structure=where.id, item="seeds")
 
 
 def _spoil(world) -> None:
