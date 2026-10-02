@@ -502,6 +502,7 @@ def resource_sides(world, a: Agent, kind: str, radius: int = 26):
 MINE_PER_DAY = 4  # ore a mine's seam gives back each day
 MINE_SEAM = 16  # the most a seam holds at once
 MINE_ROCK = 2  # a mine is dug within this many tiles of rock or hills
+PIT_PER_DAY, PIT_HOLD = 4, 16  # sand a pit gives back each day, and the most it holds
 
 
 MINE_TUNNEL_REACH = 10  # a mine tunnels into rock this far from itself
@@ -516,6 +517,9 @@ def _mines(world) -> None:
     mined. World A had none left within 120 tiles of its village while ore lay inside the rock 19 tiles away."""
     dug = False
     for s in world.structures.values():
+        if s.design == "sand_pit" and s.functional and s.storage.get("sand", 0) < PIT_HOLD:
+            s.storage["sand"] = min(PIT_HOLD, s.storage.get("sand", 0) + PIT_PER_DAY)
+            world.dirty_struct.add(s.id)
         if s.design != "mine" or not s.functional:
             continue
         if s.storage.get("ore", 0) < MINE_SEAM:
@@ -594,13 +598,16 @@ def _mills(world) -> None:
         world.counters["mill_sand"] = world.counters.get("mill_sand", 0) + n
 
 
-def mine_near(world, a: Agent, radius: int = 26):
-    """The nearest working mine with ore in its seam that this chit can walk to."""
-    for s in world.structures_near(a.x, a.y, radius, "mine"):
-        if s.functional and s.storage.get("ore", 0) > 0 and world.same_land(a, s) \
+def mine_near(world, a: Agent, radius: int = 26, kind: str = "ore"):
+    """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to."""
+    for s in world.structures_near(a.x, a.y, radius, PIT_OF[kind]):
+        if s.functional and s.storage.get(kind, 0) > 0 and world.same_land(a, s) \
                 and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
             return s
     return None
+
+
+PIT_OF = {"ore": "mine", "sand": "sand_pit"}
 
 
 def rest_mult(world, a: Agent) -> float:

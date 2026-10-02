@@ -698,6 +698,7 @@ const streetLamp: Painter = () => {
   return c;
 };
 
+
 // ---------------------------------------------------------------- towns
 
 /** A town hall: a broad brick hall with columns, tall glass windows, a clock in its pediment and a flag on top. */
@@ -733,8 +734,20 @@ const plaza: Painter = (v) => {
   return c;
 };
 
+/** A sand pit: a dug hollow of pale sand by the water, a heap beside it and a spade stuck in. */
+const sandPit: Painter = (v, fill) => {
+  const [c, ctx] = canvas(32, 32);
+  px(ctx, "#d8c48a", 2, 14, 28, 16); px(ctx, "#c8b07a", 4, 16, 24, 12); px(ctx, "#b89a62", 7, 19, 18, 7);
+  px(ctx, "#a8865a", 10, 21, 12, 3);
+  const heap = fill >= 1 ? 7 : 3;
+  for (let y = 0; y < heap; y++) { const w = 4 + y * 2; px(ctx, y % 2 ? "#e8d49a" : "#dcc68c", 25 - w / 2, 14 - heap + y, w, 1); }
+  px(ctx, "#6b4526", 8, 6, 1, 9); px(ctx, "#9ea1a9", 7, 14, 3, 3);
+  px(ctx, "#8a5a2e", 3, 13, 26, 1);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
-  town_hall: townHall, plaza,
+  town_hall: townHall, plaza, sand_pit: sandPit,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
   forge, factory, market, shrine, pen, launch_pad: launchPad,

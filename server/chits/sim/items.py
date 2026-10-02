@@ -301,6 +301,8 @@ DESIGNS: Dict[str, Design] = {
                               "faster than by watching", decay=1.0),
         _d("mine", "mine", {"wood": 8, "stone": 6, "cord": 2}, 40, (("recipe", "copper"),), size=(2, 2),
            blurb="dug into rock or hills: a seam that gives copper ore again every day (dig it with a pick)", decay=1.5),
+        _d("sand_pit", "sand pit", {"wood": 4, "stone": 2}, 20, (("recipe", "brick"),), size=(2, 2),
+           blurb="dug by a shore or riverbank: a pit that gives sand back every day, for bricks and glass", decay=1.5),
         _d("outpost", "outpost camp", {"wood": 8, "stone": 4, "cord": 2}, 30, (("design", "stockpile"), ("recipe", "cord")),
            size=(2, 2), blurb="a camp beside far ore, sand or clay: its store holds what is gathered there, chits sleep "
                               "there on long trips, and haulers carry it home", decay=1.5),
