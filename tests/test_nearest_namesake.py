@@ -30,3 +30,11 @@ def test_a_name_means_the_nearest_chit_of_that_name():
             break
     assert res == actions.DONE, res
     assert near.spoken_to.get("id") == a.id
+
+
+def test_a_chit_never_means_itself_by_a_name_it_shares():
+    w = World("A", "A", 5, "direct", 96, 3)
+    a, other, _ = list(w.agents.values())
+    a.name = other.name = "Chit2154"  # (the asker shares the name: "watch Chit2154" means the other one)
+    other.x, other.y = a.x + 10, a.y
+    assert w.agent_by_name("Chit2154", near=a) is other

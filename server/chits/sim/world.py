@@ -1404,7 +1404,9 @@ class World:
         n = str(name or "").strip().lower()
         found = [a for a in self.agents.values() if a.name.lower() == n or a.id == n]
         if len(found) > 1 and near is not None:
-            return min(found, key=lambda o: (o.id != n, max(abs(o.x - near.x), abs(o.y - near.y)), o.id))
+            # (never the asker itself: a "Chit2154" told to watch "Chit2154" meant the other one)
+            others = [o for o in found if o is not near] or found
+            return min(others, key=lambda o: (o.id != n, max(abs(o.x - near.x), abs(o.y - near.y)), o.id))
         return found[0] if found else None
 
     def agents_near(self, x: int, y: int, radius: int, exclude: Optional[str] = None) -> List[Agent]:
