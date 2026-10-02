@@ -35,6 +35,7 @@ ITEMS: Dict[str, Item] = {
         Item("clay", "clay", ("moldable", "wet", "hardens in heat"), icon="🟫"),
         Item("sand", "sand", ("fine", "gritty", "melts in great heat"), icon="⏳"),
         Item("ore", "copper ore", ("heavy", "metallic streaks", "melts in great heat"), weight=2, icon="🟠"),
+        Item("iron_ore", "iron ore", ("heavy", "rust-red streaks", "melts in great heat"), weight=2, icon="🟤"),
         Item("fish", "fish", ("edible", "raw", "slippery"), food=22, icon="🐟"),
         Item("seeds", "seeds", ("small", "alive", "can be planted"), icon="🌱"),
         Item("grain", "grain", ("edible", "dry", "can be ground or baked"), food=12, icon="🌾"),
@@ -94,6 +95,10 @@ ITEMS: Dict[str, Item] = {
 }
 
 STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "loom")
+# the ores (issue #4): one kind of deposit tile, whose metal is fixed by its place and the world's seed (World.ore_item)
+ORE_KINDS = ("ore", "iron_ore")
+IRON_ORE_SHARE = 65  # percent of deposits that are iron: iron is the commoner ore
+
 STORES = ("stockpile", "warehouse", "outpost")  # what holds a village's goods: its stockpiles and warehouses, and the
 # store at each outpost camp
 HOME_STORES = ("stockpile", "warehouse")  # ...of which these stand in the village
@@ -145,7 +150,7 @@ RECIPES: Dict[str, Recipe] = {
         _r("cooked_meat", {"meat": 1}, station="fire", work=4),
         _r("cloth", {"wool": 2}, station="workshop", work=8),
         _r("cloak", {"cloth": 2, "cord": 1}, station="workshop", work=10),
-        _r("iron", {"ore": 2, "charcoal": 2}, station="furnace", work=12),
+        _r("iron", {"iron_ore": 2, "charcoal": 2}, station="furnace", work=12),
         _r("iron_axe", {"iron": 1, "wood": 1}, station="workshop", work=10),
         _r("iron_pick", {"iron": 1, "wood": 1, "cord": 1}, station="workshop", work=10),
         _r("plough", {"iron": 2, "wood": 1}, station="workshop", work=12),
@@ -312,7 +317,7 @@ DESIGNS: Dict[str, Design] = {
            size=(2, 2), blurb="children within 8 tiles learn what the grown-ups around it know how to make, far "
                               "faster than by watching", decay=1.0),
         _d("mine", "mine", {"wood": 8, "stone": 6, "cord": 2}, 40, (("recipe", "copper"),), size=(2, 2),
-           blurb="dug into rock or hills: a seam that gives copper ore again every day (dig it with a pick)", decay=1.5),
+           blurb="dug into rock or hills: a seam that gives copper and iron ore again every day (dig it with a pick)", decay=1.5),
         _d("sand_pit", "sand pit", {"wood": 4, "stone": 2}, 20, (("recipe", "brick"),), size=(2, 2),
            blurb="dug by a shore or riverbank: a pit that gives sand back every day, for bricks and glass", decay=1.5),
         _d("outpost", "outpost camp", {"wood": 8, "stone": 4, "cord": 2}, 30, (("design", "stockpile"), ("recipe", "cord")),
@@ -386,6 +391,7 @@ GATHER_RULES: Dict[str, Dict[str, object]] = {
     "wood": {"tool": "axe", "requires": False, "work": 5},
     "stone": {"tool": "pick", "requires": False, "work": 6},
     "ore": {"tool": "pick", "requires": True, "work": 8},
+    "iron_ore": {"tool": "pick", "requires": True, "work": 8},
     "fiber": {"tool": None, "requires": False, "work": 3},
     "berries": {"tool": None, "requires": False, "work": 3},
     "clay": {"tool": None, "requires": False, "work": 4},
@@ -410,7 +416,7 @@ def base_value(key: str) -> float:
     if key in _VALUE:
         return _VALUE[key]
     if key in GATHER_RULES:
-        v = {"ore": 2.0, "fish": 1.5}.get(key, 1.0)
+        v = {"ore": 2.0, "iron_ore": 2.0, "fish": 1.5}.get(key, 1.0)
     elif key in RECIPES:
         r = RECIPES[key]
         _VALUE[key] = 1.0  # guard against cycles while computing
@@ -456,7 +462,7 @@ def normalize_item(raw: object) -> Optional[str]:
         "rock": "stone", "rocks": "stone", "stones": "stone", "pebble": "stone", "flint": "stone",
         "fibre": "fiber", "fibers": "fiber", "grass": "fiber", "plant fibre": "fiber", "reeds": "fiber",
         "berry": "berries", "food": "berries", "fruit": "berries",
-        "copper ore": "ore", "ores": "ore", "metal ore": "ore",
+        "copper ore": "ore", "ores": "ore", "metal ore": "ore", "iron ore": "iron_ore", "iron ores": "iron_ore",
         "seed": "seeds", "wheat": "grain", "rope": "cord", "string": "cord", "twine": "cord",
         "blade": "sharp_stone", "flake": "sharp_stone", "stone blade": "sharp_stone", "sharp stones": "sharp_stone",
         "axe": "stone_axe", "pick": "stone_pick", "pickaxe": "stone_pick", "stone pickaxe": "stone_pick",

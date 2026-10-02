@@ -134,7 +134,7 @@ def test_a_mine_tunnels_into_the_rock_towards_the_ore_and_the_tunnel_is_kept():
         BLD._mines(w)
     assert w.stand_tiles_for(vx, vy), "the tunnel reached the ore"
     assert all(w.tunnels[i] == mine.id and i in w.roads for i in w.tunnels) and len(w.tunnels) <= 4
-    assert w.nearest_resource(a.x, a.y, "ore", 26) is not None
+    assert any(w.nearest_resource(a.x, a.y, k, 26) is not None for k in ("ore", "iron_ore"))
     assert any(e.kind == "tunnel" for e in w.events)
     w2 = World.from_dict(w.to_dict())
     assert w2.tunnels == w.tunnels and w2.stand_tiles_for(vx, vy)

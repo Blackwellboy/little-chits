@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
-from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item
+from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item, ORE_KINDS, IRON_ORE_SHARE
 from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
 from . import projects as PROJECTS  # village projects, research and wants (their shared state: world.civic)
@@ -1116,7 +1116,14 @@ class World:
             return None
         avoid = avoid or set()
         rk, ra = self.res_kind, self.res_amt
+        if kind in ORE_KINDS:  # copper or iron: an ore tile's own metal
+            return self.ring_scan(x, y, radius, lambda nx, ny, i: rk[i] == k and ra[i] > 0 and i not in avoid
+                                  and self.ore_item(i) == kind and self.reachable_edge(i))
         return self.ring_scan(x, y, radius, lambda nx, ny, i: rk[i] == k and ra[i] > 0 and i not in avoid and self.reachable_edge(i))
+
+    def ore_item(self, i: int) -> str:
+        """Which ore a deposit tile gives: iron on about two in three, fixed by its place and the seed (issue #4)."""
+        return "iron_ore" if zlib.crc32(f"{self.seed}:ore:{i}".encode()) % 100 < IRON_ORE_SHARE else "ore"
 
     # ------------------------------------------------------------------ structures
     def structures_near(self, x: int, y: int, radius: int, design: Optional[str] = None) -> List[Structure]:

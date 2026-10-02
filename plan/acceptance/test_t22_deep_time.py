@@ -12,11 +12,13 @@ def test_items_recipes_and_stations():
     for k in NEW_ITEMS:
         assert k in ITEMS and k in RECIPES, k
     assert "forge" in STATIONS and "factory" in STATIONS
-    assert dict(RECIPES["iron"].inputs) == {"ore": 2, "charcoal": 2} and RECIPES["iron"].station == "furnace"
+    # (amended 2026-10-02 with the owner's approval, issue #4: ore is split by element, so iron is smelted from iron
+    # ore; copper keeps "ore", copper ore)
+    assert dict(RECIPES["iron"].inputs) == {"iron_ore": 2, "charcoal": 2} and RECIPES["iron"].station == "furnace"
     assert RECIPES["steel"].station == "forge" and RECIPES["engine"].station == "forge"
     assert dict(RECIPES["rocket_part"].inputs) == {"alloy": 2, "engine": 1} and RECIPES["rocket_part"].station == "factory"
     assert RECIPES["wire"].qty == 3 and RECIPES["gear"].qty == 2
-    assert match_recipe({"ore": 2, "charcoal": 2}, "furnace").key == "iron"
+    assert match_recipe({"iron_ore": 2, "charcoal": 2}, "furnace").key == "iron"
     assert match_recipe({"ore": 1, "charcoal": 1}, "furnace").key == "copper"
     assert match_recipe({"steel": 2, "gear": 2, "pot": 1}, "workshop") is None
     assert ITEMS["iron_axe"].tool == "axe" and ITEMS["iron_axe"].tool_power > ITEMS["copper_axe"].tool_power

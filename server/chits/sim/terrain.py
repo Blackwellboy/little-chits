@@ -18,6 +18,7 @@ MOVE_COST = [99, 99, 1.2, 1.0, 1.0, 1.4, 1.8, 99, 1.3]
 RES = ["", "wood", "stone", "fiber", "berries", "clay", "sand", "ore", "fish"]
 R_NONE, R_WOOD, R_STONE, R_FIBER, R_BERRIES, R_CLAY, R_SAND, R_ORE, R_FISH = range(9)
 RES_INDEX = {n: i for i, n in enumerate(RES) if n}
+RES_INDEX["iron_ore"] = RES_INDEX["ore"]  # (an ore tile's metal: World.ore_item)
 
 # max amount, regen period in ticks (per +1), winter regen multiplier
 RES_PROFILE = {

@@ -99,7 +99,7 @@ def _iron_age(w, a, *known):
 
 @pytest.mark.parametrize("design,key,storage", [
     ("kiln", "brick", {"clay": 20, "sand": 20}),
-    ("furnace", "iron", {"ore": 14, "charcoal": 14}),
+    ("furnace", "iron", {"iron_ore": 14, "charcoal": 14}),
     ("forge", "steel", {"iron": 10, "charcoal": 10}),
     ("forge", "engine", {"steel": 6, "gear": 6, "pot": 3}),
     ("workshop", "gear", {"steel": 6}),
@@ -126,7 +126,7 @@ def test_the_road_to_the_next_era_comes_first():
     assert {"engine", "steel", "gear", "iron", "charcoal", "brick"} <= set(path)  # no forge yet: its bricks too
     # at the furnace: iron (on the way to a forge, steel and an engine), not copper or glass
     furnace = _build(w, a, "furnace", 6)
-    _build(w, a, "stockpile", -4, 0, {"ore": 20, "charcoal": 20, "sand": 20})
+    _build(w, a, "stockpile", -4, 0, {"iron_ore": 20, "charcoal": 20, "sand": 20})
     bill, _ = ACT.plan_bill(w, a, {"furnace"})
     assert bill.r.key == "iron" and bill.path and bill.st is furnace
     # with a forge standing, bricks are off the list; at the workshop gears come before iron axes, even with a few

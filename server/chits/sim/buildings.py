@@ -516,7 +516,8 @@ def resource_sides(world, a: Agent, kind: str, radius: int = 26):
 # ---------------------------------------------------------------------------- wells, granaries, smithies, towers
 # ---------------------------------------------------------------------------- mines
 MINE_PER_DAY = 4  # ore a mine's seam gives back each day
-MINE_SEAM = 16  # the most a seam holds at once
+MINE_SEAM = 16  # the most a seam holds at once (of each ore)
+MINE_YIELD = {"ore": 1, "iron_ore": 3}  # what a seam gives back each day: MINE_PER_DAY, split by how common each ore is
 MINE_ROCK = 2  # a mine is dug within this many tiles of rock or hills
 PIT_PER_DAY, PIT_HOLD = 4, 16  # sand a pit gives back each day, and the most it holds
 
@@ -538,9 +539,10 @@ def _mines(world) -> None:
             world.dirty_struct.add(s.id)
         if s.design != "mine" or not s.functional:
             continue
-        if s.storage.get("ore", 0) < MINE_SEAM:
-            s.storage["ore"] = min(MINE_SEAM, s.storage.get("ore", 0) + MINE_PER_DAY)
-            world.dirty_struct.add(s.id)
+        for kind, n in MINE_YIELD.items():  # (copper and iron ore: iron is the commoner, issue #4)
+            if s.storage.get(kind, 0) < MINE_SEAM:
+                s.storage[kind] = min(MINE_SEAM, s.storage.get(kind, 0) + n)
+                world.dirty_struct.add(s.id)
         dug = _tunnel(world, s) or dug
     if dug:
         world.rebuild_block()
@@ -623,10 +625,10 @@ def mine_near(world, a: Agent, radius: int = 26, kind: str = "ore"):
     return None
 
 
-DEEP_DIG = {"ore": 3.0}  # a mine whose seam is dug out for the day can still be dug, this many times as slowly (#6)
+DEEP_DIG = {"ore": 3.0, "iron_ore": 3.0}  # a mine whose seam is dug out for the day can still be dug, this many times as slowly (#6)
 
 
-PIT_OF = {"ore": "mine", "sand": "sand_pit"}
+PIT_OF = {"ore": "mine", "iron_ore": "mine", "sand": "sand_pit"}
 
 
 def rest_mult(world, a: Agent) -> float:

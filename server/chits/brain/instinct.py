@@ -14,7 +14,7 @@ import random
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..sim.actions import (FOODS, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, WORK_RADIUS, _tablet_new,
+from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, WORK_RADIUS, _tablet_new,
                            food_items, plan_bill, remembered_place, stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
@@ -133,6 +133,8 @@ def feed_furnace_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
     """
     if not a.best_tool("pick") or not (a.knows_recipe("iron") or a.knows_recipe("copper")):
         return None
+    # the ore the furnace needs next (issue #4): iron ore while iron is the way forward, else copper ore
+    kind = "iron_ore" if a.knows_recipe("iron") and "iron" in era_path(world) else "ore"
     # A supply plan may use only infrastructure this chit can plausibly know. A nearby furnace is visible in the
     # same local scene a model would receive; a farther mine is eligible only when the chit remembers/heard its ore
     # location. Never scan the whole landmass for private infrastructure.
@@ -142,36 +144,36 @@ def feed_furnace_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
     if not furnaces:
         return None
     mines = [st for st in world.structures_near(a.x, a.y, local_sight, "mine")
-             if st.functional and st.storage.get("ore", 0) > 0 and _reachable(world, a, st)]
+             if st.functional and st.storage.get(kind, 0) > 0 and _reachable(world, a, st)]
     if not mines:
-        seen = remembered_place(world, a, "ore")
+        seen = remembered_place(world, a, kind)
         if seen is not None:
             mines = [st for st in world.structures_near(seen[0], seen[1], 6, "mine")
-                     if st.functional and st.storage.get("ore", 0) > 0 and _reachable(world, a, st)]
+                     if st.functional and st.storage.get(kind, 0) > 0 and _reachable(world, a, st)]
     if not mines:
         return None
     for furnace in sorted(furnaces, key=lambda st: st.dist(a.x, a.y)):
         piles = village_stores(world, furnace.x, furnace.y, WORK_RADIUS, a)
-        ore_here = sum(p.storage.get("ore", 0) for p in piles)
+        ore_here = sum(p.storage.get(kind, 0) for p in piles)
         if ore_here >= FURNACE_ORE_TARGET:
             continue
         need = FURNACE_ORE_TARGET - ore_here
-        destinations = [p for p in piles if stockpile_room(p, "ore") > 0]
+        destinations = [p for p in piles if stockpile_room(p, kind) > 0]
         if not destinations:
             continue
         mine = min(mines, key=lambda st: st.dist(a.x, a.y))
-        dest = max(destinations, key=lambda p: (stockpile_room(p, "ore"), -p.dist(furnace.x, furnace.y)))
-        ore = world.item("ore")
+        dest = max(destinations, key=lambda p: (stockpile_room(p, kind), -p.dist(furnace.x, furnace.y)))
+        ore = world.item(kind)
         weight = max(1, int(getattr(ore, "weight", 1)))
         carry_units = max(0, int(a.free_space()) // weight)
-        qty = min(8, need, mine.storage.get("ore", 0), stockpile_room(dest, "ore"), carry_units)
+        qty = min(8, need, mine.storage.get(kind, 0), stockpile_room(dest, kind), carry_units)
         if qty < 1:
             continue
         return {"goal": "feed the furnace with ore",
                 "thought": "The mine has ore, but the furnace stores are running short. I'll carry a load there.",
                 "steps": [{"do": "go", "to": mine.id},
-                          {"do": "gather", "what": "ore", "qty": qty},
-                          {"do": "store", "what": "ore", "qty": qty, "target": dest.id}]}
+                          {"do": "gather", "what": kind, "qty": qty},
+                          {"do": "store", "what": kind, "qty": qty, "target": dest.id}]}
     return None
 
 LINES_FOUND = [
@@ -713,7 +715,7 @@ class Instinct:
             if have < n:
                 if k in RECIPES and a.knows_recipe(k):
                     steps += _craft_steps(a, k, min(n - have, 3), world=getattr(self, "_world", None))
-                elif k in ("wood", "stone", "fiber", "clay", "sand", "seeds", "ore"):
+                elif k in ("wood", "stone", "fiber", "clay", "sand", "seeds", "ore", "iron_ore"):
                     steps.append({"do": "gather", "what": k, "qty": min(n - have, 8)})
         steps.append({"do": "help", "site": site.id})
         return {"goal": goal, "thought": thought, "steps": steps}
@@ -1037,7 +1039,7 @@ class Instinct:
             for k, n in p.storage.items():
                 stocked[k] = stocked.get(k, 0) + n
         # only collect what can actually be found nearby (an island may have no clay at all)
-        lacking = [m for m in ("wood", "stone", "fiber", "clay", "berries") + (("ore",) if a.best_tool("pick") else ())
+        lacking = [m for m in ("wood", "stone", "fiber", "clay", "berries") + (("ore", "iron_ore") if a.best_tool("pick") else ())
                    + (("sand",) if a.knows_recipe("brick") else ())
                    if stocked.get(m, 0) < 25 and world.nearest_resource(a.x, a.y, m, 30) is not None]
         room = [p for p in piles if p.functional and stockpile_room(p) > 10]
@@ -1171,7 +1173,7 @@ class Instinct:
                     plan = self._exp_plan(a, sorted(bag), None, "A handle, a hard head, maybe something to bind them...")
                     if plan:
                         return plan
-        pool = set(RAW) | ({"ore"} if a.best_tool("pick") else set()) | {k for k in a.inventory if not a._item(k).tool}
+        pool = set(RAW) | ({"ore", "iron_ore"} if a.best_tool("pick") else set()) | {k for k in a.inventory if not a._item(k).tool}
         crafted = [k.split(":", 1)[1] for k in a.knows if k.startswith("recipe:")]
         crafted = [k for k in crafted if k in ITEMS and not a._item(k).tool and not a._item(k).food]
         pool |= set(crafted)
