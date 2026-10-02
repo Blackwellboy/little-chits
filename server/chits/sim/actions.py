@@ -525,8 +525,8 @@ def _do_gather(world, a: Agent, step, s) -> str:
         n = min(world.res_amt[i], max(1, int(round(power))))
         world.res_amt[i] -= n
         world.dirty_res.add(i)
-        if kind == "berries" and world.rng_for("agents").random() < 0.22:
-            a.add("seeds", 1)
+        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y):
+            a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
     added = a.add(kind, n) if n else 0
     s["got"] = got + added
     a.practice("gathering", 0.4)
@@ -919,6 +919,15 @@ WORK_RADIUS = 20  # a station draws on (and fills) the stockpiles this close to 
 WORK_REACH = STATION_REACH  # how far a chit goes to reach a station it was asked to work at (one reach, F5)
 # raw materials a shift never takes the stores below: builders and experimenters need them too (without it pots and
 # tablets emptied the stores of clay by day 25, where 30 or more lay in them without shifts)
+SEED_PLENTY = 60  # seeds the stores near a picker hold before it stops keeping the pips from berries
+
+
+def seeds_plenty(world, x: int, y: int) -> bool:
+    """The stores here hold all the seed anyone will sow. Berry pips were the only seeds that never got used up:
+    one live world held 20,311 seeds by day 2,900, 62% of everything in its stores (issue #7)."""
+    return sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY
+
+
 KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 4}
 REPORT_EVERY = TICKS_PER_DAY // 2  # a station reports its work to the chronicle at most this often
 STATION_WORDS = {"campfire": "fire", "camp fire": "fire", "bonfire": "fire", "hearth": "fire", "fireplace": "fire",
