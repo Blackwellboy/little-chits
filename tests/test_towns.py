@@ -203,6 +203,10 @@ def test_a_daughter_village_near_its_mothers_hall_builds_its_own():
     assert BLD.hall_near(w, a, SE.HALL_REACH) is mother
     plans = [p for _, p in BI.town_options(w, a)]
     assert any(s.get("what") == "town_hall" for p in plans for s in p["steps"]), plans
+    # a ruined hall elsewhere counts at the build: the cap must count it too, or the build refuses (Codex, #53)
+    mother.durability, mother.ruined_at = 0.0, w.tick
+    step = next(s for p in BI.town_options(w, a) for s in p[1]["steps"] if s.get("what") == "town_hall")
+    assert step["_cap"] == sum(1 for s in w.structures.values() if s.design == "town_hall") + 1
     # but never a second hall in the same village's middle
     put(w, "town_hall", a, (cx, cy))
     w.tick += 1

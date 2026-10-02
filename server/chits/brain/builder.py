@@ -157,6 +157,11 @@ def _count(world, design: str) -> int:
     return sum(1 for s in world.structures.values() if s.design == design and not s.ruined)
 
 
+def _count_all(world, design: str) -> int:
+    """Every one of a design, ruins too: what the build itself counts against a step's cap (sim/actions.py)."""
+    return sum(1 for s in world.structures.values() if s.design == design)
+
+
 def _none_near(world, x: int, y: int, design: str, radius: int) -> bool:
     return not world.structures_near(x, y, radius, design)
 
@@ -302,7 +307,7 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
                 and _none_near(world, int(v.x), int(v.y), "town_hall", SE.HALL_REACH):
             # one hall per village (the reach check above); the cap only stops two of its chits starting two at once
             # (a share of the world's people counted the mother's hall against its daughter)
-            plan = _build(world, a, "town_hall", _count(world, "town_hall") + 1,
+            plan = _build(world, a, "town_hall", _count_all(world, "town_hall") + 1,  # (a ruin counts at the build)
                           f"{v.name} has grown big enough for a town hall.", near=(int(v.x), int(v.y)))
             if plan:
                 out.append((2.0, plan))
