@@ -125,3 +125,19 @@ def test_a_town_builds_what_it_lacks_and_keeps_it_in_use():
     w.tick += 1
     plans = {p["goal"]: p for _, p in BI.town_life_options(w, a)}
     assert plans["rest at the healer's"]["steps"][-1] == {"do": "rest"}
+
+
+def test_a_town_tries_brewing_with_grain_and_berries_from_its_stores():
+    # only a chit that happened to carry both ever tried, and no tavern rose in 20-day runs
+    w, a, hall = town()
+    a.learn("design:town_hall", "taught", w.tick)
+    a.inventory.clear()
+    ws = put(w, "workshop", a, near=(a.x, a.y), radius=12)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(ws)))
+    pile = put(w, "stockpile", a, near=(hall.x, hall.y), radius=10)
+    w.tick = 4 * TICKS_PER_DAY + 120
+    assert not any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))  # nothing to brew with
+    pile.storage.update({"grain": 4, "berries": 2})
+    w.tick += 1
+    plan = next(p for _, p in BI.town_life_options(w, a) if p["goal"] == "try brewing")
+    assert plan["steps"][:2] == [{"do": "take", "what": "grain", "qty": 2}, {"do": "take", "what": "berries", "qty": 1}]
