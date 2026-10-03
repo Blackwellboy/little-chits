@@ -824,6 +824,7 @@ STATION_REACH = 45  # how far a chit goes to reach the station a craft needs (pl
 # spare shift. Blind experiments at stations up to 45 tiles away cost the 60-day A/B 4.5 discoveries and 23% of
 # goods made, all in walking (audit F5).
 STATION_NEAR = 20
+FAILED_MEMORY = 150  # failed experiments a chit keeps: at 30, a curious chit forgot and retried old ones within a season
 
 
 def _gather_station(world, a: Agent, s, station: str) -> str:
@@ -1489,7 +1490,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
     key = f"{combo}{where}"
     if key not in a.failed_experiments:
         a.failed_experiments.append(key)
-        a.failed_experiments[:] = a.failed_experiments[-30:]
+        a.failed_experiments[:] = a.failed_experiments[-FAILED_MEMORY:]
     lost = ""
     cheap = [k for k in bag if not world.item(k).tool]
     if cheap and world.rng_for("agents").random() < 0.25:

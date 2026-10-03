@@ -1207,7 +1207,7 @@ class Instinct:
         village = world.village_failed(a)  # what the neighbours already tried without luck
         stations = [None] + [s for s in STATIONS if world.nearest_station(a.x, a.y, s, STATION_NEAR)]  # (blind: by choice)
         for _ in range(12):
-            size = rng.choice((1, 2, 2, 2, 3, 3, 4))
+            size = rng.choice((1, 2, 2, 2, 3, 3, 4))  # (a 5 draw now and then cost the 60-day A/B 3.5 discoveries and 0.6 era: dropped)
             bag = [rng.choice(pool) for _ in range(size)]
             if size == 2 and rng.random() < 0.3:
                 bag[1] = bag[0]  # two of the same (cord, sharp stone): drawn at random it was 3 bags in 299
@@ -1247,13 +1247,14 @@ class Instinct:
     def _exp_plan(self, a: Agent, bag: List[str], station: Optional[str], thought: str) -> Optional[Dict[str, Any]]:
         from ..sim.items import normalize_item
 
-        keys = [normalize_item(b) for b in bag]
+        world = getattr(self, "_world", None)
+        # through the world when there is one: a culture's own name for a thing, or an invention, in a hint memory
+        keys = [(world.norm_item(b) if world is not None else normalize_item(b)) for b in bag]
         if any(k is None for k in keys):
             return None
         need: Dict[str, int] = {}
         for k in keys:
             need[k] = need.get(k, 0) + 1
-        world = getattr(self, "_world", None)
         steps = _supply_steps(a, need, world)
         if steps is None or len(steps) > 5:
             return None

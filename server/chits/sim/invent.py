@@ -8,6 +8,7 @@ affordances (material + shape + mechanism).
 
 from __future__ import annotations
 
+import re
 from typing import Dict, List, Optional, Set, Tuple
 
 from .items import ITEMS, Catalog
@@ -37,12 +38,19 @@ PURPOSES: List[Tuple[str, Tuple[str, ...], List[Set[str]], dict]] = [
     ("light", ("light", "torch", "lamp", "glow"), [{"flammable", "burns very hot"}, {"sturdy", "long", "container", "fired"}],
      {"tool": "light", "tool_power": 0.5}),
     ("food", ("eat", "food", "meal", "stew", "snack", "dish"), [], {}),
-    ("joy", ("music", "drum", "flute", "song", "art", "toy", "ornament", "jewel", "decoration", "paint", "game"), [],
+    ("joy", ("music", "drum", "flute", "song", "art", "toy", "ornament", "jewel", "decoration", "paint", "game", "joy", "fun",
+             "play", "dance", "sing", "pretty", "beauty"), [],
      {"mood": 8}),
 ]
 
 UNDERSTOOD = ("catching fish, cutting, digging, carrying, keeping warm, light, food, defence, farming, healing, "
               "speed, or joy (music, toys, art)")
+
+
+def mentions(text: str, kw: str) -> bool:
+    """A purpose keyword counts only as a whole word (a plural too). Matched as a substring, "sick" was in "stick" (so a
+    pointed stick to catch fish was judged as healing), "eat" in "heat" and "hoe" in "shoe"."""
+    return re.search(r"\b" + re.escape(kw) + r"(?:s|es)?\b", text) is not None
 
 
 def judge(bag: Dict[str, int], purpose_text: str, catalog: Optional[Catalog] = None) -> Tuple[bool, Optional[str], dict, str]:
@@ -53,7 +61,7 @@ def judge(bag: Dict[str, int], purpose_text: str, catalog: Optional[Catalog] = N
     if not 2 <= total <= 4 or len(kinds) > 3:
         return False, None, {}, "An invention needs 2 to 4 items in total (at most 3 kinds)."
     text = (purpose_text or "").lower()
-    pick = next((p for p in PURPOSES if any(kw in text for kw in p[1])), None)
+    pick = next((p for p in PURPOSES if any(mentions(text, kw) for kw in p[1])), None)
     if pick is None:
         return False, None, {}, f"Nobody could see what it would be for. The world understands {UNDERSTOOD}."
     pid, _, required, effect = pick

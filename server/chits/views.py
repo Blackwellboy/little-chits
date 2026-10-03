@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from .sim.actions import describe_step
 from .sim.agent import TICKS_PER_DAY, Agent
-from .sim.items import DESIGNS, ITEMS, RECIPES, all_knowledge_keys, item_name
+from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name
 from .sim.world import Structure, World
 
 
@@ -42,7 +42,7 @@ def structure_view(s: Structure, w: World) -> Dict[str, Any]:
         "complete": s.complete, "progress": round(min(1.0, s.work_done / max(1.0, s.work_total)), 3),
         "needs": s.needs, "durability": round(s.durability, 1), "lit": s.lit, "fuel": round(s.fuel),
         "planted": s.planted, "growth": round(s.growth, 2), "stored": sum(s.storage.values()),
-        "storage": s.storage if s.design in ("stockpile", "outpost", "mine") else None, "tablets": len(s.shelf),
+        "storage": s.storage if s.design in STORES or s.design == "mine" else None, "tablets": len(s.shelf),
         "founder": founder.name if founder else None, "builders": len(s.builders), "ruined": s.ruined,
         "worked_until": s.worked_until, "produced": s.produced or None,
         "upgrade": _upgrade_view(s),

@@ -253,7 +253,7 @@ DESIGNS: Dict[str, Design] = {
         _d("road", "road", {"stone": 1}, 3, (("recipe", "stone_pick"),),
            blurb="a paved tile; walking on roads is much faster", decay=0.5),
         _d("brick_house", "brick house", {"brick": 12, "wood": 4}, 60, (("recipe", "brick"), ("design", "hut")),
-           size=(2, 2), blurb="a warm, sturdy home for up to four", decay=1.0),
+           size=(2, 2), blurb="a warm, sturdy home for up to five", decay=1.0),
         _d("library", "library", {"brick": 10, "wood": 6, "clay_tablet": 2}, 70, (("recipe", "clay_tablet"),),
            size=(2, 2), blurb="holds inscribed tablets so knowledge outlives its writers; read here to learn",
            decay=1.0),
@@ -328,7 +328,7 @@ DESIGNS: Dict[str, Design] = {
                  "friendships (and hearing the chief's plan)", decay=0.5, min_pop=10),
         # towns: a hall at the heart of a big village makes it a town; its square is where everyone meets
         _d("palisade", "palisade", {"wood": 30, "stone": 10, "cord": 6}, 80, (("design", "town_hall"), ("design", "watchtower")),
-           size=(2, 2), blurb="a timber wall and gate round a town: no wolf gets within 22 tiles of its gate to bite",
+           size=(2, 2), blurb="a timber wall and gate round a town: no wolf bites anyone within 22 tiles of its gate",
            decay=1.0),
         _d("town_hall", "town hall", {"brick": 16, "wood": 10, "stone": 10, "glass": 2}, 120,
            (("recipe", "clay_tablet"), ("recipe", "brick"), ("recipe", "glass")), size=(3, 2),
@@ -383,7 +383,7 @@ DESIGNS: Dict[str, Design] = {
            size=(2, 2), blurb="humming dynamos: work at every workshop, kiln, furnace, forge, mill and factory within "
                               "20 tiles goes half as fast again"),
         _d("street_lamp", "street lamp", {"iron": 1, "lightbulb": 1, "wire": 1}, 10, (("recipe", "lightbulb"),),
-           blurb="an electric light on an iron post: no wolf comes within 6 tiles of it", decay=1.0),
+           blurb="an electric light on an iron post: no wolf bites anyone within 6 tiles of it", decay=1.0),
     ]
 }
 
