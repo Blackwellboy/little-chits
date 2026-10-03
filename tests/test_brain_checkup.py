@@ -128,24 +128,34 @@ def test_a_reply_spent_on_thinking_offers_to_disable_thinking():
     assert _finding(_test(_server(plan=lambda b: _chat(""))), "empty")["text"] == "The model sent an empty reply."
 
 
-def test_no_logprobs_explains_what_needs_them_and_offers_the_full_prompt_style():
+def test_a_valid_letter_without_logprobs_still_decides_and_is_only_noted():
+    # the mind falls back to the reply's letter when no logprobs come (mind._choose): the Test must not fail what
+    # the game can use, nor send the user to the slower full prompt (Codex review)
     bare = _server(choice=lambda b: _chat("B", "length"))
-    r = _test(bare, prompt_style="cascade")
-    f = _finding(r, "no_logprobs")
-    assert not r["ok"] and r["logprobs"] is False and r["choice"] == "B" and f["level"] == "fail"
-    assert "choose and cascade prompt styles need them" in f["text"]
-    assert f["fix"] == {"label": "Switch prompt style to full", "patch": {"prompt_style": "full"}}
-    assert _finding(_test(bare, prompt_style="choose"), "no_logprobs")["fix"]["patch"] == {"prompt_style": "full"}
-    # a brain that writes full plans is told, and not failed
-    r = _test(bare, prompt_style="full")
-    f = _finding(r, "no_logprobs")
-    assert r["ok"] and f["level"] == "note" and f["fix"] is None
+    for style in ("cascade", "choose", "full"):
+        r = _test(bare, prompt_style=style)
+        f = _finding(r, "no_logprobs")
+        assert r["ok"] and r["logprobs"] is False and r["choice"] == "B", style
+        assert f["level"] == "note" and f["fix"] is None and _finding(r, "no_letter") is None
+    assert "cannot tell when the model is unsure" in _finding(_test(bare, prompt_style="cascade"), "no_logprobs")["text"]
     # a server that refuses the logprobs field outright is the same case (the client drops it and asks again)
     def refuses(body):
         if "logprobs" in body:
             return httpx.Response(400, json={"error": "logprobs are not supported by this model"})
         return _chat("A", "length")
-    assert _finding(_test(_server(choice=refuses), prompt_style="cascade"), "no_logprobs")["level"] == "fail"
+    r = _test(_server(choice=refuses), prompt_style="cascade")
+    assert r["ok"] and r["choice"] == "A" and _finding(r, "no_logprobs")["level"] == "note"
+
+
+def test_neither_logprobs_nor_a_letter_fails_a_choosing_brain_and_offers_the_full_prompt_style():
+    wordy = _server(choice=lambda b: _chat("The", "length"))
+    for style in ("cascade", "choose"):
+        r = _test(wordy, prompt_style=style)
+        f = _finding(r, "no_letter")
+        assert not r["ok"] and r["choice"] == "" and f["level"] == "fail" and "no logprobs either" in f["text"]
+        assert f["fix"] == {"label": "Switch prompt style to full", "patch": {"prompt_style": "full"}}
+    r = _test(wordy, prompt_style="full")  # a brain that writes full plans is told, and not failed
+    assert r["ok"] and _finding(r, "no_letter")["level"] == "note" and _finding(r, "no_letter")["fix"] is None
 
 
 def test_a_timeout_says_how_long_and_what_to_change():
@@ -192,17 +202,18 @@ def test_the_classifier_reads_fabricated_observations():
     assert C.classify({"plan": good_plan, "choice": good_choice}, cfg) == []
     codes = lambda obs: [(f["code"], f["level"]) for f in C.classify(obs, cfg)]
     assert codes({"plan": {**good_plan, "json_refused": True}, "choice": good_choice}) == [("json_refused", "warn")]
-    assert codes({"plan": good_plan, "choice": {**good_choice, "logprobs": False}}) == [("no_logprobs", "fail")]
+    assert codes({"plan": good_plan, "choice": {**good_choice, "logprobs": False}}) == [("no_logprobs", "note")]
+    assert codes({"plan": good_plan, "choice": {**good_choice, "logprobs": False, "letter": ""}}) == [("no_letter", "fail")]
     assert codes({"plan": {"text": "", "answered": False, "thinking": True, "finish_reason": "length"},
                   "choice": {"text": "", "answered": False, "thinking": True, "logprobs": False, "letter": ""}}) \
-        == [("thinking", "fail"), ("no_logprobs", "fail")]
+        == [("thinking", "fail"), ("no_letter", "fail")]
     assert codes({"timeout": 30, "plan": {"error": {"kind": "timeout", "text": "ReadTimeout"}}}) == [("timeout", "fail")]
     assert "within 30 seconds" in C.classify({"timeout": 30, "plan": {"error": {"kind": "timeout", "text": "ReadTimeout"}}}, cfg)[0]["text"]
     assert codes({"error": {"kind": "http", "text": "HTTP 404: model not found"}}) == [("http", "fail")]
     assert codes({"plan": good_plan, "choice": {"error": {"kind": "http", "text": "HTTP 400: max_tokens must be at least 16"}}}) \
         == [("http", "fail")]
     # every fix is a patch of brain settings
-    for f in C.classify({"plan": {"text": "", "answered": False, "thinking": True}, "choice": {**good_choice, "logprobs": False}}, cfg):
+    for f in C.classify({"plan": {"text": "", "answered": False, "thinking": True}, "choice": {**good_choice, "letter": ""}}, cfg):
         assert set(f["fix"]["patch"]) <= set(BrainConfig.__dataclass_fields__) and f["fix"]["label"]
 
 
@@ -324,15 +335,18 @@ def test_each_fix_is_one_click_and_the_next_test_passes(game, fake):
     assert r["ok"] and r["parsed"] and _finding(r, "thinking") is None
     state["thinks"] = False
 
-    state["logprobs"] = False  # a server with no logprobs, and a cascade brain
+    state["logprobs"] = False  # a server with no logprobs: a cascade brain still decides by the letter it replies
     c.post("/api/brains", json={"id": "c1", "base_url": url, "json_mode": False, "disable_thinking": False, "prompt_style": "cascade"})
     r = c.post("/api/brains/c1/test").json()
-    f = _finding(r, "no_logprobs")
-    assert not r["ok"] and r["logprobs"] is False and f["fix"]["label"] == "Switch prompt style to full"
+    assert r["ok"] and r["logprobs"] is False and r["choice"] == "A" and _finding(r, "no_logprobs")["level"] == "note"
+    state["letters"] = False  # and one that answers a one-token choice with no letter at all
+    r = c.post("/api/brains/c1/test").json()
+    f = _finding(r, "no_letter")
+    assert not r["ok"] and f["fix"]["label"] == "Switch prompt style to full"
     assert fix("c1", f).status_code == 200 and _cfg(c, "c1")["prompt_style"] == "full"
     r = c.post("/api/brains/c1/test").json()
-    assert r["ok"] and _finding(r, "no_logprobs")["level"] == "note"
-    state["logprobs"] = True
+    assert r["ok"] and _finding(r, "no_letter")["level"] == "note"
+    state["logprobs"] = state["letters"] = True
 
     state["refuse_json"] = True
     c.post("/api/brains", json={"id": "j1", "base_url": url, "json_mode": True, "disable_thinking": False})

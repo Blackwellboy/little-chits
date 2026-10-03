@@ -162,15 +162,18 @@ def classify(obs: Dict[str, Any], cfg: BrainConfig) -> List[Dict[str, Any]]:
     elif c:
         if c.get("thinking") and not c.get("letter"):
             thinking("fail" if chooser else "warn", "The model spent its one-token choice thinking.")
-        if not c.get("logprobs"):
-            add("no_logprobs", "fail" if chooser else "note",
-                "The server sent no logprobs with the one-token choice. The choose and cascade prompt styles need them "
-                "to tell how sure the model is." + ("" if chooser else " This brain writes full plans, so it is not held back."),
-                *to_full, **patch)
-        elif not c.get("letter"):
+        if not c.get("letter"):
+            # neither a letter the scores point to nor one in the reply: a choosing brain cannot decide
             add("no_letter", "fail" if chooser else "note",
-                f"The one-token choice was not one of the option letters (it said \"{(c.get('text') or '').strip()[:20]}\").",
-                *to_full, **patch)
+                f"The one-token choice was not one of the option letters (it said \"{(c.get('text') or '').strip()[:20]}\")."
+                + ("" if c.get("logprobs") else " The server sent no logprobs either."), *to_full, **patch)
+        elif not c.get("logprobs"):
+            # a valid letter with no logprobs still decides (the mind reads the reply itself: mind._choose); what is
+            # lost is how sure the model was
+            add("no_logprobs", "note", "The server sent no logprobs with the one-token choice. The letter it replied is "
+                "used as it is; " + ("a cascade brain cannot tell when the model is unsure, so it writes its own plan only "
+                                     "when the model asks to." if cfg.prompt_style == "cascade" else
+                                     "the game cannot tell how sure the model was."))
     return out
 
 
