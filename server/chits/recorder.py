@@ -347,6 +347,7 @@ class Recorder:
         self._next_prune = 0.0
         self._next_tend = 0.0
         self._recovering = False
+        self._disk_paused = False  # filming was stopped (or not started) because the disk was nearly full
         self.last_pruned_bytes = 0
 
     # ------------------------------------------------------------ settings and status
@@ -457,7 +458,15 @@ class Recorder:
             self.thin_scratch()
             if self.running() and self.disk_low():
                 self.last_error = self._disk_low_message()
-                self.proc.terminate()  # (watch() notices and start() refuses until there is room again)
+                self._disk_paused = True
+                self.proc.terminate()  # (start() refuses until there is room again)
+            elif self._disk_paused and not self.running() and not self.disk_low():
+                # Room again: start filming from here, on the wall clock. watch() only runs after a tick, so a paused
+                # game stayed unfilmed for good although the message says it starts again by itself.
+                self._disk_paused = False
+                if self.settings["enabled"]:
+                    self.proc = None
+                    self.start()
             if force or now >= self._next_prune:
                 self._next_prune = now + 300
                 self.prune_storage()
@@ -588,6 +597,7 @@ class Recorder:
             return
         if self.disk_low():
             self.last_error = self._disk_low_message()
+            self._disk_paused = True  # (tend() starts it once there is room)
             return
         self.frames.mkdir(parents=True, exist_ok=True)
         self.proc_world = self.world_param()

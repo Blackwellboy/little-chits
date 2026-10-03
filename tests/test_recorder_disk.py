@@ -237,6 +237,88 @@ def test_filming_does_not_start_on_a_nearly_full_disk(tmp_path, monkeypatch):
     close(rt)
 
 
+class FakeBrowser:
+    """Stands in for the recorder's browser process."""
+
+    def __init__(self):
+        self.returncode = None
+        self.stdin = None
+
+    def poll(self):
+        return self.returncode
+
+    def terminate(self):
+        self.returncode = -15
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+
+def test_filming_starts_again_by_itself_when_the_disk_has_room_even_while_paused(tmp_path, monkeypatch):
+    # only tend() is called here, never watch(): that is all a paused game (no ticks) ever runs
+    rt = Runtime(tmp_path)
+    rec = rt.recorder
+    rec.settings.update(enabled=True, url="http://localhost:1")
+    monkeypatch.setattr(rec, "missing", lambda: [])
+    free = {"bytes": 50 * 1024 ** 3}
+    monkeypatch.setattr(rec, "free_bytes", lambda: free["bytes"])
+    started = []
+
+    def popen(*a, **k):
+        started.append(FakeBrowser())
+        return started[-1]
+
+    monkeypatch.setattr(R.subprocess, "Popen", popen)
+    rec.start()
+    assert len(started) == 1 and rec.running()
+
+    free["bytes"] = 1024 ** 3  # the disk fills up
+    rec.tend(force=True)
+    assert not rec.running() and "Recording is paused" in rec.last_error
+    rec.tend(force=True)
+    assert len(started) == 1, "it must stay off while the disk is nearly full"
+
+    free["bytes"] = 50 * 1024 ** 3  # space is freed
+    rec.tend(force=True)
+    assert len(started) == 2 and rec.running(), "the message promises it starts again by itself"
+    assert rec.last_error == ""
+    rec.tend(force=True)
+    assert len(started) == 2  # (and only once)
+
+    # switched off while waiting for room: room coming back must not switch it on
+    free["bytes"] = 1024 ** 3
+    rec.tend(force=True)
+    rec.settings["enabled"] = False
+    free["bytes"] = 50 * 1024 ** 3
+    rec.tend(force=True)
+    assert len(started) == 2 and not rec.running()
+    rec.proc = None
+    close(rt)
+
+
+def test_filming_refused_at_the_start_for_a_full_disk_also_starts_once_there_is_room(tmp_path, monkeypatch):
+    rt = Runtime(tmp_path)
+    rec = rt.recorder
+    rec.settings.update(enabled=True, url="http://localhost:1")
+    monkeypatch.setattr(rec, "missing", lambda: [])
+    free = {"bytes": 1024 ** 3}
+    monkeypatch.setattr(rec, "free_bytes", lambda: free["bytes"])
+    started = []
+
+    def popen(*a, **k):
+        started.append(FakeBrowser())
+        return started[-1]
+
+    monkeypatch.setattr(R.subprocess, "Popen", popen)
+    rec.start()
+    assert not started
+    free["bytes"] = 50 * 1024 ** 3
+    rec.tend(force=True)
+    assert len(started) == 1 and rec.running()
+    rec.proc = None
+    close(rt)
+
+
 def test_spread_keeps_both_ends():
     assert R.spread(10, 3) == [0, 4, 9] or R.spread(10, 3) == [0, 5, 9]
     assert R.spread(3, 10) == [0, 1, 2] and R.spread(0, 5) == [] and R.spread(7, 1) == [0]
