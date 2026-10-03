@@ -35,8 +35,6 @@ log = logging.getLogger("chits.mind")
 INSTINCT = "instinct"
 
 PRESETS = [
-    {"id": "rtx5090", "label": "RTX 5090", "base_url": "http://127.0.0.1:18090/v1", "max_concurrency": 8, "enabled": False},
-    {"id": "rtx3090", "label": "RTX 3090", "base_url": "http://127.0.0.1:18080/v1", "max_concurrency": 4, "enabled": False},
     {"id": "llamacpp", "label": "llama.cpp server", "base_url": "http://127.0.0.1:8080/v1", "max_concurrency": 4, "enabled": False},
     {"id": "ollama", "label": "Ollama", "base_url": "http://127.0.0.1:11434/v1", "max_concurrency": 2, "enabled": False},
     {"id": "lmstudio", "label": "LM Studio", "base_url": "http://127.0.0.1:1234/v1", "max_concurrency": 2, "enabled": False},
