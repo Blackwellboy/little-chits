@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from .agent import Agent
 from .items import ITEMS, RECIPES, STORES, normalize_design
+from .items import LIBRARIES
 
 HINT_FIRST = 8.0  # insight for the first hint...
 HINT_STEP = 4.0  # ...and each later one needs this much more
@@ -166,9 +167,9 @@ def do_study(world, a: Agent, step: Dict[str, Any], s: Dict[str, Any]) -> str:
     if lib is None:
         ref = str(step.get("target") or step.get("at") or step.get("what") or "").strip()
         st = world.structures.get(ref)
-        if st is not None and st.design == "library":
+        if st is not None and st.design in LIBRARIES:
             lib = st
-        elif ref and ref.lower().split(" ")[-1] not in _STUDY_WORDS and normalize_design(ref) != "library":
+        elif ref and ref.lower().split(" ")[-1] not in _STUDY_WORDS and normalize_design(ref) not in LIBRARIES:
             s["inspect"] = True  # "study the hut", "study Nul", "study my pot": that's inspecting it
             return _do_inspect(world, a, step, s)
         else:

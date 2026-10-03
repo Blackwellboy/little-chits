@@ -102,6 +102,8 @@ IRON_ORE_SHARE = 65  # percent of deposits that are iron: iron is the commoner o
 STORES = ("stockpile", "warehouse", "outpost")  # what holds a village's goods: its stockpiles and warehouses, and the
 # store at each outpost camp
 HOME_STORES = ("stockpile", "warehouse")  # ...of which these stand in the village
+LIBRARIES = ("library", "great_library")  # where tablets are shelved, read, written and studied: a great library is a
+# library too (the press shelved there what nobody could then read; review 2026-10-04, F32)
 
 
 @dataclass(frozen=True)

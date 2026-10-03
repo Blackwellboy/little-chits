@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim import buildings as BLD
-from ..sim.actions import GATHER_RULES, FOODS, STATION_NEAR, village_stores
+from ..sim.actions import GATHER_RULES, FOODS, REUSE_WITHIN, STATION_NEAR, village_stores
 from ..sim.agent import Agent, TICKS_PER_DAY
 from ..sim.items import DESIGNS, RECIPES, item_name
 
@@ -253,6 +253,14 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know."))
     if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop:
         add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
+    # a believer with no shrine of its faith about raises one: nothing on the planner side ever built a shrine (live,
+    # 89 chits knew the design and 48 could afford it; review 2026-10-04)
+    # (another faith's shrine close by is no reason not to: the reuse check and the cap are per faith, Codex #76)
+    if a.belief and a.knows_design("shrine") \
+            and not any(s.design == "shrine" and not s.ruined and s.belief in ("", a.belief)
+                        for s in world.structures_near(a.x, a.y, 30)):
+        add(1.0, _build(world, a, "shrine", _count_all(world, "shrine") + 1,
+                        "Our faith should have a sacred place of its own."))
     # towns: a hall for a big village, a square beside it, and streets along its worn trails
     opts += town_options(world, a)
     opts += town_life_options(world, a)
@@ -306,7 +314,7 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         hall = BLD.hall_near(world, a, SE.HALL_REACH)  # (no home village: the town it stands in)
     if hall is None:
         if v is not None and a.knows_design("town_hall") and len(v.residents) >= SE.TOWN_POP \
-                and _none_near(world, int(v.x), int(v.y), "town_hall", SE.HALL_REACH):
+                and _none_near(world, int(v.x), int(v.y), "town_hall", BLD.REUSE_WITHIN["town_hall"]):
             # one hall per village (the reach check above); the cap only stops two of its chits starting two at once
             # (a share of the world's people counted the mother's hall against its daughter)
             plan = _build(world, a, "town_hall", _count_all(world, "town_hall") + 1,  # (a ruin counts at the build)

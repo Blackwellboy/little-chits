@@ -2025,6 +2025,10 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
         s["note"] = "The village has plenty of stockpiles already: use what's stored in them, or take from a full one"
         return DONE
     near = [st for st in world.structures_near(x, y, radius, key) if st.complete and world.same_land(a, st)]
+    if key == "shrine" and a.belief:
+        # a believer's own shrine: only one of its own faith (or one not yet anyone's) stands in for it. With any
+        # shrine counted, the second faith in a village could never raise its own (Codex #76)
+        near = [st for st in near if st.belief in ("", a.belief)]
     if not near:
         return None
     if key == "campfire":

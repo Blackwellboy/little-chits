@@ -48,9 +48,15 @@ UNDERSTOOD = ("catching fish, cutting, digging, carrying, keeping warm, light, f
 
 
 def mentions(text: str, kw: str) -> bool:
-    """A purpose keyword counts only as a whole word (a plural too). Matched as a substring, "sick" was in "stick" (so a
-    pointed stick to catch fish was judged as healing), "eat" in "heat" and "hoe" in "shoe"."""
-    return re.search(r"\b" + re.escape(kw) + r"(?:s|es)?\b", text) is not None
+    """A purpose keyword counts only as a whole word, in any of its plain forms: "cut", "cuts", "cutting", "cutter";
+    "carry", "carrying"; "dance", "dancing". Matched as a substring, "sick" was in "stick" (so a pointed stick to catch
+    fish was judged as healing), "eat" in "heat" and "hoe" in "shoe"; matched as the bare word and its plural only, the
+    guide's own "cutting", "digging", "carrying", "farming" and "healing" were not understood (Codex, #69)."""
+    stem, last = re.escape(kw), re.escape(kw[-1])
+    forms = rf"{stem}(?:s|es|ed|er|ers|ing|{last}ing|{last}er|{last}ers|{last}ed)?"
+    if kw.endswith("e"):
+        forms += rf"|{re.escape(kw[:-1])}ing"
+    return re.search(rf"\b(?:{forms})\b", text) is not None
 
 
 def judge(bag: Dict[str, int], purpose_text: str, catalog: Optional[Catalog] = None) -> Tuple[bool, Optional[str], dict, str]:

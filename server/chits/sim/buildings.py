@@ -59,13 +59,29 @@ HEALER_RADIUS, HEALER_MULT = 10, 3.0
 PARK_RADIUS = 6
 PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
 TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
-               "shrine", "tavern", "bakery", "healer", "tailor", "fountain", "park", "university", "theatre")  # go up around a town hall
+               "shrine", "tavern", "bakery", "healer", "tailor", "park", "university", "theatre")  # go up around a town hall
 HALL_PULL = 30  # a hall this near the builder draws them
 PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
 SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
 POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station goes faster
 POWERED = ("workshop", "kiln", "furnace", "forge", "mill", "factory")  # (as its blurb says: not the fire, Codex #23)
 LAMP_RADIUS = 6  # no wolf bites this near a street lamp
+# How far each building's effect reaches, in one place (review 2026-10-04, F32).
+# The town hall's reuse (30) was farther than the builder looked for one (settlements.HALL_REACH, 25): a daughter
+# village 26-30 tiles from its mother's hall proposed a hall every tick and the build refused it every tick, and the
+# palisade, university and theatre likewise. Those four are reused from no farther than their effect reaches.
+# Several others are still reused from farther than they reach (a store 11 tiles from a granary rots, and a granary
+# for it is refused as "one close by already"). Capping them all the same way made villages raise more of each: over
+# 24 seeds and 60 days it cost 2-3 discoveries, 0.3-0.4 of an age and a quarter of the stored food. Each needs a builder
+# that asks "is this pile, field or home served?" first; tests/test_review_step2a.py lists them until then.
+EFFECT_RADIUS = {"well": WELL_RADIUS, "granary": GRANARY_RADIUS, "watchtower": TOWER_RADIUS, "school": SCHOOL_RADIUS,
+                 "bell_tower": BELL_RADIUS, "steam_pump": PUMP_RADIUS, "sawmill": SAW_RADIUS, "power_station": POWER_RADIUS,
+                 "street_lamp": LAMP_RADIUS, "plaza": PLAZA_RADIUS, "tavern": TAVERN_RADIUS, "healer": HEALER_RADIUS,
+                 "park": PARK_RADIUS, "university": UNI_RADIUS, "theatre": THEATRE_RADIUS, "harbour": HARBOUR_RADIUS,
+                 "palisade": PALISADE_RADIUS, "town_hall": 25}  # (town_hall: settlements.HALL_REACH, which imports this module)
+REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre")
+for _d in REUSE_CAPPED:
+    REUSE_WITHIN[_d] = min(REUSE_WITHIN[_d], EFFECT_RADIUS[_d])
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
 PRESS_READ = 30  # a copy this near a press is one its people can read (a tablet on another island is none)
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
