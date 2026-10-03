@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -17,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import theme, views
+from . import sizing, theme, views
 from .brain.llm import BrainConfig, LLMBrain, probe_endpoint, scan_local
 from .brain.mind import INSTINCT
 from .runtime import SPEEDS, Runtime
@@ -45,9 +46,15 @@ async def lifespan(_app: FastAPI):
     await rt.start()
     await rt.autodetect()
     log.info("Little Chits running: %s", ", ".join(f"{w.id}@{w.tick}" for w in rt.worlds.values()))
+    hint = None
+    if rt.first_run and os.environ.get("CHITS_FIRST_RUN_HINT") == "1":
+        # the `little-chits` command's first run: say whether the model found keeps up with the new world
+        hint = asyncio.create_task(sizing.first_run_hint(rt, lambda line: print(line, flush=True)))
     try:
         yield
     finally:
+        if hint is not None:
+            hint.cancel()
         await rt.stop()
 
 
@@ -173,6 +180,15 @@ def structure(wid: str, sid: str):
 @app.get("/api/knowledge")
 def knowledge():
     return views.knowledge_table(list(R().worlds.values()))
+
+
+@app.get("/api/worlds/{wid}/encyclopedia/{knowledge}")
+def encyclopedia(wid: str, knowledge: str):
+    """What a discovered thing is for (views.encyclopedia). 404 for what this world hasn't found."""
+    e = views.encyclopedia(world(wid), knowledge)
+    if e is None:
+        raise HTTPException(404, "this world hasn't discovered that")
+    return e
 
 
 @app.get("/api/inventions")
@@ -666,6 +682,14 @@ def diagnostics_txt():
     return PlainTextResponse(diag.text(diag.report(R())))
 
 
+@app.get("/api/why")
+def why_slow():
+    """"Why is nothing happening?": the diagnostics as a few plain sentences per world (diag.why_slow)."""
+    from . import diag
+
+    return diag.why_slow(diag.report(R()))
+
+
 @app.get("/api/worlds/{wid}/log.txt")
 def world_log(wid: str, min_importance: int = 1, days: int = 0):
     """Everything that happened, as plain text: one line per event, plus a daily numbers line.
@@ -851,7 +875,34 @@ def brains():
     from . import diag
 
     r = R()
-    return r.mind.status(speed=diag.brain_ratings(r))
+    out = r.mind.status(speed=diag.brain_ratings(r))
+    for row in out["brains"]:  # "Keeps up with about N chits", from its live replies or a probe (sizing.py)
+        row["capacity"] = sizing.capacity(r.mind.brains[row["config"]["id"]])
+    return out
+
+
+@app.post("/api/brains/{bid}/capacity")
+async def brain_capacity(bid: str):
+    """How many chits this brain keeps up with. With no measurement yet, a short probe measures it now."""
+    b = R().mind.brains.get(bid)
+    if not b:
+        raise HTTPException(404, "no such brain")
+    return await sizing.measure(b)
+
+
+class Sizing(BaseModel):
+    brains: Dict[str, str] = {}  # world id -> brain id, as a new game would be set up
+    measure: bool = False  # probe the brains that have no measurement yet
+
+
+@app.post("/api/sizing")
+async def new_game_size(body: Sizing):
+    """Chits per world that the chosen brains keep up with, for the New game dialog. Advice: nothing is changed."""
+    mind = R().mind
+    if body.measure:
+        for bid in sizing.recommend(mind, body.brains)["unmeasured"]:
+            await sizing.measure(mind.brains[bid])
+    return sizing.recommend(mind, body.brains)
 
 
 class BrainBody(BaseModel):
@@ -864,8 +915,8 @@ class BrainBody(BaseModel):
     timeout: Optional[float] = 90
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 600
-    json_mode: Optional[bool] = True
-    disable_thinking: Optional[bool] = True
+    json_mode: Optional[bool] = None  # (a new brain that names neither starts plain, and its first Test finds
+    disable_thinking: Optional[bool] = None  # what its server takes: brain/checkup.py)
     enabled: Optional[bool] = True
     prompt_style: Optional[str] = "full"
     escalate_below: Optional[float] = 0.5
@@ -873,10 +924,14 @@ class BrainBody(BaseModel):
     focus: Optional[bool] = True
 
 
+def _in_experiment(bid: str) -> bool:
+    r = R()
+    return r.contract == "experiment" and bid in r.mind.world_brain.values()
+
+
 def _locked_brain(bid: str) -> None:
     """In an experiment, the brains the worlds use are frozen for the whole run."""
-    r = R()
-    if r.contract == "experiment" and bid in r.mind.world_brain.values():
+    if _in_experiment(bid):
         raise HTTPException(409, "this brain is in use by an experiment run and can't be changed")
 
 
@@ -892,6 +947,14 @@ def upsert_brain(b: BrainBody):
     existing = bid in R().mind.brains
     data = {k: v for k, v in b.model_dump(exclude_unset=existing).items() if v is not None}
     data["id"] = bid
+    if not existing:
+        # JSON mode on by default produced no decisions at all on servers that refuse it (issue #61): a new brain
+        # starts with the request every OpenAI-compatible server takes, and its first Test detects the rest
+        data["detect"] = b.json_mode is None and b.disable_thinking is None
+        data.setdefault("json_mode", False)
+        data.setdefault("disable_thinking", False)
+    elif "json_mode" in data or "disable_thinking" in data:
+        data["detect"] = False  # (set by hand: a Test no longer chooses them)
     _locked_brain(data["id"])
     br = R().mind.upsert(data)
     return {"ok": True, "brain": br.cfg.public()}
@@ -911,10 +974,18 @@ def delete_brain(bid: str):
 
 @app.post("/api/brains/{bid}/test")
 async def test_brain(bid: str):
-    b = R().mind.brains.get(bid)
+    """One real, tiny decision, and for whatever went wrong a plain cause and a fix (brain/checkup.py). A brain
+    added without settings gets the ones its server takes, unless an experiment is using it."""
+    from .brain import checkup
+
+    r = R()
+    b = r.mind.brains.get(bid)
     if not b:
         raise HTTPException(404, "no such brain")
-    return await b.test()
+    out = await checkup.test_brain(r.mind, b, locked=_in_experiment(bid))
+    if out["reply"] is not None:  # it answered: as before, a Test is how a brain is found to be back
+        b.stats.consecutive_fail, b.stats.last_ok = 0, time.time()
+    return out
 
 
 class Probe(BaseModel):
