@@ -299,6 +299,84 @@ def savepoint_delete(sid: int):
     return {"ok": True}
 
 
+# ------------------------------------------------------------------ 💾 saves in the main UI
+# The same save points, without opening god mode: list, save now, load, delete, and one save as one file. Play games
+# only. Loading is god mode's restore (Runtime.load_save): the run is marked modified and a new timeline starts.
+# The routes that read or change the worlds are async, so they run between two ticks and never during one.
+SAVES_NO = ("saves are off in an experiment run: an experiment never rewinds, and a loaded or imported world would "
+            "not be the one being measured")
+
+
+def _saves_runtime() -> Runtime:
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, SAVES_NO)
+    return r
+
+
+@app.get("/api/saves")
+def saves_list():
+    return {"saves": _saves_runtime().saves()}
+
+
+@app.post("/api/saves")
+async def saves_create(body: SaveBody):
+    r = _saves_runtime()
+    made = r.save_point(body.name)
+    return next((s for s in r.saves() if s["id"] == made["id"]), made)
+
+
+@app.post("/api/saves/import")
+async def saves_import(request: Request):
+    """A save file (the body, as exported) becomes a new save. Untrusted input: see Runtime.import_save."""
+    r = _saves_runtime()
+    too_big = HTTPException(413, f"This file is too big (the limit is {r.SAVE_FILE_MAX // 2 ** 20} MB).")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > r.SAVE_FILE_MAX:
+        raise too_big
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > r.SAVE_FILE_MAX:
+            raise too_big
+    try:
+        return r.import_save(bytes(raw))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.post("/api/saves/{sid}/load")
+async def saves_load(sid: int):
+    r = _saves_runtime()
+    try:
+        ok = r.load_save(sid)
+    except PermissionError:
+        raise HTTPException(409, SAVES_NO)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    if not ok:
+        raise HTTPException(404, "no such save")
+    return {"ok": True, "control": r.control_state()}
+
+
+@app.get("/api/saves/{sid}/export")
+def saves_export(sid: int):
+    from fastapi.responses import Response
+
+    out = _saves_runtime().export_save(sid)
+    if out is None:
+        raise HTTPException(404, "no such save")
+    return Response(out[1], media_type="application/gzip",
+                    headers={"Content-Disposition": f'attachment; filename="{out[0]}"'})
+
+
+@app.delete("/api/saves/{sid}")
+def saves_delete(sid: int):
+    if not _saves_runtime().store.delete_save_point(sid):
+        raise HTTPException(404, "no such save")
+    return {"ok": True}
+
+
 def _rivals_data() -> Dict[str, Any]:
     r = R()
     ws = list(r.worlds.values())
@@ -681,14 +759,51 @@ def control(c: Control):
     if c.speed is not None:
         if c.speed not in SPEEDS:
             raise HTTPException(400, f"speed must be one of {list(SPEEDS)}")
+        r.stop_skip()  # (picking a speed or pausing ends a skip: the player took the clock back)
         r.speed = c.speed
         r.paused = c.speed == 0
     if c.paused is not None:
+        r.stop_skip()
         r.paused = c.paused
     if c.pace_to_brain is not None:
         if r.contract == "experiment" and not c.pace_to_brain:
             raise HTTPException(409, "an experiment run always waits for its models")
         r.pace_to_brain = c.pace_to_brain
+    return r.control_state()
+
+
+class SkipBody(BaseModel):
+    until: str = "discovery"  # "discovery", "moment" (the next big moment) or "days"
+    days: Optional[int] = None
+
+
+SKIP_NO = ("skipping ahead is off in an experiment run: skipped time is mostly instinct-driven, and in an experiment "
+           "every decision is the model's own")
+
+
+@app.post("/api/skip")
+async def skip_start(b: SkipBody):
+    """⏩ Run forward at full speed until the next discovery, the next big moment or N days (Runtime.start_skip)."""
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, SKIP_NO)
+    try:
+        r.start_skip(b.until.strip().lower(), b.days)
+    except PermissionError:
+        raise HTTPException(409, SKIP_NO)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return r.control_state()
+
+
+@app.post("/api/skip/stop")
+async def skip_stop():
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, SKIP_NO)
+    r.stop_skip()
     return r.control_state()
 
 

@@ -279,6 +279,15 @@ button.danger { color: var(--bad); }
 .nw-scan button { flex: none; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
 .pace-btn { background: rgba(255,255,255,0.05); border: 1px solid var(--line); border-radius: 10px; padding: 5px 10px; font-size: 12px; color: var(--muted); white-space: nowrap; }
 .pace-btn.on { color: #ffd28a; border-color: rgba(255,200,120,0.4); }
+.skip-wrap { position: relative; display: flex; align-items: center; gap: 8px; }
+.skip-menu { position: absolute; top: calc(100% + 8px); left: 0; z-index: 15; width: 250px; display: flex; flex-direction: column; gap: 6px; padding: 10px; background: #121726; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+.skip-menu button { text-align: left; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13px; }
+.skip-menu button:hover { background: rgba(255,255,255,0.14); }
+.skip-menu small { font-size: 11px; line-height: 1.4; }
+.skip-note { font-size: 12px; color: #ffd28a; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skip-run { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #ffd28a; border: 1px solid rgba(255,200,120,0.4); border-radius: 10px; padding: 4px 6px 4px 10px; white-space: nowrap; }
+.skip-run small { color: var(--muted); font-size: 11px; }
+.skip-run button { background: rgba(255,255,255,0.1); border: 1px solid var(--line); border-radius: 8px; padding: 3px 10px; font-size: 12px; }
 .nw-strict { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .nw-strict b { color: var(--text); }
 .badge { font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
@@ -354,6 +363,10 @@ button.danger { color: var(--bad); }
 .save-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .save-row .grow { flex: 1; }
 .god-msg { margin-top: 10px; color: #ffcf99; }
+.modal.saves-modal { width: min(640px, 100%); }
+.save-row .save-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.saves-modal .save-row button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 12px; }
+.saves-modal button:disabled { opacity: 0.5; }
 .god-banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 8px 14px; border-radius: 10px;
   background: var(--glass); border: 1px solid rgba(255, 184, 107, 0.6); backdrop-filter: blur(8px); display: flex; gap: 10px; align-items: center; }
 .god-grid button { background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }
