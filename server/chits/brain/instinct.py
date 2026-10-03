@@ -1199,7 +1199,8 @@ class Instinct:
                         return plan
         pool = set(RAW) | ({"ore", "iron_ore"} if a.best_tool("pick") else set()) | {k for k in a.inventory if not a._item(k).tool}
         crafted = [k.split(":", 1)[1] for k in a.knows if k.startswith("recipe:")]
-        crafted = [k for k in crafted if k in ITEMS and not a._item(k).tool and not a._item(k).food]
+        crafted = [k for k in crafted if (k in ITEMS or k in world.catalog.pack_items)  # (a content pack's too)
+                   and not a._item(k).tool and not a._item(k).food]
         pool |= set(crafted)
         if rng.random() > 0.3:
             pool.discard("berries")

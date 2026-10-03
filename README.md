@@ -31,10 +31,30 @@ CHITS_TOKEN=pick-a-secret docker compose up --build
 # open http://localhost:8000/?token=pick-a-secret
 ```
 
-On **Docker Desktop for Windows or macOS** there is no host networking: in `docker-compose.yml` remove
-`network_mode: host`, add `ports: ["8000:8000"]`, and point the game at your models with
-`http://host.docker.internal:PORT/v1`. **On Windows the native WSL launcher is easier** (`make play` inside
-WSL, or `make shortcut` for a desktop icon).
+**Docker Desktop on Windows or macOS** has no host networking, so it has its own file. Nothing to edit:
+
+```bash
+CHITS_TOKEN=pick-a-secret docker compose -f docker-compose.desktop.yml up --build
+# open http://localhost:8000/?token=pick-a-secret
+```
+
+- In PowerShell, set the token first: `$env:CHITS_TOKEN = "pick-a-secret"`, then run the `docker compose` line.
+  With `make`, it is `CHITS_TOKEN=pick-a-secret make docker-desktop`.
+- It refuses to start without `CHITS_TOKEN`. The game is published on this computer only (`127.0.0.1:8000`).
+- Model servers on your computer are found by themselves: the first-run scan and **⚙ Brains → 🔍 Scan** look at
+  `host.docker.internal`. To add one by hand, use `http://host.docker.internal:PORT/v1` (not `localhost`: inside
+  the container that is the container itself).
+- Your model server must accept connections from Docker, not only from `127.0.0.1` (for example
+  `llama-server --host 0.0.0.0`, or `OLLAMA_HOST=0.0.0.0`).
+- Another port: `CHITS_PORT=8010`. One model in both worlds: `CHITS_MODEL_URL=http://host.docker.internal:8080/v1`.
+- The same file works on Linux. Saves are kept in `./data`.
+- Auto-record (🎞) is not available in the container: it has no browser or `ffmpeg`.
+
+Pushing a version tag (`v*`) builds the image and publishes it to GHCR (`.github/workflows/image.yml`). Once a
+release exists you can skip the build: set `CHITS_IMAGE=ghcr.io/<owner>/<repo>:latest` and leave out `--build`.
+
+On Windows the native WSL launcher is still the easiest way to use your GPUs (`make play` inside WSL, or
+`make shortcut` for a desktop icon).
 
 **If something goes wrong**
 
@@ -229,6 +249,10 @@ recording after a restart until you switch it off, and it needs the same `ffmpeg
 Under WSL it films at 720p in software (no GPU), which uses under half a CPU core; the clips are scaled up
 to 1080p.
 
+Recording is off until you switch it on, and it has a disk limit: 5 GB on a new install. The 🎞 panel shows
+how much is used, the limit and the free space, and you can change the limit there. Past the limit the oldest
+clips are deleted; the written stories are kept. Filming pauses while the disk has less than 2 GB free.
+
 **A finished MP4 in one command.** This timelapses the running game into a clip (it needs `ffmpeg`, which
 you can install with `sudo apt install ffmpeg`, and Playwright, which you can install with
 `cd web && npm i -D playwright && npx playwright install chromium`):
@@ -292,6 +316,19 @@ and Pineholm, and the observer switches to cool fjord colours, wool-clad village
 The names and how they map are in [`docs/norse-theme.md`](docs/norse-theme.md). Norse theme contributed by
 @poptartsmmmgood117-bit.
 
+## Content packs
+
+A content pack is a JSON file that adds items and recipes to a game: data only, nothing in it is run. The chits
+find the new recipes by experiment. Try the example, [`docs/packs/honey.json`](docs/packs/honey.json) (a hive,
+honeycomb, honey and mead): **⟲ New game → 📦 Content pack**, or `CHITS_PACK=$PWD/docs/packs/honey.json make play`
+on a fresh install.
+
+- Every world of a game gets the same pack. It is saved with the world and named in the run manifest and replays.
+- Without a pack, the game is exactly what it was. Experiment runs refuse packs.
+- This first version adds items and recipes, not building designs.
+
+How to write one, the rules and the limits: [`docs/modding.md`](docs/modding.md).
+
 ## Configuration
 
 | Env var | Default | |
@@ -309,6 +346,8 @@ The names and how they map are in [`docs/norse-theme.md`](docs/norse-theme.md). 
 | `CHITS_PACE` | 0 | `1` slows the world when models fall behind instead of letting instinct cover (experiment games always do) |
 | `CHITS_DATA_DIR` | `data` | SQLite snapshots, event log, `brains.json` |
 | `CHITS_THEME` | – | `norse` for the Norse theme (Fjordfolk); see [Norse theme](#norse-theme) |
+| `CHITS_PACK` | – | path of a content pack for a fresh install; see [Content packs](#content-packs) |
+| `CHITS_SCAN_HOST` | `127.0.0.1` | where to look for model servers (`host.docker.internal` in Docker Desktop) |
 
 **Throughput tip:**
 - Each chit asks its model for a new plan every in-game hour or two (about 1,100 prompt tokens and a

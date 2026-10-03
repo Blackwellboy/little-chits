@@ -37,7 +37,16 @@ SETTINGS_VERSION = 2
 # fps 0 = automatic: whatever makes a day last about day_seconds (see day_fps)
 DEFAULTS: Dict[str, Any] = {"enabled": False, "url": "", "interval_ms": 500, "fps": 0, "aspect": "16:9",
                             "day_seconds": 18, "week_seconds": 56, "moments": True,
-                            "retention_gb": 20.0, "v": SETTINGS_VERSION}
+                            "retention_gb": 5.0, "v": SETTINGS_VERSION}
+# an installation from before the cap could be chosen ran under 20 GiB: it keeps that until its owner changes it
+LEGACY_RETENTION_GB = 20.0
+# The most frames a day's clip can show: 30 fps for 120 s (the longest day_seconds). A day that took hours of real
+# time (a paused game, slow models) is thinned to this many, evenly spaced, before it is encoded: live, one day held
+# 204,653 frames (29 GiB), ffmpeg timed out on it, and the frames were stranded outside the reach of the cap.
+MAX_DAY_FRAMES = 3600
+SCRATCH_MAX_FRAMES = 2 * MAX_DAY_FRAMES  # frames waiting for the day to end: thinned back to MAX_DAY_FRAMES past this
+MIN_FREE_BYTES = 2 * 1024 ** 3  # filming stops while the disk has less than this free
+DAY_FRAMES_DIR = re.compile(r"^\.day-(\d+)-frames$")
 ASPECTS = {"16:9": (1920, 1080), "9:16": (1080, 1920), "1:1": (1080, 1080)}
 FILMED = {"16:9": (1280, 720), "9:16": (720, 1280), "1:1": (960, 960)}  # what recorder.mjs captures
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]+(\.(mp4|md|json))?$")
@@ -277,6 +286,34 @@ def cut_markdown(week: int, plan: Sequence[Dict[str, Any]], video: Optional[str]
     return "\n".join(lines).rstrip() + "\n"
 
 
+def spread(n: int, keep: int) -> List[int]:
+    """`keep` indices out of range(n), evenly spaced, always with the first and the last."""
+    if keep <= 0 or n <= 0:
+        return []
+    if n <= keep:
+        return list(range(n))
+    if keep == 1:
+        return [0]
+    return sorted({round(i * (n - 1) / (keep - 1)) for i in range(keep)})
+
+
+def thin(paths: Sequence[Path], keep: int) -> List[Path]:
+    """Keep `keep` of these frame files, evenly spaced in time, and delete the rest. Returns the ones kept."""
+    if len(paths) <= keep:
+        return list(paths)
+    wanted = set(spread(len(paths), keep))
+    kept = []
+    for i, p in enumerate(paths):
+        if i in wanted:
+            kept.append(p)
+        else:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    return kept
+
+
 def frames_between(frames_dir: Path, start_ms: int, end_ms: int) -> List[Path]:
     """Frames taken in [start_ms, end_ms), oldest first. Frame files are named by the time they were taken."""
     found = []
@@ -308,6 +345,8 @@ class Recorder:
         self._storage_checked = 0.0
         self._storage_cache: Dict[str, Any] = {}
         self._next_prune = 0.0
+        self._next_tend = 0.0
+        self._recovering = False
         self.last_pruned_bytes = 0
 
     # ------------------------------------------------------------ settings and status
@@ -322,6 +361,7 @@ class Recorder:
             # v1 filmed a frame a second and played it at 24 fps (24x real time): far too fast to follow
             s = {k: v for k, v in s.items() if k not in ("interval_ms", "fps")}
             s["v"] = SETTINGS_VERSION
+        s.setdefault("retention_gb", LEGACY_RETENTION_GB)  # (a fresh install has no file, and gets the lower default)
         return s
 
     def _save(self) -> None:
@@ -356,11 +396,7 @@ class Recorder:
         run_bytes = sum(self._dir_bytes(p) for p in runs)
         active_bytes = self._dir_bytes(active)
         frames_bytes = self._dir_bytes(self.frames)
-        try:
-            du = shutil.disk_usage(self.dir)
-            free_bytes = du.free
-        except OSError:
-            free_bytes = -1
+        free_bytes = self.free_bytes()
         limit_bytes = max(0, int(float(self.settings.get("retention_gb") or 0) * 1024 ** 3))
         warning = ""
         if free_bytes >= 0 and free_bytes < 5 * 1024 ** 3:
@@ -376,11 +412,69 @@ class Recorder:
         self._storage_cache, self._storage_checked = out, now
         return dict(out)
 
+    def free_bytes(self) -> int:
+        """Free space on the disk the recordings are on, or -1 when it can't be read."""
+        try:
+            return shutil.disk_usage(self.dir).free
+        except OSError:
+            return -1
+
+    def disk_low(self) -> bool:
+        return 0 <= self.free_bytes() < MIN_FREE_BYTES
+
+    def stranded_frames(self, run: Path) -> List[Path]:
+        """Folders of frames set aside for a day's clip (.day-NNN-frames), oldest first. One exists only while that
+        day is being encoded; any that are still there when nothing is encoding were left by a crash or a failure."""
+        found = []
+        for d in run.glob(".day-*-frames"):
+            try:
+                if d.is_dir() and DAY_FRAMES_DIR.match(d.name):
+                    found.append((d.stat().st_mtime, d))
+            except OSError:
+                pass
+        return [d for _, d in sorted(found)]
+
+    def thin_scratch(self) -> int:
+        """Bound the frames waiting for the day to end. The browser adds one every interval even while the game is
+        paused, so a day can last any length of real time; a clip can show at most MAX_DAY_FRAMES of them. Only whole
+        frames in frames/ are thinned (they are renamed into place when complete, and nothing reads them until the
+        day ends); a moment being filmed (frames/moments) is left alone. Returns how many were deleted."""
+        if not self.frames.exists():
+            return 0
+        waiting = frames_between(self.frames, 0, 1 << 62)
+        if len(waiting) <= SCRATCH_MAX_FRAMES:
+            return 0
+        return len(waiting) - len(thin(waiting, MAX_DAY_FRAMES))
+
+    def tend(self, force: bool = False) -> None:
+        """Keep recording within its disk budget. Runs on the wall clock (the runtime calls it whether or not the
+        world is ticking: the over-cap bytes seen live piled up while the game stood still)."""
+        now = time.monotonic()
+        if not force and now < self._next_tend:
+            return
+        self._next_tend = now + 30
+        try:
+            self.thin_scratch()
+            if self.running() and self.disk_low():
+                self.last_error = self._disk_low_message()
+                self.proc.terminate()  # (watch() notices and start() refuses until there is room again)
+            if force or now >= self._next_prune:
+                self._next_prune = now + 300
+                self.prune_storage()
+        except Exception as e:  # never let a recording problem hurt the game
+            log.warning("recording housekeeping failed: %s", e)
+
+    @staticmethod
+    def _disk_low_message() -> str:
+        return (f"Recording is paused: the disk has less than {MIN_FREE_BYTES / 1024 ** 3:.0f} GiB free. "
+                "Free some space and it starts again by itself.")
+
     def prune_storage(self, limit_bytes: Optional[int] = None) -> Dict[str, Any]:
         """Keep recording media bounded without touching live scratch frames.
 
-        Old completed run directories go first. If the active run alone crosses the cap, roll off its oldest
-        finalized MP4 clips while preserving story/JSON evidence. Never prune while an active clip is encoding.
+        Old completed run directories go first. If the active run alone crosses the cap, frames stranded by a
+        failed or interrupted encode go next, then its oldest finalized MP4 clips, while story/JSON evidence stays.
+        Never prune the active run while a clip is encoding.
         """
         self.dir.mkdir(parents=True, exist_ok=True)
         cap = max(0, int(limit_bytes if limit_bytes is not None else
@@ -410,7 +504,15 @@ class Recorder:
 
         # A single months-long run can itself exceed the cap. Finalized videos are derivative media, so roll the
         # oldest ones off; markdown/JSON evidence stays. Scratch frames and a clip currently encoding are untouchable.
-        if current > cap and active.exists() and self.encoding == 0 and not self._moment_jobs:
+        if current > cap and active.exists() and self.encoding == 0 and not self._moment_jobs and not self._recovering:
+            # Frames nobody is encoding are scratch, not evidence, and they count toward the cap: they go before any
+            # finished clip. (Live, 29 GiB of them sat in the run folder while every new clip was rolled off instead.)
+            for d in self.stranded_frames(active):
+                if current <= cap:
+                    break
+                n = self._dir_bytes(d)
+                shutil.rmtree(d, ignore_errors=True)
+                current -= n
             clips = []
             for p in active.glob("*.mp4"):
                 try:
@@ -464,8 +566,10 @@ class Recorder:
         self.settings["fps"] = 0 if fps <= 0 else max(6, min(60, fps))  # 0: fit the day to day_seconds
         self.settings["day_seconds"] = max(5, min(120, int(self.settings.get("day_seconds") or 18)))
         self.settings["moments"] = bool(self.settings.get("moments"))
-        self.settings["retention_gb"] = max(1.0, min(500.0, float(self.settings.get("retention_gb") or 20.0)))
+        self.settings["retention_gb"] = max(1.0, min(500.0, float(self.settings.get("retention_gb")
+                                                                    or DEFAULTS["retention_gb"])))
         self._storage_cache = {}
+        self._next_prune = 0.0  # a lower cap applies at the next housekeeping pass, not minutes later
         self._save()
         if self.settings["enabled"]:
             self.stop()  # (re)start with the new settings
@@ -481,6 +585,9 @@ class Recorder:
         missing = self.missing()
         if missing:
             self.last_error = "Can't record yet. Missing: " + "; ".join(missing)
+            return
+        if self.disk_low():
+            self.last_error = self._disk_low_message()
             return
         self.frames.mkdir(parents=True, exist_ok=True)
         self.proc_world = self.world_param()
@@ -516,15 +623,17 @@ class Recorder:
         self.proc = None
 
     def recover(self) -> None:
-        """Finish days a shutdown interrupted: frames moved aside but never encoded, pages never written."""
+        """Finish days a shutdown interrupted: frames moved aside but never encoded, pages never written. The
+        encoding runs in the background (a long day's frames used to hold the game up while they were encoded)."""
         self._recovered = True
         out = self.run_dir()
         if not out.exists():
             return
-        for tmp in sorted(out.glob(".day-*-frames")):
-            day = int(tmp.name[5:8]) if tmp.name[5:8].isdigit() else 0
+        jobs = []
+        for tmp in self.stranded_frames(out):
+            day = int(DAY_FRAMES_DIR.match(tmp.name).group(1))  # (any number of digits: day 3106 was read as 310)
             if day and not (out / f"day-{day:03d}.mp4").exists() and any(tmp.glob("*.jpg")):
-                self._encode(out, day, tmp)
+                jobs.append((day, tmp))
             else:
                 shutil.rmtree(tmp, ignore_errors=True)
             if day and not (out / f"day-{day:03d}.md").exists():
@@ -532,20 +641,33 @@ class Recorder:
                     self._write_stories(out, {day: self._story_inputs(day)})
                 except Exception as e:
                     log.warning("recovering day %s: %s", day, e)
+        if jobs:
+            self._recovering = True
+            t = threading.Thread(target=self._recover_days, args=(out, jobs), daemon=True)
+            self._threads = [x for x in self._threads if x.is_alive()] + [t]
+            t.start()
+
+    def _recover_days(self, out: Path, jobs: List[Tuple[int, Path]]) -> None:
+        with self._lock:
+            self.encoding += 1
+            try:
+                for day, tmp in jobs:
+                    self._encode(out, day, tmp)
+            except Exception as e:
+                self.last_error = f"recovering a recorded day failed: {e}"
+                log.warning(self.last_error)
+            finally:
+                self.encoding -= 1
+                self._recovering = False
 
     def watch(self) -> None:
         """Keep the recorder alive (and filming the right worlds). Cheap; called every in-game hour."""
-        if time.monotonic() >= self._next_prune:
-            self._next_prune = time.monotonic() + 300
-            try:
-                self.prune_storage()
-            except Exception as e:
-                log.warning("recording retention check failed: %s", e)
-        if not self._recovered:
+        if not self._recovered:  # (before any pruning: frames a restart interrupted are finished, not thrown away)
             try:
                 self.recover()
             except Exception as e:
                 log.warning("recording recovery failed: %s", e)
+        self.tend()
         if not self.settings["enabled"]:
             return
         if self.running() and self.proc_world != self.world_param():
@@ -789,15 +911,26 @@ class Recorder:
 
         clip = out / f"day-{day:03d}.mp4"
         ffmpeg = find_ffmpeg() or "ffmpeg"
-        fps = day_fps(sum(1 for _ in tmp.glob("f-*.jpg")), int(self.settings.get("fps") or 0),
-                      self.settings.get("day_seconds") or 18)
-        r = subprocess.run(encode_cmd(ffmpeg, str(tmp / "f-%06d.jpg"), str(clip), fps,
-                                      self.settings["aspect"], DAY_CRF), capture_output=True, text=True, timeout=300)
-        if r.returncode != 0:
-            self.last_error = f"ffmpeg failed on day {day}: {r.stderr.strip()[-300:]}"
+        frames = sorted(tmp.glob("f-*.jpg"))
+        if len(frames) > MAX_DAY_FRAMES:  # (frames set aside by an older version, finished after a restart)
+            for i, p in enumerate(thin(frames, MAX_DAY_FRAMES), 1):
+                p.replace(tmp / f"f-{i:06d}.jpg")  # ffmpeg wants them numbered without gaps (i never passes p's own)
+            frames = sorted(tmp.glob("f-*.jpg"))
+        fps = day_fps(len(frames), int(self.settings.get("fps") or 0), self.settings.get("day_seconds") or 18)
+        try:
+            r = subprocess.run(encode_cmd(ffmpeg, str(tmp / "f-%06d.jpg"), str(clip), fps,
+                                          self.settings["aspect"], DAY_CRF), capture_output=True, text=True, timeout=300)
+            failed = "" if r.returncode == 0 else r.stderr.strip()[-300:] or f"exit {r.returncode}"
+        except (OSError, subprocess.SubprocessError) as e:  # ffmpeg missing, or it ran out of time
+            failed = str(e)[-300:] or type(e).__name__
+        if failed:
+            self.last_error = f"ffmpeg failed on day {day}: {failed}"
+            clip.unlink(missing_ok=True)  # (a half-written clip is not a clip)
         else:
             self.last_clip = f"{out.name}/{clip.name}"
-            shutil.rmtree(tmp, ignore_errors=True)
+        # The frames go either way. Kept after a failure they were never encoded and never pruned: the day's story
+        # (written first) is the evidence, the frames are only scratch.
+        shutil.rmtree(tmp, ignore_errors=True)
 
     def _finish_day(self, out: Path, day: int, frames: List[Path], stories: Dict[int, List[dict]], week: int,
                     retell: int = 0) -> None:
@@ -812,8 +945,13 @@ class Recorder:
                 if frames:
                     tmp = out / f".day-{day:03d}-frames"
                     tmp.mkdir(exist_ok=True)
-                    for i, p in enumerate(frames, 1):
-                        p.replace(tmp / f"f-{i:06d}.jpg")
+                    moved = 0
+                    for p in thin(frames, MAX_DAY_FRAMES):
+                        try:
+                            p.replace(tmp / f"f-{moved + 1:06d}.jpg")
+                            moved += 1
+                        except OSError:  # (thinned away between the day ending and this thread starting)
+                            pass
                     self._encode(out, day, tmp)
                 if week:
                     self._finish_week(out, week)

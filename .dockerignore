@@ -1,0 +1,13 @@
+# keep saves, recordings and local installs out of the image (and out of the build context)
+.git
+.venv
+data
+server/data
+web/node_modules
+web/dist
+**/__pycache__
+**/*.pyc
+.pytest_cache
+*.sqlite*
+.env
+plan/reports

@@ -188,10 +188,14 @@ def _famous_id(w: World) -> str:
 
 def knowledge_table(worlds: List[World]) -> List[Dict[str, Any]]:
     rows = []
-    for k in all_knowledge_keys():
+    # a content pack's recipes are knowledge like any other (every world of a match has the same pack)
+    packed = next((w for w in worlds if w.catalog.pack_recipes), None)
+    extra = [f"recipe:{k}" for k in packed.catalog.pack_recipes if k not in ITEMS] if packed else []
+    for k in all_knowledge_keys() + extra:
         kind, key = k.split(":", 1)
-        row = {"key": k, "kind": kind, "name": knowledge_name(k),
-               "icon": ITEMS[key].icon if kind == "recipe" else "", "worlds": {}}
+        it = (ITEMS.get(key) or (packed.item(key) if packed else None)) if kind == "recipe" else None
+        row = {"key": k, "kind": kind, "name": knowledge_name(k, packed if k in extra else None),
+               "icon": it.icon if it else "", "worlds": {}}
         any_ = False
         for w in worlds:
             f = w.first.get(k)

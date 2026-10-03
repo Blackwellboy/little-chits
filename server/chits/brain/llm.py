@@ -476,10 +476,17 @@ async def _open_ports(host: str, ports: List[int], timeout: float = 0.4, limit: 
     return [p for p in await asyncio.gather(*(one(p) for p in ports)) if p]
 
 
-async def scan_local(host: str = "127.0.0.1", ports: Optional[List[int]] = None,
+def scan_host() -> str:
+    """Where model servers are looked for: this machine, or CHITS_SCAN_HOST (in a container with ordinary port
+    mapping the machine's own servers are at host.docker.internal, not at the container's localhost)."""
+    return os.environ.get("CHITS_SCAN_HOST", "").strip() or "127.0.0.1"
+
+
+async def scan_local(host: Optional[str] = None, ports: Optional[List[int]] = None,
                      skip: Optional[List[int]] = None) -> List[Dict[str, Any]]:
     """Find OpenAI-compatible model servers on this machine: a quick TCP sweep over the usual port ranges
     (about 2,500 ports, well under a second on localhost), then a /v1/models probe of the ports that answered."""
+    host = host or scan_host()
     if ports is None and os.environ.get("CHITS_SCAN_PORTS"):
         ports = _parse_ports(os.environ["CHITS_SCAN_PORTS"])
     if ports is None:
