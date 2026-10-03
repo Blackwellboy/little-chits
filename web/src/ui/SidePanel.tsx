@@ -4,6 +4,7 @@ import { api, authedUrl } from "../net/socket";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
 import { Portrait } from "./Portrait";
+import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -38,7 +39,7 @@ export function SidePanel() {
   return (
     <>
       <nav className="rail">
-        {([["progress", "🧭", "Progress"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"]] as const).map(([t, i, l]) => (
+        {([["progress", "🧭", "Progress"], ["why", "🐢", "Why slow?"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"]] as const).map(([t, i, l]) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)} title={l}><span>{i}</span><small>{l}</small></button>
         ))}
       </nav>
@@ -52,6 +53,7 @@ export function SidePanel() {
             </div>
           )}
           {tab === "progress" && metas.map((m) => (view === "split" || m.id === primary) && <Progress key={m.id} world={m.id} name={m.name} />)}
+          {tab === "why" && <Why metas={metas} />}
           {tab === "chronicle" && <Chronicle world={primary} />}
           {tab === "people" && <People world={primary} />}
           {tab === "knowledge" && <Knowledge metas={metas} />}
@@ -166,6 +168,31 @@ function VillageProject({ p, plain }: { p: ProgressData; plain: (s: string) => s
         <ul className="prog-list">{hints.map((h, i) => <li key={i} className={h.found ? "muted" : ""}>day {h.day}{h.by ? ` (${h.by})` : ""}: {h.text}{h.found ? " ✔ came true" : ""}</li>)}</ul>
       </>)}
       {p.famous && <p className="small">⭐ Most renowned: <b>{p.famous.name}</b> <span className="muted">(renown {p.famous.renown}; chits near them follow their lead)</span></p>}
+    </div>
+  );
+}
+
+/** 🐢 Why is nothing happening? The biggest reasons each world is slow, in plain words, from the game's own
+ *  diagnostics (the same numbers as /api/diagnostics). */
+function Why({ metas }: { metas: { id: string; name: string; culture: string }[] }) {
+  const d = usePoll(() => api<WhyData>("/api/why"), 15000, []);
+  if (!d) return <p className="muted">Loading…</p>;
+  return (
+    <div className="why">
+      <div className="panel-head"><h3>Why is nothing happening?</h3></div>
+      <p className="muted small explain">The biggest things slowing each world down. Counts run since the game server last started.</p>
+      {metas.map((m) => {
+        const lines = whyLines(d, m.id);
+        return (
+          <div key={m.id} className="why-world">
+            <h4><span className={`dot ${m.culture}`} />{m.name}</h4>
+            {lines.length
+              ? <ol className="why-list">{lines.map((l, i) => <li key={i} className={`why-${l.kind}`}>{l.text}</li>)}</ol>
+              : <p className="small muted">{WHY_NOTHING}</p>}
+          </div>
+        );
+      })}
+      <p className="small"><a href={authedUrl("/api/diagnostics.txt")} target="_blank" rel="noreferrer">Open the full diagnostics</a></p>
     </div>
   );
 }

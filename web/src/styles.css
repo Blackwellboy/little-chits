@@ -118,6 +118,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .r-builder { color: #ffcf8a; } .r-tinkerer { color: #c8a8ff; } .r-farmer { color: #b8f08a; } .r-teacher { color: #8ad8ff; } .r-explorer { color: #ffa8c8; } .r-scholar { color: #ffe27a; }
 .toggle { font-size: 12px; color: var(--muted); display: flex; gap: 4px; align-items: center; }
 .explain { margin: 0 0 10px; }
+.why-world h4 { margin: 12px 0 4px; }
+.why-list { margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.5; }
+.why-list li { margin-bottom: 6px; }
 table.know { width: 100%; border-collapse: collapse; font-size: 12px; }
 .know th { text-align: left; font-weight: 500; color: var(--muted); padding: 4px; }
 .know td { padding: 5px 4px; border-top: 1px solid var(--line); vertical-align: top; }

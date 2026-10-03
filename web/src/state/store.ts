@@ -4,7 +4,7 @@ import { Socket, socketUrl, type ConnStatus } from "../net/socket";
 import { WorldData } from "./world";
 import { pickTheme, setTheme, type ThemeId } from "../theme";
 
-export type Tab = "progress" | "chronicle" | "people" | "knowledge" | "stats" | null;
+export type Tab = "progress" | "why" | "chronicle" | "people" | "knowledge" | "stats" | null;
 
 type UI = {
   conn: ConnStatus;

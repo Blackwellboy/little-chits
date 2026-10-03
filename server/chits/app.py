@@ -588,6 +588,14 @@ def diagnostics_txt():
     return PlainTextResponse(diag.text(diag.report(R())))
 
 
+@app.get("/api/why")
+def why_slow():
+    """"Why is nothing happening?": the diagnostics as a few plain sentences per world (diag.why_slow)."""
+    from . import diag
+
+    return diag.why_slow(diag.report(R()))
+
+
 @app.get("/api/worlds/{wid}/log.txt")
 def world_log(wid: str, min_importance: int = 1, days: int = 0):
     """Everything that happened, as plain text: one line per event, plus a daily numbers line.
