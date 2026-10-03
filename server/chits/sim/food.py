@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from .items import HOME_STORES, STORES
+
 FOOD_PER_DAY = 45.0  # hunger an adult burns in a day (0.22 a tick awake, less asleep)
 FOOD_LOW = 3.0  # days of food in store below which the project waits and chits fill the stores
 STORE_SIGHT = 25
@@ -30,13 +32,13 @@ def food_days(world, a=None) -> Optional[float]:
     """Days of food in store: the whole village's (a=None, for the observer), or the stores a chit can see, shared
     by the chits around them. None where there are no stores at all."""
     if a is None:
-        piles = [s for s in world.structures.values() if s.design in ("stockpile", "warehouse", "outpost") and s.functional]
+        piles = [s for s in world.structures.values() if s.design in STORES and s.functional]
         mouths = len(world.agents)
     else:
         # the village's stockpiles, not an outpost camp's store (a camp worker saw 0 days by 10 ore and 200 bread
         # at home, and filled the camp with berries to rot)
         piles = [s for s in world.structures_near(a.x, a.y, STORE_SIGHT, "stockpile") if s.functional
-                 and s.design in ("stockpile", "warehouse")]
+                 and s.design in HOME_STORES]
         mouths = sum(1 for o in world.agents.values() if max(abs(o.x - a.x), abs(o.y - a.y)) <= STORE_SIGHT)
     if not piles:
         return None

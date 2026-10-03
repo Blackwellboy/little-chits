@@ -15,11 +15,11 @@ from ..sim import buildings as BLD
 from ..sim import terrain as T
 from ..sim.actions import FOODS as _FOODS, STATION_REACH
 from ..sim.agent import Agent
-from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, item_name
+from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, STORES, item_name
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-03.2"
+PROMPT_VERSION = "2026-10-04.1"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -54,13 +54,13 @@ def _level(v: float, words: Tuple[str, str, str, str], cuts: Tuple[int, int, int
 
 def verb_guide(world) -> str:
     lines = [
-        '{"do":"gather","what":"wood|stone|fiber|berries|clay|sand|ore|fish|seeds","qty":5}  (ore needs a pick, fish needs a spear)',
+        '{"do":"gather","what":"wood|stone|fiber|berries|clay|sand|ore|iron ore|fish|seeds","qty":5}  (copper ore and iron ore need a pick, fish needs a spear)',
         '{"do":"eat"} or {"do":"eat","what":"berries"}',
         '{"do":"sleep"}  (best at home at night)',
         '{"do":"craft","what":"<item you know how to make>","qty":1}',
-        '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop or fire: it turns stored materials into goods; add "what" to choose which)',
-        '{"do":"experiment","with":["item","item"],"at":"fire|kiln|furnace|workshop|mill","name":"<what you would call it>"}  (try combining 1-3 carried items; the same item twice counts, and amounts matter; "at" and "name" optional; this is how new things are discovered, and the first to discover something names it)',
-        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items; the world decides if their properties suit the purpose. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
+        '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop, forge, factory, mill, loom or fire: it turns stored materials into goods; add "what" to choose which)',
+        '{"do":"experiment","with":["item","item"],"at":"fire|kiln|furnace|workshop|forge|factory|mill|loom","name":"<what you would call it>"}  (try combining 1-5 carried items, one on its own only at a station; the same item twice counts, and amounts matter; "at" and "name" optional; this is how new things are discovered, and the first to discover something names it)',
+        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items of up to 3 kinds; the world decides if their properties suit the purpose. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
         '{"do":"build","what":"<structure you know>"}  (starts a site or joins one nearby; delivers your materials and works on it)',
         '{"do":"help","site":"<site id>"}  (bring materials / labour to someone\'s construction)',
         '{"do":"upgrade","to":"longhouse|brick house|two-storey house"}  (rebuild your own home bigger where it stands: a hut becomes a longhouse or brick house, either of those a two-storey house; everyone living there stays, and a crowded home has fewer children)',
@@ -152,7 +152,7 @@ def food_around(world, a: Agent, radius: int = 30) -> str:
     stored = seeds = 0
     ripe = growing = empty = 0
     for s in world.structures_near(a.x, a.y, radius):
-        if s.design in ("stockpile", "outpost") and s.functional:
+        if s.design in STORES and s.functional:
             stored += sum(n for k, n in s.storage.items() if k in _FOODS)
             seeds += s.storage.get("seeds", 0)
         elif s.design == "farm" and s.functional:
@@ -469,7 +469,7 @@ def scene(world, a: Agent) -> str:
             state.append(f"lit, fuel {s.fuel:.0f}" if s.lit else "burned out")
         if s.design == "farm":
             state.append("ripe!" if s.planted and s.growth >= 1 else (f"growing {int(s.growth * 100)}%" if s.planted else "empty, needs seeds"))
-        if s.design in ("stockpile", "outpost"):
+        if s.design in STORES:
             inv = ", ".join(f"{n} {world.item_name(k)}" for k, n in sorted(s.storage.items(), key=lambda kv: -kv[1])[:8])
             state.append(f"holds {inv}" if inv else "empty")
         if s.design == "library":
@@ -615,17 +615,21 @@ def _worn(a: Agent, k: str) -> str:
 _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
 
 
+_REFLEX = ("warm_up", "wander")  # the simulator's own reflexes: never something to ask a model for
+
+
 def compact_system_prompt(world, a: Agent) -> str:
     """A short system prompt for small or short-context models: same reply contract, one-line verb list."""
     from ..sim.actions import VERBS
 
-    verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v]))]
+    verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
     return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
-            "Nothing is given: discover new items by EXPERIMENTING with carried items (sometimes at a fire, kiln, "
-            "furnace or workshop). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
+            "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
+            "kiln, furnace, workshop, forge, factory, mill or loom). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
             'Reply with ONE JSON object only: {"thought":"...","goal":"...","plan":[{"do":"gather","what":"wood","qty":4},...]}\n'
-            "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, text, name, purpose.\n"
+            "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, site, near, dir, text, name, purpose, "
+            "give and get (trade), intent (sail).\n"
             "Verbs: " + ", ".join(verbs) + f"\nYou are {a.name}.")
 
 

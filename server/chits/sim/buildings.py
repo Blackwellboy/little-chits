@@ -872,7 +872,7 @@ def heal_mult(world, a: Agent) -> float:
 
 def _tavern(world) -> None:
     """Evening at the tavern: those within reach drop in. Each drinks an ale from the stores near it if there is one
-    (twice the cheer, and the drinkers warm to each other); without ale, a little cheer all the same."""
+    (three times the cheer, and the drinkers warm to each other); without ale, a little cheer all the same."""
     from .actions import village_stores
 
     for tv in fx(world)["tavern"]:
