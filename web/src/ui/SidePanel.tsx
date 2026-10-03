@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api, authedUrl } from "../net/socket";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
+import { entryLines, type Entry } from "./encyclopedia";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 
@@ -400,7 +401,21 @@ function SpreadTree({ world, name, k }: { world: string; name: string; k: string
   );
 }
 
+/** 📖 What a discovered thing is for, in one world: an item's properties, what it is made from and goes into, a
+ *  building's use, materials and size. Empty for a world that hasn't found it (the server answers 404). */
+function EntryCard({ world, name, k }: { world: string; name: string; k: string }) {
+  const e = usePoll(() => api<Entry>(`/api/worlds/${world}/encyclopedia/${encodeURIComponent(k)}`), 10000, [world, k]);
+  if (!e) return null;
+  return (
+    <div className="entry">
+      <h4>{e.icon} {e.name} <small className="muted">in {name}{e.first_by ? ` · first: ${e.first_by}, day ${e.first_day}` : ""}</small></h4>
+      <dl>{entryLines(e).map((l, i) => <div key={i}><dt>{l.label}</dt><dd>{l.text}</dd></div>)}</dl>
+    </div>
+  );
+}
+
 function Knowledge({ metas }: { metas: { id: string; name: string; culture: string }[] }) {
+  const [invOpen, setInvOpen] = useState<string | null>(null);
   const rows = usePoll(() => api<any[]>("/api/knowledge"), 3000, []);
   const inv = usePoll(() => api<Record<string, any[]>>("/api/inventions"), 5000, []);
   const bel = usePoll(() => api<Record<string, any[]>>("/api/beliefs"), 5000, []);
@@ -422,7 +437,7 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
         <tbody>
           {shown.map((r) => (
             <tr key={r.key}>
-              <td><b className="spread-open" title="How did they come to know it?" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
+              <td><b className="spread-open" title="What is it for, and how did they come to know it?" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
               {metas.map((m) => {
                 const w = r.worlds[m.id];
                 const pct = w.population ? (w.knowers / w.population) * 100 : 0;
@@ -442,7 +457,10 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
           ))}
         </tbody>
       </table>
-      {openKey && <div className="spread">{metas.map((m) => <SpreadTree key={m.id} world={m.id} name={m.name} k={openKey} />)}</div>}
+      {openKey && <div className="spread">
+        {metas.map((m) => <EntryCard key={m.id + openKey} world={m.id} name={m.name} k={openKey} />)}
+        {metas.map((m) => <SpreadTree key={m.id} world={m.id} name={m.name} k={openKey} />)}
+      </div>}
       <div className="panel-head inv-head"><h3>💡 Inventions</h3><small className="muted">things only one world thought of</small></div>
       {metas.map((m) => {
         const list = inv?.[m.id] || [];
@@ -451,9 +469,10 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
             <h4><span className={`dot ${m.culture}`} />{m.name}</h4>
             {list.length ? list.map((x) => (
               <div key={x.key} className="inv-row">
-                <b>💡 {x.name}</b> <small className="muted">for {x.purpose}</small>
+                <b className="spread-open" title="What is it for?" onClick={() => setInvOpen(invOpen === m.id + x.key ? null : m.id + x.key)}>💡 {x.name}</b> <small className="muted">for {x.purpose}</small>
                 <small className="muted"> · {x.by_name}, day {x.day} · {x.knowers} know it</small>
                 {x.purpose_text && <div className="small muted">“{x.purpose_text}”</div>}
+                {invOpen === m.id + x.key && <EntryCard world={m.id} name={m.name} k={`recipe:${x.key}`} />}
               </div>
             )) : <small className="muted">nothing invented yet</small>}
           </div>

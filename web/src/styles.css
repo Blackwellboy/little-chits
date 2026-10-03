@@ -471,6 +471,12 @@ button.danger { color: var(--bad); }
 .spread { margin: 8px 0; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .spread ul { margin: 2px 0 2px 14px; padding: 0; font-size: 12px; }
 .spread-world h4 { margin: 6px 0 2px; }
+.entry { margin: 4px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.entry h4 { margin: 6px 0 4px; }
+.entry dl { margin: 0; font-size: 12.5px; line-height: 1.45; }
+.entry dl div { display: grid; grid-template-columns: 96px 1fr; gap: 8px; }
+.entry dt { color: var(--muted); }
+.entry dd { margin: 0; }
 
 .recap { margin: 8px 0 12px; padding-left: 18px; line-height: 1.5; }
 .recap li { margin: 4px 0; }

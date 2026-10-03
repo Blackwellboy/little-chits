@@ -209,6 +209,82 @@ def knowledge_table(worlds: List[World]) -> List[Dict[str, Any]]:
     return rows
 
 
+def discovered(w: World, k: str) -> bool:
+    """Has this world found a thing? The knowledge table's own test: someone found it first, or someone alive knows
+    it (the two designs every chit starts with have no first finder)."""
+    return k in w.first or any(k in a.knows for a in w.agents.values())
+
+
+def _effects(w: World, key: str) -> List[str]:
+    """What an item does by itself, each line from one field of its entry in the item table."""
+    from .sim.items import ACTION_USES, GATHER_RULES
+
+    it = w.item(key)
+    out = []
+    if it.food:
+        out.append(f"Food: eating one restores {it.food:g} hunger.")
+    if it.tool:
+        out.append(f"Tool: works as {'an' if it.tool[0] in 'aeiou' else 'a'} {it.tool} with power {it.tool_power:g}.")
+        for raw, rule in GATHER_RULES.items():
+            if rule["tool"] == it.tool:
+                out.append(f"{'Needed to gather' if rule['requires'] else 'Helps to gather'} {item_name(raw)}.")
+    if it.carry_bonus:
+        out.append(f"Carrying: its holder can carry {it.carry_bonus} more.")
+    if "wearable" in it.props:
+        out.append("Wearable: a chit can wear it.")
+    if key in ACTION_USES:
+        out.append(f"Use: {ACTION_USES[key]}.")
+    return out
+
+
+def encyclopedia(w: World, k: str) -> Optional[Dict[str, Any]]:
+    """What a thing this world has discovered is for. An item: its properties, what it is made from, what it does
+    by itself and what it goes into. A building: what it does, what it takes and how big it is. None for what the world
+    hasn't found, and the lists of uses name only recipes and buildings it has found (the rest is a bare count): the
+    observer is told nothing the world doesn't know, and nothing here is read by a chit or a brain."""
+    kind, _, key = k.partition(":")
+    if kind not in ("recipe", "design") or not discovered(w, k):
+        return None
+    first = w.first.get(k)
+    out: Dict[str, Any] = {"key": k, "kind": kind, "name": knowledge_name(k, w), "world": w.id,
+                           "local_name": w.culture_names.get(k),
+                           "first_by": first["name"] if first else None,
+                           "first_day": first["tick"] // TICKS_PER_DAY + 1 if first else None}
+    recipes = {**RECIPES, **w.catalog.recipes}
+
+    def named(key: str, n: Optional[int] = None) -> Dict[str, Any]:
+        it = w.item(key)
+        d = {"key": key, "name": w.item_name(key), "icon": it.icon if it else ""}
+        return d if n is None else {**d, "n": n}
+
+    if kind == "recipe":
+        it, r = w.item(key), w.recipe(key)
+        if it is None or r is None:
+            return None
+        inv = w.inventions.get(key)
+        in_recipes = [rk for rk, rr in recipes.items() if any(i == key for i, _ in rr.inputs)]
+        in_designs = [dk for dk, d in DESIGNS.items() if key in d.material_map]
+        known_r = [rk for rk in in_recipes if discovered(w, f"recipe:{rk}")]
+        known_d = [dk for dk in in_designs if discovered(w, f"design:{dk}")]
+        out.update(icon=it.icon, props=list(it.props), weight=it.weight,
+                   made_from={"inputs": [named(i, n) for i, n in r.inputs], "station": r.station, "makes": r.qty},
+                   effects=_effects(w, key),
+                   used_in_recipes=[named(rk) for rk in known_r],
+                   used_in_buildings=[{"key": dk, "name": DESIGNS[dk].name, "n": DESIGNS[dk].material_map[key]}
+                                      for dk in known_d],
+                   undiscovered_uses=len(in_recipes) - len(known_r) + len(in_designs) - len(known_d),
+                   invention={"purpose": inv["purpose"], "purpose_text": inv.get("purpose_text", ""),
+                              "by": inv.get("by_name", ""), "day": inv["tick"] // TICKS_PER_DAY + 1} if inv else None)
+        return out
+    d = DESIGNS[key]
+    made_here = [rk for rk, rr in recipes.items() if d.station and rr.station == d.station]
+    known_here = [rk for rk in made_here if discovered(w, f"recipe:{rk}")]
+    out.update(icon="", blurb=d.blurb, materials=[named(m, n) for m, n in d.materials], size=list(d.size),
+               work=d.work, station=d.station, min_pop=d.min_pop,
+               made_here=[named(rk) for rk in known_here], undiscovered_uses=len(made_here) - len(known_here))
+    return out
+
+
 def day_chronicle(w: World, events: List[Dict[str, Any]], day: int) -> Dict[str, Any]:
     """A grounded daily digest: only events that happened, ranked by importance."""
     evs = [e for e in events if e["tick"] // 240 + 1 == day]
