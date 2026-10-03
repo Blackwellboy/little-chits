@@ -58,7 +58,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     if err:
         print(err, file=sys.stderr)
         return 2
+    # CHITS_FIRST_RUN_HINT: on a first run the server measures the model it found and prints whether it keeps up
+    # with the new world's chits, and the size of world it could drive (sizing.first_run_hint)
     env = {"CHITS_DATA_DIR": args.data, "CHITS_MODEL_URL": args.model, "CHITS_MODE": args.mode,
+           "CHITS_FIRST_RUN_HINT": "1",
            "CHITS_SPEED": None if args.speed is None else str(args.speed), "CHITS_TOKEN": token,
            "CHITS_AUTODETECT": "0" if args.no_scan else None}
     for k, v in env.items():

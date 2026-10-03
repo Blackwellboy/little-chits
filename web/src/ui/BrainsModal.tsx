@@ -2,9 +2,10 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
 import { api, errorText } from "../net/socket";
 import { useUI } from "../state/store";
+import { Capacity } from "./sizing";
 
 type Speed = { level: "good" | "ok" | "slow" | "unknown"; capacity: number; chits: number; text: string };
-type BrainRow = { config: any; stats: any; label: string; healthy: boolean; speed?: Speed };
+type BrainRow = { config: any; stats: any; label: string; healthy: boolean; speed?: Speed; capacity?: Capacity };
 
 const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, disable_thinking: true, json_mode: true, temperature: 0.7, max_tokens: 600 };
 
@@ -20,6 +21,7 @@ export function BrainsModal() {
   const [models, setModels] = useState<string[]>([]);
   const [msg, setMsg] = useState<string>("");
   const [testing, setTesting] = useState<string>("");
+  const [measuring, setMeasuring] = useState<string>("");
   const [found, setFound] = useState<any[] | null>(null);
 
   const reload = () => api("/api/brains").then(setStatus);
@@ -72,6 +74,12 @@ export function BrainsModal() {
     const r = await api(`/api/brains/${id}/test`, {});
     setTesting("");
     setMsg(r.ok ? `✓ ${r.model} replied in ${r.latency_ms} ms: ${r.reply}` : `✗ ${r.error}`);
+  };
+  const measure = async (id: string) => {
+    setMeasuring(id);
+    try { await api(`/api/brains/${id}/capacity`, {}); } catch (e) { setMsg(`✗ Not measured: ${errorText(e)}`); }
+    setMeasuring("");
+    reload();
   };
   const remove = async (id: string) => {
     try { await api(`/api/brains/${id}`, undefined, "DELETE"); } catch (e) { setMsg(`✗ Not removed: ${errorText(e)}`); }
@@ -127,6 +135,11 @@ export function BrainsModal() {
                 </div>
                 {b.speed && b.speed.level !== "unknown" && (
                   <small className={`speed speed-${b.speed.level}`}>{b.speed.text}</small>
+                )}
+                {b.capacity && (
+                  <small className="capacity">{b.capacity.text}
+                    {b.capacity.source !== "live" && <button disabled={measuring === b.config.id} title="Asks the model a few real decisions and times them" onClick={() => measure(b.config.id)}>{measuring === b.config.id ? "Measuring…" : b.capacity.source ? "Measure again" : "Measure"}</button>}
+                  </small>
                 )}
                 {b.stats.last_error && <small className="err">{b.stats.last_error}{b.stats.last_error_at ? ` (${ago(b.stats.last_error_at)})` : ""}</small>}
               </div>

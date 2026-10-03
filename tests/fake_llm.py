@@ -96,6 +96,15 @@ async def chat(req: Request):
     msgs = body.get("messages", [])
     user = msgs[-1]["content"] if msgs else ""
     system = msgs[0]["content"] if msgs else ""
+    if STATE.get("letters") and body.get("max_tokens") == 1:
+        # a one-token choice, with logprobs when asked (opt-in: the tests of the mind's own handling leave it off)
+        choice = {"index": 0, "message": {"role": "assistant", "content": "A"}, "finish_reason": "length"}
+        if body.get("logprobs") and STATE.get("logprobs", True):
+            choice["logprobs"] = {"content": [{"token": "A", "logprob": -0.1, "top_logprobs": [
+                {"token": "A", "logprob": -0.1}, {"token": "B", "logprob": -2.6}, {"token": " the", "logprob": -5.0}]}]}
+        return JSONResponse({"id": f"fake-{STATE['calls']}", "object": "chat.completion", "created": int(time.time()),
+                             "model": body.get("model", "fake-chit-7b"), "choices": [choice],
+                             "usage": {"prompt_tokens": len(user) // 4, "completion_tokens": 1}})
     if "reflecting" in system:
         text = json.dumps({"lessons": ["Gathering food before dark keeps me alive.",
                                         "Working beside others finishes buildings faster."],

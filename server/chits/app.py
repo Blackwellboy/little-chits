@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import theme, views
+from . import sizing, theme, views
 from .brain.llm import BrainConfig, LLMBrain, probe_endpoint, scan_local
 from .brain.mind import INSTINCT
 from .runtime import SPEEDS, Runtime
@@ -45,9 +45,15 @@ async def lifespan(_app: FastAPI):
     await rt.start()
     await rt.autodetect()
     log.info("Little Chits running: %s", ", ".join(f"{w.id}@{w.tick}" for w in rt.worlds.values()))
+    hint = None
+    if rt.first_run and os.environ.get("CHITS_FIRST_RUN_HINT") == "1":
+        # the `little-chits` command's first run: say whether the model found keeps up with the new world
+        hint = asyncio.create_task(sizing.first_run_hint(rt, lambda line: print(line, flush=True)))
     try:
         yield
     finally:
+        if hint is not None:
+            hint.cancel()
         await rt.stop()
 
 
@@ -736,7 +742,34 @@ def brains():
     from . import diag
 
     r = R()
-    return r.mind.status(speed=diag.brain_ratings(r))
+    out = r.mind.status(speed=diag.brain_ratings(r))
+    for row in out["brains"]:  # "Keeps up with about N chits", from its live replies or a probe (sizing.py)
+        row["capacity"] = sizing.capacity(r.mind.brains[row["config"]["id"]])
+    return out
+
+
+@app.post("/api/brains/{bid}/capacity")
+async def brain_capacity(bid: str):
+    """How many chits this brain keeps up with. With no measurement yet, a short probe measures it now."""
+    b = R().mind.brains.get(bid)
+    if not b:
+        raise HTTPException(404, "no such brain")
+    return await sizing.measure(b)
+
+
+class Sizing(BaseModel):
+    brains: Dict[str, str] = {}  # world id -> brain id, as a new game would be set up
+    measure: bool = False  # probe the brains that have no measurement yet
+
+
+@app.post("/api/sizing")
+async def new_game_size(body: Sizing):
+    """Chits per world that the chosen brains keep up with, for the New game dialog. Advice: nothing is changed."""
+    mind = R().mind
+    if body.measure:
+        for bid in sizing.recommend(mind, body.brains)["unmeasured"]:
+            await sizing.measure(mind.brains[bid])
+    return sizing.recommend(mind, body.brains)
 
 
 class BrainBody(BaseModel):
