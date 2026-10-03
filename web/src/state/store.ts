@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { BrainSummary, Control, WorldEvent, WorldMeta } from "../types";
 import { Socket, socketUrl, type ConnStatus } from "../net/socket";
 import { WorldData } from "./world";
+import { pickTheme, setTheme, type ThemeId } from "../theme";
 
 export type Tab = "progress" | "chronicle" | "people" | "knowledge" | "stats" | null;
 
@@ -25,8 +26,12 @@ type UI = {
   recordingsOpen: boolean;
   recording: boolean; // 🎞 auto-record is filming
   godTool: { action: string; item?: string; label: string } | null; // armed: the next map click applies it
+  theme: ThemeId;
   set: (p: Partial<UI>) => void;
 };
+
+const firstTheme = pickTheme(null, window.location.search);
+setTheme(firstTheme);
 
 export const useUI = create<UI>((set) => ({
   conn: "connecting",
@@ -48,6 +53,7 @@ export const useUI = create<UI>((set) => ({
   recordingsOpen: false,
   recording: false,
   godTool: null,
+  theme: firstTheme,
   set: (p) => set(p),
 }));
 
@@ -63,15 +69,21 @@ export const worlds: Record<string, WorldData> = { A: new WorldData("A"), B: new
 export const socket = new Socket(socketUrl());
 
 let frameCount = 0;
+let helloSeen = false;
 socket.onStatus((s) => useUI.getState().set({ conn: s }));
 socket.onMessage((m) => {
   const ui = useUI.getState();
   switch (m.type) {
-    case "hello":
-      ui.set({ worlds: m.worlds, control: m.control, brains: m.brains });
+    case "hello": {
+      const theme = pickTheme(m.theme, window.location.search);
+      // the art already drawn belongs to the old theme (the server restarted with another): start over
+      if (setTheme(theme) && helloSeen) { window.location.reload(); return; }
+      helloSeen = true;
+      ui.set({ worlds: m.worlds, control: m.control, brains: m.brains, theme });
       for (const w of m.worlds) if (!worlds[w.id]) worlds[w.id] = new WorldData(w.id);
       if (m.worlds.length === 1 && ui.view !== "A") ui.set({ view: "A" });
       break;
+    }
     case "snapshot":
       (worlds[m.world.id] ||= new WorldData(m.world.id)).snapshot(m);
       ui.set({ tick: ui.tick + 1 });

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { WorldView } from "./render/WorldView";
 import { WorldData } from "./state/world";
+import { pickTheme, setTheme, theme } from "./theme";
 import type { Clock } from "./types";
 import "./styles.css";
 
@@ -12,7 +13,7 @@ type BundleWorld = {
   meta: any; brain: string; terrain: { size: number; seed: number; tiles: string; res_kind?: string; res_amt?: string };
   keyframes: Keyframe[]; events: any[]; names: Record<string, string>; hues?: Record<string, number>;
 };
-type Bundle = { version: number; exported: string; mode: string; worlds: Record<string, BundleWorld> };
+type Bundle = { version: number; exported: string; mode: string; theme?: string; worlds: Record<string, BundleWorld> };
 
 const TPD = 240;
 const SEASONS = ["spring", "summer", "autumn", "winter"] as const;
@@ -132,7 +133,7 @@ function Viewer({ bundle }: { bundle: Bundle }) {
     <div className="app rp">
       <div className={`stage ${shown.length > 1 ? "split" : ""}`}>{shown.map((tr) => <Pane key={tr.id} track={tr} />)}</div>
       <div className="rp-top">
-        <b className="rp-title">LITTLE CHITS · replay</b>
+        <b className="rp-title">{theme().brand} · replay</b>
         <span>Day {c.day} · {c.season} · {String(Math.floor(c.hour)).padStart(2, "0")}:00</span>
         {tracks.length > 1 && (
           <span className="seg">
@@ -157,8 +158,12 @@ function Viewer({ bundle }: { bundle: Bundle }) {
   );
 }
 
+setTheme(pickTheme(null, location.search));
+
 function App() {
-  const [bundle, setBundle] = useState<Bundle | null>(null);
+  const [bundle, setLoaded] = useState<Bundle | null>(null);
+  // a bundle remembers the theme it was recorded under; ?theme= still wins
+  const setBundle = (b: Bundle) => { setTheme(pickTheme(b.theme, location.search)); setLoaded(b); };
   const [err, setErr] = useState("");
   useEffect(() => {
     const src = new URLSearchParams(location.search).get("src");
@@ -173,7 +178,7 @@ function App() {
   return (
     <div className="rp-drop" onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <div className="boot-card">
-        <h1>LITTLE CHITS · replay</h1>
+        <h1>{theme().brand} · replay</h1>
         <p>{err || "Drop a replay file here (from ⬇ in the Stats tab), or open this page with ?src=<url>."}</p>
         <input type="file" accept=".json,application/json" onChange={(e) => e.target.files?.[0]?.text().then((s) => setBundle(JSON.parse(s)))} />
       </div>

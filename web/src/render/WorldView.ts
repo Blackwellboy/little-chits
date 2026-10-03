@@ -3,22 +3,15 @@ import {
   TextureSource,
 } from "pixi.js";
 import * as A from "./art";
-import { flameFrames, GREAT_WORKS, PAINTERS } from "./buildings";
+import { flameFrames, GREAT_WORKS } from "./buildings";
 import { eraIndex, isLampTile, lampStyle, plazaSpots, statueTint, type Hero } from "./eras";
 import { signGlyph, villageLabelVisible, weatherProfile, type WeatherProfile } from "./fx";
 import type { AgentState, WorldData } from "../state/world";
 import type { StructureView, WorldEvent } from "../types";
+import { theme } from "../theme";
 
 const TS = A.TS;
 TextureSource.defaultOptions.scaleMode = "nearest";
-
-function hsl(h: number, s: number, l: number): number {
-  s /= 100; l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-  return (Math.round(f(0) * 255) << 16) | (Math.round(f(8) * 255) << 8) | Math.round(f(4) * 255);
-}
 
 class Tex {
   private cache = new Map<string, Texture>();
@@ -255,7 +248,7 @@ export class WorldView {
 
     this.resetChunks();
     this.preview.texture?.destroy(true);
-    this.preview.texture = Texture.from(A.previewCanvas(d.tiles, size));
+    this.preview.texture = Texture.from(A.previewCanvas(d.tiles, size, theme().terrain));
     this.preview.scale.set(TS);
     this.autumn.alpha = 0; this.snow.alpha = 0;
     this.seasonQueued = { autumn: false, snow: false };
@@ -302,10 +295,10 @@ export class WorldView {
         if (amt <= 0) return { tex: this.tex.get("stump", A.stumpCanvas), tree: false, dy: 4 };
         {
           const sz = amt >= 4 ? 1 : amt >= 2 ? 0.6 : 0.3;
-          return { tex: this.tex.get(`tree${v % 6}_${sz}`, () => A.treeCanvas(v % 6, sz)), tree: true, dy: 4 };
+          return { tex: this.tex.get(`tree${v % 6}_${sz}`, () => theme().tree(v % 6, sz)), tree: true, dy: 4 };
         }
       case A.R_BERRIES:
-        return { tex: this.tex.get(`bush${v % 2}_${Math.min(4, amt)}_${winter}`, () => A.bushCanvas(Math.min(4, amt), v % 2, winter)), tree: false, dy: 2 };
+        return { tex: this.tex.get(`bush${v % 2}_${Math.min(4, amt)}_${winter}`, () => theme().bush(Math.min(4, amt), v % 2, winter)), tree: false, dy: 2 };
       case A.R_FIBER:
         return amt > 0 ? { tex: this.tex.get(`tuft${v % 4}`, () => A.tuftCanvas(v % 4)), tree: false, dy: 1 } : { tex: null, tree: false, dy: 0 };
       case A.R_STONE:
@@ -462,8 +455,9 @@ export class WorldView {
       if (!near(c)) { i++; continue; }
       this.bakeQueue.splice(i, 1);
       const reg = this.chunkRegion(c);
-      const paint = q.layer === "terrain" ? A.bakeTerrain : q.layer === "autumn" ? A.bakeAutumn : A.bakeSnow;
-      const sp = new Sprite(Texture.from(paint(d.tiles, d.size, d.meta.seed, reg)));
+      const baked = q.layer === "terrain" ? A.bakeTerrain(d.tiles, d.size, d.meta.seed, reg, theme().terrain)
+        : (q.layer === "autumn" ? A.bakeAutumn : A.bakeSnow)(d.tiles, d.size, d.meta.seed, reg);
+      const sp = new Sprite(Texture.from(baked));
       sp.position.set(reg.x0 * TS, reg.y0 * TS);
       sp.cullable = true;
       c[q.layer] = sp;
@@ -566,9 +560,10 @@ export class WorldView {
       v.extra.removeChildren().forEach((c) => c.destroy());
       v.flame = undefined;
       if (v.sprite) { v.sprite.destroy(); v.sprite = null; }
-      if (s.complete && PAINTERS[s.design]) {
+      const paint = theme().painters[s.design];
+      if (s.complete && paint) {
         const [, st, ru] = key.split(":");
-        const tex = this.tex.get(`b:${s.design}:${variant % 3}:${st}`, () => PAINTERS[s.design](variant % 3, +st));
+        const tex = this.tex.get(`b:${s.design}:${variant % 3}:${st}`, () => paint(variant % 3, +st));
         const sp = new Sprite(tex);
         sp.anchor.set(0, 1);
         sp.x = (s.w * TS - tex.width) / 2;
@@ -600,8 +595,9 @@ export class WorldView {
     for (let x = 0; x < w; x += 4) { g.rect(x, -h, 2, 1).fill(0xf2e2b8); g.rect(x, -1, 2, 1).fill(0xf2e2b8); }
     for (let y = 0; y < h; y += 4) { g.rect(0, -h + y, 1, 2).fill(0xf2e2b8); g.rect(w - 1, -h + y, 1, 2).fill(0xf2e2b8); }
     // a great work: the building itself rises with the work, from the ground up
-    if (GREAT_WORKS.has(s.design) && p > 0.02 && PAINTERS[s.design]) {
-      const tex = this.tex.get(`${s.design}:0`, () => PAINTERS[s.design](0, 0));
+    const paint = theme().painters[s.design];
+    if (GREAT_WORKS.has(s.design) && p > 0.02 && paint) {
+      const tex = this.tex.get(`${s.design}:0`, () => paint(0, 0));
       const spr = new Sprite(tex);
       spr.anchor.set(0, 1);
       spr.alpha = 0.9;
@@ -650,10 +646,11 @@ export class WorldView {
     const footTex = this.tex.get("foot", A.chitFoot);
     const f1 = new Sprite(footTex), f2 = new Sprite(footTex);
     f1.anchor.set(0.5, 1); f2.anchor.set(0.5, 1);
-    const body = new Sprite(this.tex.get("body", A.chitBody)); body.anchor.set(0.5, 1);
-    body.tint = hsl(a.hue, 58, 64);
-    const outline = new Sprite(this.tex.get("outline", A.chitOutline)); outline.anchor.set(0.5, 1);
-    const eyes = new Sprite(this.tex.get("eyes:open", () => A.chitEyes("open"))); eyes.anchor.set(0.5, 0.5);
+    const look = theme().chit.body(a.hue);
+    const body = new Sprite(this.tex.get(look.key, look.paint)); body.anchor.set(0.5, 1);
+    body.tint = look.tint;
+    const outline = new Sprite(this.tex.get("outline", theme().chit.outline)); outline.anchor.set(0.5, 1);
+    const eyes = new Sprite(this.tex.get("eyes:open", () => theme().chit.eyes("open"))); eyes.anchor.set(0.5, 0.5);
     const basket = new Sprite(this.tex.get("i:basket", () => A.iconCanvas("basket"))); basket.anchor.set(0.5, 1); basket.visible = false;
     const carry = new Sprite(); carry.anchor.set(0.5, 1); carry.visible = false;
     const tool = new Sprite(); tool.anchor.set(0.2, 0.9); tool.visible = false;
@@ -1097,8 +1094,7 @@ export class WorldView {
       c.body.scale.set(1 / squash * (sleeping ? 1.12 : 1), squash * (sleeping ? 0.8 : 1));
       c.outline.scale.copyFrom(c.body.scale);
       c.body.y = -bob; c.outline.y = -bob + 1;
-      c.eyes.y = -bob - (sleeping ? 5 : 8.5);
-      c.eyes.x = moving ? 1 : 0;
+      theme().chit.placeEyes(c.eyes, c.body, bob, sleeping, moving);
       c.feet[0].x = -3 + (moving ? Math.sin(c.phase) * 1.5 : 0); c.feet[0].y = 0;
       c.feet[1].x = 3 - (moving ? Math.sin(c.phase) * 1.5 : 0); c.feet[1].y = 0;
       c.feet[0].visible = c.feet[1].visible = !sleeping;
@@ -1110,7 +1106,7 @@ export class WorldView {
         if (now > c.blinkAt + 150) { if (Math.random() < 0.004 * dt) c.blinkAt = now; }
         if (now - c.blinkAt < 150) eyeKind = "blink";
       }
-      c.eyes.texture = this.tex.get(`eyes:${eyeKind}`, () => A.chitEyes(eyeKind));
+      c.eyes.texture = this.tex.get(`eyes:${eyeKind}`, () => theme().chit.eyes(eyeKind));
       // carried stuff
       c.basket.visible = a.basket; c.basket.position.set(-5, -bob - 3);
       if (a.carry) {

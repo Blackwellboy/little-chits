@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from . import views
+from . import theme, views
 from .brain.mind import INSTINCT, Mind
 from .recorder import Recorder
 from .sim.agent import TICKS_PER_DAY
@@ -197,7 +197,7 @@ class Runtime:
         # so the only thing that differs is the mind (or, in "culture" mode, one recorded law)
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
-        w = World(wid, f"World {wid}", seed, culture, size, n, label=label)
+        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label)
         self._attach(w)
         return w
 
@@ -1041,7 +1041,7 @@ class Runtime:
 
     def hello(self) -> Dict[str, Any]:
         return {"type": "hello", "worlds": [views.world_meta(w) for w in self.worlds.values()],
-                "control": self.control_state(), "brains": self.brain_summary()}
+                "control": self.control_state(), "brains": self.brain_summary(), "theme": theme.active()}
 
     def status_msg(self) -> str:
         return json.dumps({"type": "status", "control": self.control_state(), "brains": self.brain_summary()},

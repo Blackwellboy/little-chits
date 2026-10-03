@@ -2,12 +2,15 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { api } from "../net/socket";
 import { localStorageSet, useUI, worlds } from "../state/store";
+import { themeFor } from "../theme";
+import { BrandMark } from "./BrandMark";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
 const SPEED_LABEL: Record<number, string> = { 1: "1×", 2: "2×", 5: "5×", 10: "10×", 25: "25×", 100: "MAX" };
 
 export function TopBar() {
+  const theme = useUI((s) => s.theme);
   const { view, control, brains, conn, worlds: metas, set, nightMode, director, recording } = useUI(useShallow((s) => ({ view: s.view, control: s.control, brains: s.brains, conn: s.conn, worlds: s.worlds, set: s.set, nightMode: s.nightMode, director: s.director, recording: s.recording })));
   useEffect(() => {  // 🎞 shows a red dot while auto-record is filming
     const poll = () => api<{ recording: boolean }>("/api/recorder").then((r) => set({ recording: r.recording })).catch(() => {});
@@ -35,8 +38,8 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="logo">●</span>
-        <span className="brand-text">LITTLE CHITS</span>
+        <BrandMark />
+        <span className="brand-text">{themeFor(theme).brand}</span>
       </div>
 
       {metas.length > 1 && (
