@@ -271,6 +271,91 @@ def test_a_save_with_other_worlds_than_this_game_is_not_loaded(env):
         assert c.get("/api/run").json()["sandbox_modified"] is False
 
 
+def test_loading_a_save_replaces_every_world_or_none(env, monkeypatch):
+    """Codex on PR #72: the restore replaced World A, then failed on World B's checkpoint, and answered with an error
+    while A was rewound and B was not. It is now staged, then committed in one transaction, then swapped."""
+    import asyncio
+    import sqlite3
+
+    from chits.runtime import Runtime
+
+    with client() as c:
+        r = rt()
+        r.step_worlds(10)
+        made = c.post("/api/saves", json={"name": "both"}).json()
+        r.step_worlds(15)
+
+        def state():
+            return {wid: (id(w), w.tick, w.epoch, len(w.epochs)) for wid, w in r.worlds.items()}
+
+        def pointers():
+            return {wid: r.store.get_meta("active_snapshot:" + wid) for wid in r.worlds}
+
+        def snapshot_rows():
+            return r.store.db.execute("SELECT count(*) FROM snapshots").fetchone()[0]
+
+        running = state()
+        assert {v[1] for v in running.values()} == {25}
+
+        # 1. World B's own checkpoint fails before the restore: A must not have been replaced
+        real_save = r.store.save_world
+
+        def b_fails(world_dict, *args, **kwargs):
+            if world_dict["id"] == "B":
+                raise OSError("disk full")
+            return real_save(world_dict, *args, **kwargs)
+
+        with monkeypatch.context() as m:
+            m.setattr(r.store, "save_world", b_fails)
+            got = c.post(f"/api/saves/{made['id']}/load")
+        assert got.status_code == 500 and "no world was changed" in got.json()["detail"]
+        assert state() == running and r.store.get_meta("sandbox_modified") != "1"
+        assert r.paused and "B" in r.save_errors  # (a failed checkpoint freezes the game, as it always does)
+        assert c.post("/api/save").status_code == 200 and not r.save_errors
+        r.paused = False
+        durable = pointers()
+        rows = snapshot_rows()
+
+        # 2. the restore's own write fails half way (A written, B not): the transaction leaves nothing behind
+        real_write = r.store._write_world
+
+        def b_write_fails(world_dict, *args, **kwargs):
+            real_write(world_dict, *args, **kwargs)
+            if world_dict["id"] == "B" and world_dict["epoch"] != running["B"][2]:  # (the restored B, not the current one)
+                raise sqlite3.OperationalError("disk I/O error")
+
+        with monkeypatch.context() as m:
+            m.setattr(r.store, "_write_world", b_write_fails)
+            got = c.post(f"/api/saves/{made['id']}/load")
+            assert got.status_code == 500 and "no world was changed" in got.json()["detail"]
+            # (god mode's restore is the same machinery)
+            with pytest.raises(sqlite3.OperationalError):
+                r.restore_point(made["id"])
+        assert state() == running and pointers() == durable and snapshot_rows() == rows
+        assert r.store.get_meta("sandbox_modified") != "1" and c.get("/api/run").json()["sandbox_modified"] is False
+        assert not r.paused and not r.save_errors
+        # what a restart would resume is the game as it was before the failed load
+        for wid, (_, tick, epoch, _) in running.items():
+            d = r.store.load_world(wid)
+            assert (d["tick"], d["epoch"]) == (tick, epoch)
+
+        # 3. and when it works, both worlds are back at the save in new timelines, durable at that tick
+        assert c.post(f"/api/saves/{made['id']}/load").status_code == 200
+        for wid, w in r.worlds.items():
+            assert w.tick == 10 and w.epoch != running[wid][2] and w._durable_tick == 10
+            d = r.store.load_world(wid)
+            assert (d["tick"], d["epoch"]) == (10, w.epoch)
+            evs = r.store.events(wid, epoch=w.timeline(), limit=5000)
+            assert [e["kind"] for e in evs][-1] == "timeline" and len({e["seq"] for e in evs}) == len(evs)
+        assert c.get("/api/run").json()["sandbox_reasons"] == ["restored save point both"]
+    again = Runtime(env)  # the next start resumes the restored worlds
+    try:
+        assert {wid: w.tick for wid, w in again.worlds.items()} == {"A": 10, "B": 10}
+    finally:
+        again.store.db.close()
+        asyncio.run(again.mind.close())
+
+
 def test_an_experiment_run_refuses_every_saves_route_and_says_why(env):
     with client() as c:
         r = rt()

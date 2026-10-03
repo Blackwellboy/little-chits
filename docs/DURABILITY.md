@@ -38,8 +38,21 @@ skip also stops on a failed write that normal play only logs (a replay keyframe,
 log), so a long stretch is never run at full speed on storage that is failing.
 
 Save files (the 💾 Saves entry, play only) add nothing to this boundary: an export reads a stored save point, and an
-import adds one save-point row after the file has been checked. Loading a save is the save-point restore: it
-checkpoints the current worlds, replaces them, starts a new timeline and checkpoints again.
+import adds one save-point row after the file has been checked. Loading a save is the save-point restore.
+
+## Restoring a save point
+
+A restore (god mode's Restore, or Load in Saves) replaces every world of the save as a unit:
+
+1. every replacement world is built from the save first; a save that does not load changes nothing;
+2. every world about to be replaced is checkpointed; if one checkpoint fails the game pauses as above, and every
+   world in memory is still the current one;
+3. one transaction commits, for all the restored worlds together, the events their snapshots carried, each world's
+   first checkpoint in its new timeline, each `active_snapshot:<world>` pointer, and the sandbox mark;
+4. only after that commit do the restored worlds replace the running ones.
+
+So storage and memory never hold one world rewound and its twin not: after a failure at any step the running worlds
+and the active pointers are all the pre-restore ones, and a restart resumes those.
 
 A restart always follows `active_snapshot:<world>` and therefore resumes the last committed checkpoint, not whatever
 newer tick happened to exist only in the dead process's memory.

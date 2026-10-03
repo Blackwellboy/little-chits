@@ -1117,19 +1117,43 @@ class Runtime:
         return {"id": sid, "name": name, "tick": tick}
 
     def restore_point(self, sid: int) -> bool:
+        """Every world goes back to a save point, as a unit: all of them, or (on any failure) none of them. The run is
+        marked as a sandbox and each world starts a new timeline. PermissionError in an experiment."""
         sp = self.store.load_save_point(sid)
         if not sp:
             return False
-        self.mark_sandbox(f"restored save point {sp['name']}")  # PermissionError in an experiment
-        self.stop_skip()  # (a skip was looking for news in the worlds that are about to be replaced)
-        for wid, d in sp["worlds"].items():
-            self._flush_events(self.worlds[wid]) if wid in self.worlds else None
-            w = World.from_dict(d)
-            self._adopt(w)
-            w.fork_epoch(f"restored save point {sp['name']}")
+        if self.contract == "experiment":
+            raise PermissionError("not allowed in an experiment run")
+        reason = f"restored save point {sp['name']}"
+        # 1. Build every replacement first. A save that does not load has changed nothing.
+        staged = [World.from_dict(d) for d in sp["worlds"].values()]
+        # 2. Make every world that is about to be replaced durable. A failed checkpoint pauses the game (DURABILITY.md)
+        #    and raises here, with every current world still in place.
+        for w in staged:
+            if w.id in self.worlds:
+                self._flush_events(self.worlds[w.id])
+        # 3. One transaction: each restored world's carried events (under the timeline they happened in), its first
+        #    checkpoint in its new timeline and its active pointer, and the sandbox mark. If it fails, storage still
+        #    points at the checkpoints of step 2 and the worlds in memory are those same worlds.
+        entries = []
+        for w in staged:
+            identity, carried, mark = (w.id, w.uuid, w.epoch), list(w.events), w.seq
+            w.fork_epoch(reason)
+            entries.append({"identity": identity, "carried": carried, "world": w.to_dict(),
+                            "events": [e for e in w.events if e.seq > mark]})
+        reasons = json.loads(self.store.get_meta("sandbox_reasons") or "[]") + [reason]
+        self.store.save_worlds(entries, {"sandbox_modified": "1", "sandbox_reasons": json.dumps(reasons[-50:])})
+        # 4. Committed: only now do the restored worlds replace the running ones.
+        self.stop_skip()  # (a skip was looking for news in the worlds that have just been replaced)
+        for w in staged:
+            w._stored_seq, w._durable_tick = w.seq, w.tick
             self._attach(w)
+            self.save_errors.pop(w.id, None)
         self.gen += 1
-        self.save_all()
+        try:
+            self.write_manifest()
+        except Exception as e:  # (the mark is already committed in the store; the file copy follows at the next write)
+            log.error("could not write the manifest after a restore: %s", e)
         self._broadcast_snapshots()
         return True
 

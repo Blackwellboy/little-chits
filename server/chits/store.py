@@ -122,24 +122,40 @@ class Store:
 
     def save_world(self, world_dict: Dict[str, Any], keep: int = 6, *, events=None, outcomes=None,
                    outcome_ticks: int = OUTCOME_TICKS) -> None:
+        with self.lock, self.db:
+            self._write_world(world_dict, keep, events, outcomes, outcome_ticks)
+
+    def save_worlds(self, entries: List[Dict[str, Any]], meta: Optional[Dict[str, str]] = None) -> None:
+        """Several worlds' checkpoints as ONE transaction (a save-point restore): for each entry the events its
+        snapshot carried (`carried`, stored under `identity`, the timeline they happened in), the snapshot `world`,
+        its new `events` and its active pointer; and the run's `meta`. All of it commits, or none of it does."""
+        with self.lock, self.db:
+            for e in entries:
+                if e.get("carried"):
+                    self._insert_events(e["identity"], e["carried"])
+                self._write_world(e["world"], 6, e.get("events"), None, OUTCOME_TICKS)
+            for key, value in (meta or {}).items():
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+
+    def _write_world(self, world_dict: Dict[str, Any], keep: int, events, outcomes, outcome_ticks: int) -> None:
+        """One checkpoint's rows. The caller holds the lock and the transaction."""
         blob = gzip.compress(json.dumps(world_dict, separators=(",", ":")).encode(), 1)  # level 5 took twice as long for 25% less
         wid, tick = world_dict["id"], world_dict["tick"]
         identity = (wid, world_dict.get("uuid", ""), world_dict.get("epoch", ""))
-        with self.lock, self.db:
-            self.db.execute("INSERT OR REPLACE INTO snapshots (world_id,tick,data,world_uuid,epoch) VALUES (?,?,?,?,?)",
-                            (wid, tick, blob, identity[1], identity[2]))
-            self.db.execute("DELETE FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? AND tick NOT IN "
-                            "(SELECT tick FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? ORDER BY tick DESC LIMIT ?)",
-                            (*identity, *identity, keep))
-            self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
-                            ("active_snapshot:" + wid, json.dumps([identity[1], identity[2], tick])))
-            if events:
-                self._insert_events(identity, events)
-            if outcomes:
-                self.db.executemany("INSERT INTO action_outcomes VALUES (?,?,?,?)",
-                                    [(wid, x["tick"], x.get("plan_id"), json.dumps(x)) for x in outcomes])
-                # every finished step is a row: two 60-chit worlds wrote tens of MB a day
-                self.db.execute("DELETE FROM action_outcomes WHERE world_id=? AND tick<?", (wid, tick - outcome_ticks))
+        self.db.execute("INSERT OR REPLACE INTO snapshots (world_id,tick,data,world_uuid,epoch) VALUES (?,?,?,?,?)",
+                        (wid, tick, blob, identity[1], identity[2]))
+        self.db.execute("DELETE FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? AND tick NOT IN "
+                        "(SELECT tick FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? ORDER BY tick DESC LIMIT ?)",
+                        (*identity, *identity, keep))
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
+                        ("active_snapshot:" + wid, json.dumps([identity[1], identity[2], tick])))
+        if events:
+            self._insert_events(identity, events)
+        if outcomes:
+            self.db.executemany("INSERT INTO action_outcomes VALUES (?,?,?,?)",
+                                [(wid, x["tick"], x.get("plan_id"), json.dumps(x)) for x in outcomes])
+            # every finished step is a row: two 60-chit worlds wrote tens of MB a day
+            self.db.execute("DELETE FROM action_outcomes WHERE world_id=? AND tick<?", (wid, tick - outcome_ticks))
 
     def load_world(self, world_id: str) -> Optional[Dict[str, Any]]:
         with self.lock:
