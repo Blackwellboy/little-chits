@@ -125,6 +125,7 @@ class Runtime:
             self.contract = "play"
         self.run_id = self.store.get_meta("run_id") or uuid.uuid4().hex
         self.contact = (self.store.get_meta("contact") or os.environ.get("CHITS_CONTACT", "0")) in ("1", "true")
+        self.pack: Optional[Dict[str, Any]] = self._starting_pack()  # a content pack: every world of the match gets it
         self.mind.strict = self.contract == "experiment"
         self.mind.on_decision = self.store.save_decision
         self.worlds: Dict[str, World] = {}
@@ -174,6 +175,47 @@ class Runtime:
             self.mind.world_brain.setdefault(wid, "env")
         self.mind.world_brain.update({"A": "env", "B": "env"})
 
+    def _starting_pack(self) -> Optional[Dict[str, Any]]:
+        """The content pack this game's worlds are made with (docs/modding.md). The game remembers its own choice
+        (the store's "pack", written when a match is made); only a data directory that has never held a match takes
+        the pack named by CHITS_PACK. A pack that doesn't pass validation stops the start, with the reason."""
+        from .sim import packs
+
+        kept = self.store.get_meta("pack")
+        if kept is not None:
+            return packs.validate(json.loads(kept), check_base=False) if kept else None
+        path = os.environ.get("CHITS_PACK", "").strip()
+        pack = None
+        if path and self.store.get_meta("run_id") is None and not any(
+                self.store.get_meta("active_snapshot:" + wid) for wid in ("A", "B")):
+            pack = packs.load_file(path)
+            log.info("content pack %s (%s) from CHITS_PACK", pack["id"], pack["sha256"][:12])
+        if self.contract_of_store() == "experiment":
+            pack = None
+        self.store.set_meta("pack", json.dumps(pack) if pack else "")
+        return pack
+
+    def contract_of_store(self) -> str:
+        return self.store.get_meta("contract") or "play"
+
+    def _new_pack(self, pack: Optional[Dict[str, Any]], contract: str) -> Optional[Dict[str, Any]]:
+        """The pack a new match will use. `pack` None keeps the current one, {} means none, anything else is a raw
+        pack to validate. An experiment run takes no pack: nothing but the intended flags may differ from the base
+        game, and a pack is not part of any sealed protocol yet."""
+        from .sim import packs
+
+        if pack is None:
+            new = self.pack
+        elif not pack:
+            new = None
+        else:
+            if len(json.dumps(pack)) > 4 * packs.MAX_BYTES:
+                raise packs.PackError(f"content pack refused: larger than {packs.MAX_BYTES // 1024} KiB")
+            new = packs.validate(pack)
+        if new and contract == "experiment":
+            raise ValueError("a content pack is not allowed in an experiment run: start the experiment without a pack")
+        return new
+
     def load_or_create(self) -> None:
         for wid in MODES[self.mode]["worlds"]:
             try:
@@ -217,7 +259,7 @@ class Runtime:
         # so the only thing that differs is the mind (or, in "culture" mode, one recorded law)
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
-        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label)
+        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack)
         self._attach(w)
         return w
 
@@ -241,13 +283,17 @@ class Runtime:
 
     def reset(self, seed: Optional[int] = None, chits: Optional[int] = None, size: Optional[int] = None,
               mode: Optional[str] = None, brains: Optional[Dict[str, str]] = None,
-              contract: Optional[str] = None, contact: Optional[bool] = None) -> None:
+              contract: Optional[str] = None, contact: Optional[bool] = None,
+              pack: Optional[Dict[str, Any]] = None) -> None:
         """Start a new match (see _reset). The loop stops stepping meanwhile: it used to keep stepping the old
-        worlds, so the new A and B started ticks apart and old decisions landed in the new run's records."""
+        worlds, so the new A and B started ticks apart and old decisions landed in the new run's records.
+        `pack`: a content pack for the new match (None keeps the current one, {} plays without)."""
         self._check_reset(mode, contract, contact)  # a rejected reset leaves the running match untouched
+        new_pack = self._new_pack(pack, contract or self.contract)  # (so does a pack that doesn't validate)
         self._resetting = True
         try:
             self.mind.new_match()
+            self.pack = new_pack
             self._reset(seed, chits, size, mode, brains, contract, contact)
         finally:
             self._resetting = False
@@ -298,7 +344,8 @@ class Runtime:
         self.gen += 1
         self.recorder.new_run()
         for k, v in (("contract", contract), ("run_id", self.run_id), ("contact", "1" if new_contact else "0"),
-                     ("sandbox_modified", "0"), ("sandbox_reasons", "[]"), ("skips", "[]")):
+                     ("sandbox_modified", "0"), ("sandbox_reasons", "[]"), ("skips", "[]"),
+                     ("pack", json.dumps(self.pack) if self.pack else "")):
             self.store.set_meta(k, v)
         if mode:
             self.mode = normalize_mode(mode)
@@ -369,6 +416,7 @@ class Runtime:
                 "source_commit": source_commit(),
                 "code_stretches": json.loads(self.store.get_meta("code_stretches") or "[]"),
                 "pacing": self.pace_to_brain, "contact": self.contact,
+                "pack": self.pack_info(),  # content that is not the base game's, by id and sha256 (None: none)
                 "first_contact_tick": int(self.store.get_meta("first_contact_tick") or 0) or None,
                 "valid": not bool(self.invalid_reason), "invalid_reason": self.invalid_reason or None,
                 "experiment_ended": json.loads(self.store.get_meta("experiment_ended") or "null"),
@@ -377,6 +425,18 @@ class Runtime:
                 "sandbox_reasons": json.loads(self.store.get_meta("sandbox_reasons") or "[]"),
                 # ⏩ stretches a player skipped through at full speed: mostly instinct-driven (see start_skip)
                 "skips": json.loads(self.store.get_meta("skips") or "[]")}
+
+    def pack_info(self) -> Optional[Dict[str, Any]]:
+        """The content pack of this match as the worlds themselves carry it (the same in every world, or it says so)."""
+        from .sim import packs
+
+        seen = {wid: packs.describe(getattr(w, "pack", None)) for wid, w in self.worlds.items()}
+        infos = list(seen.values())
+        if not infos:
+            return packs.describe(self.pack)
+        if any(i != infos[0] for i in infos):  # (never by design: every world is made with the match's one pack)
+            return {"mismatch": {wid: (i or {}).get("sha256") for wid, i in seen.items()}}
+        return infos[0]
 
     def write_manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:
         m = self.manifest(chits)
@@ -1386,7 +1446,8 @@ class Runtime:
 
     def hello(self) -> Dict[str, Any]:
         return {"type": "hello", "worlds": [views.world_meta(w) for w in self.worlds.values()],
-                "control": self.control_state(), "brains": self.brain_summary(), "theme": theme.active()}
+                "control": self.control_state(), "brains": self.brain_summary(), "theme": theme.active(),
+                "pack": self.pack_info()}
 
     def status_msg(self) -> str:
         return json.dumps({"type": "status", "control": self.control_state(), "brains": self.brain_summary()},
@@ -1397,6 +1458,7 @@ class Runtime:
         while True:
             await asyncio.sleep(0.125)
             n += 1
+            self.recorder.tend()  # disk housekeeping on the wall clock: it must run while the world is paused too
             try:
                 frames = [self.frame(w) for w in self.worlds.values()]
             except Exception as e:  # never let presentation kill the broadcaster

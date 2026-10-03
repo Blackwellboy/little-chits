@@ -68,13 +68,14 @@ def store_cap(st) -> int:
     return STORE_CAP.get(st.design, STOCKPILE_CAP)
 
 
-def stockpile_room(st, item: Optional[str] = None) -> int:
-    """How many more of `item` (or of any material, if None) this stockpile will take."""
+def stockpile_room(st, item: Optional[str] = None, catalog=None) -> int:
+    """How many more of `item` (or of any material, if None) this stockpile will take. `catalog`: the world's, so
+    that a content pack's food counts as food here too."""
     cap = store_cap(st)
     space = cap - sum(st.storage.values())
-    if item is not None and item in FOODS:
+    if item is not None and is_food(item, catalog):
         return max(0, space)
-    goods = sum(n for k, n in st.storage.items() if k not in FOODS)
+    goods = sum(n for k, n in st.storage.items() if not is_food(k, catalog))
     return max(0, min(space, int(cap * GOODS_SHARE) - goods))
 SIGN_SYMBOLS = ("food", "wood", "stone", "clay", "ore", "fish", "danger", "home", "build", "meet")
 SIGN_ALIASES = {"berries": "food", "berry": "food", "warning": "danger", "gather": "meet", "copper": "ore",
@@ -87,9 +88,21 @@ CAMP_SLEEP, CAMP_FAR = 12, 30  # a chit this far from home sleeps at an outpost 
 FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "fish", "berries", "grain")
 
 
+def is_food(key: str, catalog=None) -> bool:
+    """Food as the stores see it: the base foods, and a content pack's items that feed (sim/packs.py). Without a
+    pack this is exactly `key in FOODS`. (Invented dishes are left as they were: stored as goods.)"""
+    if key in FOODS:
+        return True
+    packed = catalog.pack_items.get(key) if catalog is not None and catalog.pack_items else None
+    return packed is not None and packed.food > 0 and key not in ITEMS
+
+
 def food_items(a: Agent) -> List[str]:
     # a world's own invented dishes (T20) count as food too; they're filling, so they go first
-    mine = [k for k, n in a.inventory.items() if n > 0 and k.startswith("inv_") and (it := a._item(k)) and it.food > 0]
+    # (and so does food from a content pack, sim/packs.py)
+    packed = a.catalog.pack_items if a.catalog is not None else {}
+    mine = [k for k, n in a.inventory.items() if n > 0 and (k.startswith("inv_") or k in packed)
+            and (it := a._item(k)) and it.food > 0]
     return mine + [f for f in FOODS if a.inventory.get(f, 0) > 0]
 
 
@@ -254,7 +267,7 @@ def _reflexes(world, a: Agent) -> None:
 
 def _stockpile_with_room(world, a: Agent):
     for p in world.structures_near(a.x, a.y, 25, "stockpile"):
-        if p.functional and stockpile_room(p) > 10 and a.reflex_rest.get("unreach:" + p.id, 0) <= world.tick:
+        if p.functional and stockpile_room(p, None, world.catalog) > 10 and a.reflex_rest.get("unreach:" + p.id, 0) <= world.tick:
             return p
     return None
 
@@ -1024,7 +1037,7 @@ def _spare_load(world, a: Agent, keep) -> int:
         it = world.item(k)
         if it is None or it.tool or it.carry_bonus or k in keep:
             continue
-        w += it.weight * max(0, n - (2 if k in FOODS else 0))
+        w += it.weight * max(0, n - (2 if is_food(k, world.catalog) else 0))
     return w
 
 
@@ -1155,7 +1168,7 @@ def plan_bill(world, a: Agent, kinds: Optional[Set[str]] = None, target=None, pr
                 continue
             # the goods need somewhere to go: kiln shifts into full stores left chits holding 22 charcoal, and some
             # starved beside the grain with no hand free to take it
-            n = min(n, sum(stockpile_room(p, r.key) for p in piles) // r.qty)
+            n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
             if n < 1:
                 full.append(world.item_name(r.key))
                 continue
@@ -1373,7 +1386,7 @@ def _do_work(world, a: Agent, step, s) -> str:
     if back and s.get("dest") != "":
         if s.get("dest") is None:
             key = r.key if r.key in back else next(iter(back))
-            piles = [p for p in (_station_piles(world, a, st) if st is not None else []) if stockpile_room(p, key) > 0]
+            piles = [p for p in (_station_piles(world, a, st) if st is not None else []) if stockpile_room(p, key, world.catalog) > 0]
             dest = min(piles, key=lambda p: p.dist(a.x, a.y)) if piles else _stockpile_with_room(world, a)
             s["dest"] = dest.id if dest is not None else ""
             _retarget(a, s)
@@ -1461,7 +1474,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
     for st in tries:
         if st is not None and st not in here:
             continue
-        recipe = match_recipe(bag, st)
+        recipe = world.catalog.match(bag, st)
         if recipe:
             break
     combo = " + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
@@ -1486,7 +1499,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
             s["note"] = f"Made {world.item_name(recipe.key)} from {combo}"
         _observers_learn(world, a, f"recipe:{recipe.key}")
         return DONE
-    hint = _experiment_hint(bag, here | ({station} if station else set()))
+    hint = _experiment_hint(bag, here | ({station} if station else set()), world.catalog.physics())
     key = f"{combo}{where}"
     if key not in a.failed_experiments:
         a.failed_experiments.append(key)
@@ -1520,9 +1533,10 @@ def _do_invent(world, a: Agent, step, s) -> str:
     name = sanitize_name(step.get("name"))
     if not name:
         return "an invention needs a name (\"name\": what you call it)"
-    taken = normalize_item(name) or normalize_design(name) or world.invention_by_name(name)
+    taken = (normalize_item(name) or normalize_design(name) or world.invention_by_name(name)
+             or world.catalog.pack_key(name))
     if taken:  # otherwise "wood" or "spear" would mean the invention for everyone here from now on
-        return f"the name {name} is already taken by {world.item_name(taken) if normalize_item(name) or world.invention_by_name(name) else DESIGNS[taken].name}: give it a new name"
+        return f"the name {name} is already taken by {world.item_name(taken) if normalize_item(name) or world.invention_by_name(name) or world.catalog.pack_key(name) else DESIGNS[taken].name}: give it a new name"
     purpose_text = str(step.get("purpose") or "").strip()
     a.activity = "inventing"
     a.set_emote("💡", world.tick, 4)
@@ -1648,8 +1662,6 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
     """{"do":"trade","at":"stores"}: a trader from over the sea swaps its load at this village's stores for goods of
     the same worth (a silent trade, as between peoples with no common tongue: it works in any culture), preferring what
     it has never had."""
-    from .items import base_value
-
     if not a.origin or a.voyage_intent != "trade":
         return "only a trader from over the sea barters at the stores"
     if a.stats.get("traded_trip"):
@@ -1671,6 +1683,7 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
         return "couldn't reach the stores"
     if mv != "arrived":
         return RUNNING
+    base_value = world.catalog.value  # (a content pack's goods are worth what goes into them)
     worth = sum(base_value(k) * n for k, n in load.items())
     wares = sorted(((k, n) for k, n in pile.storage.items() if n > 0 and k not in load),
                    key=lambda kn: (kn[0] in a.familiar, -base_value(kn[0]), kn[0]))
@@ -1985,10 +1998,12 @@ def sanitize_name(raw: Any) -> Optional[str]:
     return s
 
 
-def _experiment_hint(bag: Dict[str, int], stations: Set[str]) -> str:
-    """Physical feedback: the world 'feels' close without revealing recipes."""
+def _experiment_hint(bag: Dict[str, int], stations: Set[str], recipes: Optional[List[Any]] = None) -> str:
+    """Physical feedback: the world 'feels' close without revealing recipes. `recipes`: this world's physics (the
+    base recipes, then a content pack's)."""
     have = set(bag)
-    for r in RECIPES.values():
+    recipes = list(RECIPES.values()) if recipes is None else recipes
+    for r in recipes:
         need = dict(r.inputs)
         if need == bag and r.station and r.station not in stations:
             return {"fire": "It felt like it needed heat.", "kiln": "It needed far more heat than a campfire gives.",
@@ -1997,7 +2012,7 @@ def _experiment_hint(bag: Dict[str, int], stations: Set[str]) -> str:
                     "forge": "It needed a blast of heat beyond any furnace.",
                     "factory": "This needs machines, not hands.",
                     "mill": "It wanted grinding: a millstone might do it."}.get(r.station, "")
-    for r in RECIPES.values():
+    for r in recipes:
         need = dict(r.inputs)
         if have < set(need) and all(bag[k] <= need[k] for k in bag):
             return "The pieces seemed to want something more."
@@ -2047,7 +2062,7 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
             s["note"] = f"There was an empty farm close by ({empty.id}); I sowed it instead of making another"
             return _redirect(world, a, s)
         return None  # every farm nearby is sown: a new one is fine
-    if key == "stockpile" and any(stockpile_room(x) > 20 for x in near if x.functional):
+    if key == "stockpile" and any(stockpile_room(x, None, world.catalog) > 20 for x in near if x.functional):
         s["note"] = "There's a stockpile with room close by already"
         return DONE
     if key in ("shrine", "kiln", "workshop", "furnace", "library") or key in BLD.REUSE_WITHIN:
@@ -2278,7 +2293,7 @@ def _do_help(world, a: Agent, step, s) -> str:
 def _do_store(world, a: Agent, step, s) -> str:
     st = None
     if not step.get("target") and not s.get("pile"):
-        st = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and stockpile_room(x) > 0), None)
+        st = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and stockpile_room(x, None, world.catalog) > 0), None)
         if st:
             s["pile"] = st.id
     st = st or world.structures.get(s.get("pile") or "") or \
@@ -2305,7 +2320,7 @@ def _do_store(world, a: Agent, step, s) -> str:
         for k, n in a.inventory.items():
             if world.item(k).tool or world.item(k).carry_bonus:
                 continue
-            keep = 2 if k in FOODS else 0
+            keep = 2 if is_food(k, world.catalog) else 0  # (a bite stays in hand)
             if n > keep:
                 items[k] = n - keep
     else:
@@ -2315,16 +2330,17 @@ def _do_store(world, a: Agent, step, s) -> str:
         items[k] = min(a.inventory[k], _qty(step, a.inventory[k], 1, 99))
     space = store_cap(st) - sum(st.storage.values())
     # a stockpile keeps room for food: materials may fill at most GOODS_SHARE of it
-    goods_room = stockpile_room(st)
+    goods_room = stockpile_room(st, None, world.catalog)
     stored = []
-    for k, n in sorted(items.items(), key=lambda kv: kv[0] not in FOODS):  # food first
-        n = min(n, space if k in FOODS else min(space, goods_room))
+    food = {k: is_food(k, world.catalog) for k in items}
+    for k, n in sorted(items.items(), key=lambda kv: not food[kv[0]]):  # food first
+        n = min(n, space if food[k] else min(space, goods_room))
         if n <= 0:
             continue
         a.remove(k, n)
         st.storage[k] = st.storage.get(k, 0) + n
         space -= n
-        if k not in FOODS:
+        if not food[k]:
             goods_room -= n
         stored.append(f"{n} {world.item_name(k)}")
     world.dirty_struct.add(st.id)
@@ -2334,7 +2350,7 @@ def _do_store(world, a: Agent, step, s) -> str:
         tried = s.setdefault("tried", [])
         tried.append(st.id)
         other = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and x.id not in tried
-                      and stockpile_room(x) > 0 and world.same_land(a, x)), None) if items else None
+                      and stockpile_room(x, None, world.catalog) > 0 and world.same_land(a, x)), None) if items else None
         if other is not None and len(tried) < 3:
             s["pile"] = other.id
             step.pop("target", None)
@@ -2488,6 +2504,8 @@ def _knowledge_key(raw: Any, world=None) -> Optional[str]:
         k = k.strip().replace(" ", "_")
         if (kind == "recipe" and k in RECIPES) or (kind == "design" and k in DESIGNS):
             return f"{kind}:{k}"
+        if kind == "recipe" and world is not None and k in world.catalog.pack_recipes:
+            return f"recipe:{k}"
         r = k
     for p in ("how to make ", "how to build ", "making ", "building ", "a ", "the "):
         if r.startswith(p):
@@ -2495,6 +2513,8 @@ def _knowledge_key(raw: Any, world=None) -> Optional[str]:
     it = normalize_item(r)
     if it and it in RECIPES:
         return f"recipe:{it}"
+    if it is None and world is not None and world.catalog.pack_key(r) in world.catalog.pack_recipes:
+        return f"recipe:{world.catalog.pack_key(r)}"  # (a content pack's recipe, by key or name)
     d = normalize_design(r)
     if d:
         return f"design:{d}"

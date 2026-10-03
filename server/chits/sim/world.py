@@ -211,7 +211,7 @@ class Event:
 
 class World:
     def __init__(self, world_id: str, name: str, seed: int, culture: str = "direct", size: int = 128,
-                 n_agents: int = 18, label: str = ""):
+                 n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None):
         self.id = world_id
         self.name = name
         self.label = label or name
@@ -252,6 +252,9 @@ class World:
         self.signs_dirty = False
         self.culture_names: Dict[str, str] = {}  # knowledge key -> this world's own name for it (T05)
         self.catalog = Catalog()  # this world's items: its own inventions, then the shared base physics (T20)
+        self.pack: Optional[Dict[str, Any]] = None  # a content pack (sim/packs.py): extra items and recipes, data only
+        if pack is not None:
+            self.apply_pack(pack)
         self.inventions: Dict[str, Dict[str, Any]] = {}
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
@@ -330,6 +333,14 @@ class World:
     def item_name(self, key: str) -> str:
         return item_name(key, self.catalog)
 
+    def apply_pack(self, pack: Dict[str, Any], check_base: bool = True) -> None:
+        """Give this world a content pack's items and recipes. It is validated here too (a pack is untrusted input,
+        whoever hands it over), draws no random numbers and never touches the shared base tables."""
+        from . import packs
+
+        self.pack = packs.validate(pack, check_base=check_base)
+        packs.apply(self.catalog, self.pack)
+
     def invention_by_name(self, text: Any) -> Optional[str]:
         """An invention of this world, by key or by its local name (case-insensitive)."""
         if not text:
@@ -349,7 +360,8 @@ class World:
     def norm_item(self, raw: Any) -> Optional[str]:
         """Free text -> an item key: this world's inventions, then its local names for things ("stoneaxe"
         for sharp stone, shown to chits in their prompts) when it isn't a base item's name ("Stone" stays stone)."""
-        return self.invention_by_name(raw) or normalize_item(raw) or self.culture_item(raw)
+        return (self.invention_by_name(raw) or normalize_item(raw) or self.catalog.pack_key(raw)
+                or self.culture_item(raw))
 
     def culture_item(self, raw: Any) -> Optional[str]:
         low = " ".join(str(raw or "").strip().lower().split())
@@ -559,7 +571,7 @@ class World:
     # ------------------------------------------------------------------ trade and money (T25)
     def value_for(self, a: Agent, key: str) -> float:
         it = self.item(key)
-        v = base_value(key)
+        v = self.catalog.value(key)
         if it and it.food > 0 and a.hunger < 50:
             v *= 2.5
         if it and it.tool and a.best_tool(it.tool) is None:
@@ -1887,6 +1899,12 @@ class World:
         }
 
     def to_dict(self) -> Dict[str, Any]:
+        d = self._to_dict()
+        if self.pack:  # (only then: a world without a pack saves exactly as it always did)
+            d["pack"] = self.pack
+        return d
+
+    def _to_dict(self) -> Dict[str, Any]:
         return {
             "id": self.id, "name": self.name, "label": self.label, "seed": self.seed, "culture": self.culture,
             "terrain_version": self.terrain_version,
@@ -1949,6 +1967,9 @@ class World:
         w.deliveries = deque(d.get("deliveries") or [], maxlen=3000)
         w.culture_names = dict(d.get("culture_names") or {})
         w.catalog = Catalog()
+        w.pack = None
+        if d.get("pack"):  # (its keys were checked against the base tables when the world was made)
+            w.apply_pack(d["pack"], check_base=False)
         w.inventions = dict(d.get("inventions") or {})
         w.beliefs = dict(d.get("beliefs") or {})
         w.era_index = int(d.get("era_index", 0))

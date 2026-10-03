@@ -307,6 +307,8 @@ button.danger { color: var(--bad); }
 .test-report button { margin-left: 6px; padding: 1px 8px; font-size: 11px; border-radius: 6px; }
 .nw-strict { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .nw-strict b { color: var(--text); }
+.nw-pack { font-size: 12px; margin: 0 0 12px; }
+.nw-pack p { margin: 4px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
 .badge.exp { color: #9fe0ff; border-color: rgba(120,200,255,0.4); }
 .badge.mod { color: #e7b6ff; border-color: rgba(220,160,255,0.4); }
@@ -426,6 +428,14 @@ button.danger { color: var(--bad); }
 .rec-switch { display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .rec-state { font-size: 12px; color: var(--muted); }
 .rec-state.on { color: #ff6b6b; }
+.rec-disk { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 4px 0 10px; font-size: 12px; }
+.rec-meter { flex: 1 1 160px; max-width: 260px; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.rec-meter > div { height: 100%; background: #7fd18b; }
+.rec-meter.over > div { background: #ff6b6b; }
+.rec-disk label { display: flex; align-items: center; gap: 6px; }
+.rec-disk input { width: 64px; }
+.rec-disk input.bad { outline: 1px solid #ff6b6b; }
+.rec-disk small { flex-basis: 100%; }
 .rec-run h3 { text-transform: none; letter-spacing: 0; font-size: 13px; }
 .rec-items { display: flex; flex-wrap: wrap; gap: 6px; }
 .rec-items button, .rec-moments button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12px; color: var(--text); }

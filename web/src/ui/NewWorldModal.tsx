@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
+import { packForReset, packLabel, readPackText, type PackInfo } from "./packFile";
 import { Advice, adviceLine, clampChits, followAdvice } from "./sizing";
 
 /** Start a brand-new pair of worlds: new island (seed), population and map size. */
@@ -18,6 +19,23 @@ export function NewWorldModal() {
   const [strict, setStrict] = useState(false);
   const [contact, setContact] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // 📦 content pack: null keeps the running game's, "none" plays without, an object is a pack the server has checked
+  const [packNow, setPackNow] = useState<PackInfo | null>(null);
+  const [packChoice, setPackChoice] = useState<Record<string, unknown> | "none" | null>(null);
+  const [packInfo, setPackInfo] = useState<PackInfo | null>(null);
+  const [packErr, setPackErr] = useState("");
+  const pickPack = async (file: File | undefined) => {
+    setPackErr("");
+    if (!file) return;
+    const read = readPackText(await file.text());
+    if (!read.ok) { setPackErr(read.error); return; }
+    try {
+      const r = await api<{ pack: PackInfo }>("/api/pack/check", { pack: read.pack });
+      setPackChoice(read.pack); setPackInfo(r.pack);
+    } catch (e: any) {
+      setPackErr(String(e.message || e));
+    }
+  };
   const [scanMsg, setScanMsg] = useState("");
   const loadBrains = async () => {
     const s = await api("/api/brains");
@@ -54,6 +72,8 @@ export function NewWorldModal() {
   };
   useEffect(() => {
     if (!newWorldOpen) return;
+    setPackChoice(null); setPackInfo(null); setPackErr("");
+    api<{ pack: PackInfo | null }>("/api/pack").then((r) => setPackNow(r.pack)).catch(() => setPackNow(null));
     loadBrains().then((s) => {
       setPick({ A: s.assign?.A ?? "instinct", B: s.assign?.B ?? "instinct" });
       if (!(s.brains ?? []).some((b: any) => b.config.enabled)) findModels();
@@ -86,7 +106,7 @@ export function NewWorldModal() {
     setBusy(true); setErr("");
     try {
       await api("/api/reset", { seed: seed.trim() ? parseInt(seed, 10) : Math.floor(Math.random() * 1e6), chits, size, mode, contract: strict ? "experiment" : "play", contact: mode !== "single" && !strict && contact,
-        brains: mode === "single" ? { A: pick.A } : { A: pick.A, B: pick.B } });
+        brains: mode === "single" ? { A: pick.A } : { A: pick.A, B: pick.B }, pack: packForReset(packChoice, strict) });
       set({ newWorldOpen: false, selected: null, follow: false });
     } catch (e: any) {
       setErr(String(e.message || e));
@@ -140,6 +160,24 @@ export function NewWorldModal() {
               <option value={512}>Giant · 512² (4× large)</option>
             </select>
           </label>
+        </div>
+        <div className="nw-pack">
+          <b>📦 Content pack</b> <span className="muted">optional: a JSON file that adds items and recipes to this game
+            (see docs/modding.md). Every world gets the same pack.</span>
+          <p>
+            {strict ? "An experiment runs without a pack."
+              : packChoice === "none" ? "This game: no pack."
+              : packChoice ? `This game: ${packLabel(packInfo)}.`
+              : `This game: ${packLabel(packNow)}${packNow ? " (kept from the current game)" : ""}.`}
+          </p>
+          {!strict && (
+            <p>
+              <input type="file" accept=".json,application/json" onChange={(e) => pickPack(e.target.files?.[0])} />
+              {(packChoice && packChoice !== "none" || (!packChoice && packNow)) &&
+                <button onClick={() => { setPackChoice("none"); setPackInfo(null); setPackErr(""); }}>No pack</button>}
+            </p>
+          )}
+          {packErr && <p className="err">{packErr}</p>}
         </div>
         {sizing.text && (
           <p className={`nw-sizing ${sizing.level}`}>
