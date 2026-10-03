@@ -2,11 +2,12 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
 import { api } from "../net/socket";
 import { useUI } from "../state/store";
+import { CAP_MAX_GB, CAP_MIN_GB, diskMeter, parseCapGb, type RecorderStorage } from "./diskMeter";
 
 export type RecorderStatus = {
   enabled: boolean; recording: boolean; interval_ms: number; fps: number; aspect: string; world: string;
   frames_waiting: number; encoding: number; last_clip: string; last_error: string; run: string; missing: string[];
-  moments: boolean; filming: string; moments_waiting: number;
+  moments: boolean; filming: string; moments_waiting: number; retention_gb?: number; storage?: RecorderStorage;
 };
 type Item = { day?: number; week?: number; story: string; clip: string | null };
 /** a big event filmed close up at live speed (recorder.py Moments) */
@@ -46,6 +47,7 @@ export function RecordingsModal() {
   const [moment, setMoment] = useState<{ run: string; m: Moment } | null>(null);
   const [story, setStory] = useState("");
   const [busy, setBusy] = useState(false);
+  const [capText, setCapText] = useState<string | null>(null);  // the cap while it is being typed
   const load = () => {
     api<RecorderStatus>("/api/recorder").then(setSt).catch(() => {});
     api<Run[]>("/api/recordings").then(setRuns).catch(() => {});
@@ -67,6 +69,12 @@ export function RecordingsModal() {
     try { setSt(await api<RecorderStatus>("/api/recorder", patch)); } finally { setBusy(false); }
   };
   const close = () => { set({ recordingsOpen: false }); setOpen(null); setMoment(null); };
+  const meter = st?.storage ? diskMeter(st.storage) : null;
+  const newCap = capText === null ? null : parseCapGb(capText);
+  const saveCap = async () => {
+    if (newCap !== null && meter && newCap !== meter.capGb) await toggle({ retention_gb: newCap });
+    setCapText(null);
+  };
   const label = (i: Item) => (i.week ? `Week ${i.week}` : `Day ${i.day}`);
   const pick = (run: string, item: Item) => { setMoment(null); setOpen({ run, item }); };
   const pickMoment = (run: string, m: Moment) => { setOpen(null); setMoment({ run, m }); };
@@ -106,6 +114,26 @@ export function RecordingsModal() {
             </span>
           </div>
         )}
+        {meter && (
+          <div className="rec-disk">
+            <div className={`rec-meter ${meter.over ? "over" : ""}`} role="meter" aria-label="Disk used by recordings"
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={meter.percent}>
+              <div style={{ width: `${meter.percent}%` }} />
+            </div>
+            <span><b>{meter.used}</b> used of <b>{meter.cap}</b> · {meter.free} free on the disk</span>
+            <label title="When recordings pass this size, the oldest clips are deleted. The written stories are kept.">
+              Limit
+              <input type="number" min={CAP_MIN_GB} max={CAP_MAX_GB} step={1} disabled={busy}
+                className={capText !== null && newCap === null ? "bad" : ""}
+                value={capText ?? String(meter.capGb)} onChange={(e) => setCapText(e.target.value)}
+                onBlur={saveCap} onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+              GB
+            </label>
+            <small className="muted">Past the limit, the oldest clips are deleted. Stories are kept.
+              {capText !== null && newCap === null && ` Type a number from ${CAP_MIN_GB} to ${CAP_MAX_GB}.`}</small>
+          </div>
+        )}
+        {st?.storage?.warning && <small className="err">{st.storage.warning}</small>}
         {st?.last_error && <small className="err">{st.last_error}</small>}
 
         {runs.length === 0 && <p className="muted">Nothing recorded yet. Switch on auto-record: the first clip appears when the current in-game day ends.</p>}

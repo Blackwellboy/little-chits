@@ -1077,6 +1077,7 @@ class Runtime:
         while True:
             await asyncio.sleep(0.125)
             n += 1
+            self.recorder.tend()  # disk housekeeping on the wall clock: it must run while the world is paused too
             try:
                 frames = [self.frame(w) for w in self.worlds.values()]
             except Exception as e:  # never let presentation kill the broadcaster

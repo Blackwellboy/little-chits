@@ -249,6 +249,10 @@ recording after a restart until you switch it off, and it needs the same `ffmpeg
 Under WSL it films at 720p in software (no GPU), which uses under half a CPU core; the clips are scaled up
 to 1080p.
 
+Recording is off until you switch it on, and it has a disk limit: 5 GB on a new install. The 🎞 panel shows
+how much is used, the limit and the free space, and you can change the limit there. Past the limit the oldest
+clips are deleted; the written stories are kept. Filming pauses while the disk has less than 2 GB free.
+
 **A finished MP4 in one command.** This timelapses the running game into a clip (it needs `ffmpeg`, which
 you can install with `sudo apt install ffmpeg`, and Playwright, which you can install with
 `cd web && npm i -D playwright && npx playwright install chromium`):
