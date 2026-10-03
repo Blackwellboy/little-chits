@@ -31,3 +31,31 @@ def test_queued_requests_are_given_up_once_the_server_is_known_to_be_down():
     assert len(sent) == 3  # three real failures start the back-off...
     assert sum(isinstance(r, ModelCoolingDown) for r in res) == 7  # ...and the other seven are not sent at all
     assert b.stats.skipped == 7 and b.stats.failed == 3
+
+
+def test_the_test_button_asks_a_switched_off_or_cooling_brain():
+    # the health gate kept the Test button from ever reaching the server of a brain that was off or backing off,
+    # which is when you want to know whether it's back (Codex, #28)
+    import time
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "m"}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": true, "word": "chit"}'},
+                                                       "finish_reason": "stop"}],
+                                         "usage": {"prompt_tokens": 9, "completion_tokens": 9}})
+
+    async def go(off: bool):
+        b = LLMBrain(BrainConfig(id="t", base_url="http://model.test/v1", model="m", enabled=not off))
+        b._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        if not off:
+            b.cooldown_until = time.monotonic() + 60
+        res = await b.test()
+        with pytest.raises(ModelCoolingDown, match="switched off" if off else "cooling down"):
+            await b.chat([{"role": "user", "content": "hi"}], max_tokens=5)  # (play still waits)
+        await b.close()
+        return res
+
+    for off in (True, False):
+        res = asyncio.run(go(off))
+        assert res["ok"], res

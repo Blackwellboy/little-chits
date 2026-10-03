@@ -64,8 +64,10 @@ HALL_PULL = 30  # a hall this near the builder draws them
 PUMP_RADIUS, PUMP_GROWTH = 10, 1.5  # farms this near a steam pump grow faster, and through a drought
 SAW_RADIUS = 12  # wood cut this near a sawmill comes in double
 POWER_RADIUS, POWER_SPEED = 20, 1.5  # station work this near a power station goes faster
+POWERED = ("workshop", "kiln", "furnace", "forge", "mill", "factory")  # (as its blurb says: not the fire, Codex #23)
 LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
+PRESS_READ = 30  # a copy this near a press is one its people can read (a tablet on another island is none)
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
 LIBRARY_REACH, STUDY_MULT = 40, 2.0  # study within this reach of a great library goes twice as far
 AQUEDUCT_RADIUS, AQUEDUCT_GROWTH = 20, 1.3  # farms this near an aqueduct grow faster, and through a drought
@@ -617,13 +619,21 @@ def _mills(world) -> None:
         world.counters["mill_sand"] = world.counters.get("mill_sand", 0) + n
 
 
-def mine_near(world, a: Agent, radius: int = 26, kind: str = "ore"):
-    """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to."""
+PIT_REACH = 30  # a mine or sand pit is sited up to this far from its builder (World.find_site), and used from as far
+
+
+def mine_near(world, a: Agent, radius: int = PIT_REACH, kind: str = "ore"):
+    """The nearest working mine (or, for sand, sand pit) with some in its seam that this chit can walk to; failing
+    that, the nearest whose seam is out for the day, to dig deep (three times the work: a stocked mine a little
+    farther came second to it, Codex #43)."""
+    deep = None
     for s in world.structures_near(a.x, a.y, radius, PIT_OF[kind]):
-        if s.functional and (s.storage.get(kind, 0) > 0 or kind in DEEP_DIG) and world.same_land(a, s) \
-                and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
-            return s
-    return None
+        if s.functional and world.same_land(a, s) and a.reflex_rest.get("unreach:" + s.id, 0) <= world.tick:
+            if s.storage.get(kind, 0) > 0:
+                return s
+            if deep is None and kind in DEEP_DIG:
+                deep = s
+    return deep
 
 
 DEEP_DIG = {"ore": 3.0, "iron_ore": 3.0}  # a mine whose seam is dug out for the day can still be dug, this many times as slowly (#6)
@@ -746,7 +756,7 @@ def craft_speed(world, a: Agent, key: str) -> float:
     if it is not None and it.tool and "metal" in it.props and any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]):
         m = SMITHY_SPEED
     r = world.recipe(key)
-    if r is not None and r.station and powered(world, a.x, a.y):
+    if r is not None and r.station in POWERED and powered(world, a.x, a.y):
         m *= POWER_SPEED
     return m
 
@@ -804,12 +814,16 @@ def _presses(world) -> None:
         return
     keep = lore.keepers(world)
     libs = [s for s in world.structures.values() if s.design in ("library", "great_library") and s.functional]
-    readable = {world.tablets[t].knowledge for lib in libs for t in lib.shelf if t in world.tablets}
-    readable |= {t.knowledge for t in world.tablets.values() if t.in_structure is None}
     for pr in presses:
+        # the copies its own people can read: every shelf and loose tablet on the map counted, so one on another
+        # island kept a press from printing a recipe dying out round it (Codex, #23)
+        readable = {world.tablets[t].knowledge for lib in libs if lib.dist(pr.x, pr.y) <= PRESS_READ
+                    for t in lib.shelf if t in world.tablets}
+        readable |= {t.knowledge for t in world.tablets.values()
+                     if t.in_structure is None and max(abs(t.x - pr.x), abs(t.y - pr.y)) <= PRESS_READ}
         thin = sorted((len(ks), k) for k, ks in keep.items() if len(ks) <= 2 and k not in readable)
         if not thin:
-            return
+            continue
         store = next((p for p in village_stores(world, pr.x, pr.y, PRESS_REACH) if p.storage.get("paper", 0) > 0), None)
         if store is None:
             continue
@@ -827,7 +841,6 @@ def _presses(world) -> None:
         if lib is not None:
             lib.shelf.append(tid)
             world.dirty_struct.add(lib.id)
-        readable.add(k)
         world.emit("printed", f"The printing press printed how to make {world.item_name(key)}"
                    + (" for the library" if lib else ""), 3, None, pr.x, pr.y, structure=pr.id, knowledge=k)
 

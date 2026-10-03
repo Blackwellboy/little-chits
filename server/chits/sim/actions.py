@@ -471,7 +471,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
     if tgt is None or world.res_amt[tgt] <= 0:
         pos = world.nearest_resource(a.x, a.y, kind, 34 if kind in ("berries", "fish") else 26, set(s.setdefault("avoid", [])))
         if pos is None and kind in BLD.PIT_OF:
-            mine = BLD.mine_near(world, a, 26, kind)
+            mine = BLD.mine_near(world, a, BLD.PIT_REACH, kind)  # (26 left pits sited 27-30 away unused, Codex #32)
             if mine is not None:  # the deposits near here are dug out: the mine's seam (or the sand pit)
                 s["mine"] = mine.id
                 return _dig_mine(world, a, s, mine, tool, rule, kind)
@@ -614,7 +614,8 @@ def tool_wear_limit(tool: str) -> int:
 # a metal tool's metal: what mending keeps and smelting gives back (issue #5: worn tools only ever vanished, and in long
 # runs the iron went into replacement axes and picks instead of steel)
 METAL_OF: Dict[str, str] = {k: m for k, r in RECIPES.items() if "metal" in (ITEMS[k].props if k in ITEMS else ())
-                            and ITEMS[k].tool for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
+                            and (ITEMS[k].tool or "tool" in ITEMS[k].props)  # (the plough too, Codex #18)
+                            for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
 MEND_AT, SMELT_AT = "workshop", "furnace"
 
 
@@ -907,9 +908,9 @@ def _do_craft(world, a: Agent, step, s) -> str:
     return RUNNING
 
 
-def _make_one(world, a: Agent, r) -> None:
-    """One batch of recipe r from what the chit carries. What doesn't fit in hand is still made: it's held, over the
-    limit (nothing vanishes silently)."""
+def _make_one(world, a: Agent, r) -> int:
+    """One batch of recipe r from what the chit carries; returns how many it made (a bakery's oven makes two for one).
+    What doesn't fit in hand is still made: it's held, over the limit (nothing vanishes silently)."""
     for k, n in r.inputs:
         a.remove(k, n)
     qty = r.qty * BLD.bake_mult(world, a, r.key)  # (a bakery's oven: two for one)
@@ -919,6 +920,7 @@ def _make_one(world, a: Agent, r) -> None:
     a.made_it_work(f"recipe:{r.key}", world.tick)
     a.practice("crafting", 1.0)
     world.notice_items(a)
+    return qty
 
 
 # ---------------------------------------------------------------------------- production: bills at stations
@@ -1340,12 +1342,15 @@ def _do_work(world, a: Agent, step, s) -> str:
         done = s["worked"] >= WORK_SHIFT * 2  # interrupted too often: call it a shift
         if _work(a, speed, float(r.work)):
             if all(a.inventory.get(k, 0) >= q for k, q in r.inputs):
-                _make_one(world, a, r)
+                q = _make_one(world, a, r)
                 kept_up(world, st, 5)  # a station in use is looked after as it's used
-                s["made"] += 1
-                st.produced[r.key] = st.produced.get(r.key, 0) + r.qty
-                a.bump("produced", r.qty)
-                a.bump(f"produced_{r.key}", r.qty)
+                # goods (a bakery's batch is two for one, Codex #33); a shift saved before they were counted made as
+                # many in each batch so far
+                s["out"] = s.get("out", s["made"] * q) + q
+                s["made"] += 1  # (batches, against the bill's n)
+                st.produced[r.key] = st.produced.get(r.key, 0) + q
+                a.bump("produced", q)
+                a.bump(f"produced_{r.key}", q)
                 _observers_learn(world, a, f"recipe:{r.key}")
             done = done or s["made"] >= s["n"] or not all(a.inventory.get(k, 0) >= q for k, q in r.inputs)
         if not done:
@@ -1354,11 +1359,11 @@ def _do_work(world, a: Agent, step, s) -> str:
         world.dirty_struct.add(st.id)
         if s["made"]:
             a.bump("shifts")
-            _report_work(world, a, st, r, s["made"] * r.qty)
+            _report_work(world, a, st, r, s.get("out", s["made"] * r.qty))
         s["phase"] = "deliver"
         _retarget(a, s)
     # deliver: the goods, and any inputs left over, go into a store beside the station (or stay in hand)
-    made = s["made"] * r.qty
+    made = s.get("out", s["made"] * r.qty)
     stored = s.setdefault("stored", {})
     back = {r.key: min(a.inventory.get(r.key, 0), made)} if made else {}
     for k, n in s["took"].items():
@@ -1701,11 +1706,23 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def _who(world, a: Agent, s, name) -> Optional[Agent]:
+    """The chit called `name` for this action: the nearest namesake, found once and kept. Looked up every tick, a
+    nearer namesake could take over mid-way, and get a lesson nine ticks of which went to the other (Codex, #35)."""
+    key = str(name or "").strip().lower()
+    if s.get("_who") and s.get("_who_name") == key:
+        return world.agents.get(s["_who"])  # (gone: the action fails rather than turning to another of that name)
+    o = world.agent_by_name(name, near=a)
+    if o is not None:
+        s["_who"], s["_who_name"] = o.id, key
+    return o
+
+
 def _do_trade(world, a: Agent, step, s) -> str:
     """Barter (T25): no words needed, so it works in both worlds. The partner judges the deal by what it's worth to them."""
     if str(step.get("at") or "").strip().lower() in ("stores", "stockpile", "the stores"):
         return _trade_at_stores(world, a, step, s)
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} to trade with"
     give = _trade_bag(world, step.get("give"))
@@ -1725,7 +1742,12 @@ def _do_trade(world, a: Agent, step, s) -> str:
     s["t"] = s.get("t", 0) + 1
     if s["t"] < 4:
         return RUNNING
-    if not world.accepts_trade(other, a, give, get):
+    from . import ballots
+
+    verdict = ballots.offer_verdict(world, a, other, give, get, s)  # a model-minded partner's own mind answers
+    if verdict is None:
+        return RUNNING
+    if not verdict:
         a.like(other.id, -1)
         return f"{other.name} didn't want that deal"
     w_give = sum((world.item(k).weight if world.item(k) else 1) * n for k, n in give.items())
@@ -1845,7 +1867,7 @@ def _strength(a: Agent) -> float:
 
 def _do_fight(world, a: Agent, step, s) -> str:
     """A scuffle (T27): it hurts and leaves grudges, but nobody is killed in a fight."""
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     if not other or other is a or not other.alive:
         return f"there's nobody called {step.get('to')} here"
     mv = _approach_agent(world, a, s, other, 1)
@@ -2366,7 +2388,7 @@ def _approach_agent(world, a: Agent, s, other: Agent, dist: int = 1) -> str:
 
 
 def _do_give(world, a: Agent, step, s) -> str:
-    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    other = _who(world, a, s, step.get("to") or step.get("target") or "")
     st = world.structures.get(str(step.get("to") or step.get("target") or "")) if not other else None
     if st is not None and st.design in STORES and st.complete:
         return _do_store(world, a, dict(step, do="store", target=st.id), s)
@@ -2405,7 +2427,7 @@ def _do_say(world, a: Agent, step, s) -> str:
     if not text:
         return "had nothing to say"
     to = step.get("to")
-    other = world.agent_by_name(to, near=a) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
+    other = _who(world, a, s, to) if to and str(to).lower() not in ("all", "everyone", "anyone") else None
     if other and not s.get("close"):
         mv = _approach_agent(world, a, s, other, 4)
         if mv == "blocked" or s["ticks"] > 150:
@@ -2481,7 +2503,7 @@ def _do_teach(world, a: Agent, step, s) -> str:
     if not kk:
         return f"'{step.get('what')}' isn't something that can be taught"
     who = str(step.get("to") or step.get("target") or "").strip()
-    other = world.agent_by_name(who, near=a) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
+    other = _who(world, a, s, who) if who.lower() not in ("", "all", "everyone", "anyone", "others") else None
     if other is None and who.lower() in ("", "all", "everyone", "anyone", "others"):
         near = [o for o in world.agents.values() if o is not a and kk not in o.knows and o.activity != "sleeping"
                 and max(abs(o.x - a.x), abs(o.y - a.y)) <= 8]
@@ -2589,6 +2611,7 @@ def _do_read(world, a: Agent, step, s) -> str:
             s["src"] = src = ("tab", tb.id)
         elif tb.in_structure in world.structures:
             s["src"] = src = ("lib", tb.in_structure)
+            s["want"] = tb.id  # (that tablet, not the first unread one on its shelf, Codex #31)
     if src is None:
         best = None
         for lib in world.structures_near(a.x, a.y, 30, "library"):
@@ -2608,7 +2631,7 @@ def _do_read(world, a: Agent, step, s) -> str:
         if not lib:
             return "the library is gone"
         mv = _goto_structure(world, a, s, lib)
-        tabs = [world.tablets[t] for t in lib.shelf if t in world.tablets]
+        tabs = [world.tablets[t] for t in lib.shelf if t in world.tablets and (not s.get("want") or t == s["want"])]
     else:
         tb = world.tablets.get(src[1])
         if not tb:
@@ -2616,6 +2639,8 @@ def _do_read(world, a: Agent, step, s) -> str:
         mv = move_toward(world, a, s, world.stand_tiles_for(tb.x, tb.y))
         tabs = [tb]
     if mv == "blocked":
+        if src[0] == "tab":
+            a.reflex_rest["unreach:" + src[1]] = world.tick + TICKS_PER_DAY
         return "couldn't get there"
     if mv != "arrived":
         return RUNNING
@@ -2684,7 +2709,7 @@ def _do_inspect(world, a: Agent, step, s) -> str:
             s["note"] = f"Studied my {world.item_name(k)} but couldn't work out how it was made"
             a.remember(world.tick, s["note"], 2, "learn")
         return DONE
-    other = world.agent_by_name(ref, near=a)
+    other = _who(world, a, s, ref)
     if other and other.id != a.id:
         mv = _approach_agent(world, a, s, other, 2)
         if mv == "blocked" or s["ticks"] > 200:

@@ -65,6 +65,9 @@ def tick(world) -> None:
         init(world)
     _track(world)
     _expire_ask(world)
+    from . import ballots
+
+    ballots.tick(world)
     research.tick(world)
     wants.tick(world)
 
@@ -253,6 +256,56 @@ def road(world) -> Optional[Dict[str, Any]]:
 Cand = Tuple[float, str, str, str, Dict[str, Any]]
 
 
+def _utility_site(world, d: str) -> Optional[Tuple[int, int]]:
+    """Where a machine-age building would do its work, or None where it would do none: a steam pump among farms, a
+    sawmill by the woods, a press by a library, a power station by the benches, a lamp where wolves come. As a bare
+    project they went up wherever their builder stood (a pump with no farm near, Codex #23); instinct's own plans for
+    them (brain/builder.py) ask the same."""
+    from . import pioneers
+
+    vs = [v for v in pioneers.villages(world) if v.residents]
+    if vs:  # the biggest settlement's middle; before there is one, the middle of everyone
+        v = max(vs, key=lambda v: (len(v.residents), v.id))
+        cx, cy = int(v.x), int(v.y)
+    elif world.agents:
+        cx = round(sum(o.x for o in world.agents.values()) / len(world.agents))
+        cy = round(sum(o.y for o in world.agents.values()) / len(world.agents))
+    else:
+        return None
+    near = world.structures_near(cx, cy, 25)
+    if d == "steam_pump":  # between two farms close enough for one pump to water both (an average of all could water none)
+        from .buildings import PUMP_RADIUS
+
+        farms = sorted((s for s in near if s.design == "farm" and s.functional), key=lambda s: (s.dist(cx, cy), s.id))
+        pair = next(((f, g) for i, f in enumerate(farms) for g in farms[i + 1:]
+                     if max(abs(f.x - g.x), abs(f.y - g.y)) <= PUMP_RADIUS), None)
+        return ((pair[0].x + pair[1].x) // 2, (pair[0].y + pair[1].y) // 2) if pair else None
+    if d == "sawmill":
+        return world.nearest_resource(cx, cy, "wood", 20)
+    if d == "printing_press":
+        lib = next((s for s in near if s.design == "library" and s.functional), None)
+        return (lib.x, lib.y) if lib else None
+    if d == "power_station":
+        st = next((s for s in near if s.functional and s.stations() & POWERED_STATIONS), None)
+        return (st.x, st.y) if st else None
+    if d == "street_lamp":  # by the home nearest where the wolf comes (a lamp's light reaches 6 tiles)
+        wolves = [w for w in getattr(world, "animals", {}).values()
+                  if w["kind"] == "wolf" and max(abs(w["x"] - cx), abs(w["y"] - cy)) <= 25]
+        if not wolves:
+            return None
+        w = min(wolves, key=lambda w: (max(abs(w["x"] - cx), abs(w["y"] - cy)), w["x"], w["y"]))
+        from .buildings import HOMES
+
+        homes = [s for s in near if s.functional and s.design in HOMES]
+        h = min(homes, key=lambda s: (s.dist(w["x"], w["y"]), s.id), default=None)
+        return (h.x, h.y) if h is not None else (w["x"], w["y"])
+    return None
+
+
+UTILITY = ("steam_pump", "sawmill", "printing_press", "power_station", "street_lamp")
+POWERED_STATIONS = {"workshop", "kiln", "furnace", "forge", "mill", "factory"}
+
+
 def candidates(world) -> List[Cand]:
     """(score, kind, key, why, extra) for every project the village could take on now: the next step on the road to
     the next age, or a building someone knows and the village lacks."""
@@ -289,7 +342,13 @@ def candidates(world) -> List[Cand]:
             continue
         if (d == "market" and pop < 10) or (d == "monument" and pop < 12):
             continue
-        add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", {})
+        extra: Dict[str, Any] = {}
+        if d in UTILITY:
+            spot = _utility_site(world, d)
+            if spot is None:
+                continue  # (nothing for it to do yet)
+            extra = {"near": f"{spot[0]},{spot[1]}"}
+        add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", extra)
     return sorted(((s, k, key, why, ex) for (k, key), (s, why, ex) in out.items()), key=lambda c: (-c[0], c[1], c[2]))
 
 

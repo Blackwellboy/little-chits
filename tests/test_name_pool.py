@@ -32,3 +32,20 @@ def test_with_every_name_gone_a_numbered_one_is_still_new():
         n = make_name(rng, taken)
         assert n not in taken and n[-1].isdigit(), n
         taken.add(n)
+
+
+def test_the_longer_names_dont_draw_on_the_callers_stream():
+    # for a child the caller's stream is the births stream: hundreds of draws for a longer name moved every trait and
+    # lifespan after it (Codex, #19). With the short names gone, the caller's stream moves only as it always did.
+    from chits.sim.agent import _SYL_A, _SYL_B
+
+    taken = {(a + b + v).capitalize() for a in _SYL_A for b in _SYL_B for v in ("", "o", "a", "i", "y")}
+    rng, replica = random.Random(5), random.Random(5)
+    name = make_name(rng, set(taken))
+    assert name not in taken
+    for _ in range(200):  # (the short-name tries, all taken)
+        replica.choice(_SYL_A), replica.choice(_SYL_B)
+        if replica.random() < 0.25:
+            replica.choice(["o", "a", "i", "y"])
+    assert rng.getstate() == replica.getstate()
+    assert make_name(random.Random(99), set(taken)) == name  # (and it doesn't depend on that stream)

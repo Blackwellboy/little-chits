@@ -126,6 +126,8 @@ def apply_reflection(world, a: Agent, text: str) -> Dict[str, Any]:
     return parsed
 
 
+CIVIC_STYLES = ("chief-project", "vote", "trade-offer")  # one-letter civic choices: decisions, but not plans
+
 class Mind:
     def __init__(self, config_path: Optional[Path] = None):
         self.instinct = Instinct()
@@ -135,6 +137,7 @@ class Mind:
         self.patience_ticks = 12  # how long a chit waits idle for a model before instinct fills in
         self.log: List[Dict[str, Any]] = []  # recent model exchanges for the UI
         self._tasks: set = set()
+        self.plans_out: Counter = Counter()  # brain id -> plan requests spawned and not finished (queued or running)
         self.strict = False  # experiment contract: a model's chits never get instinct plans
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
@@ -234,6 +237,13 @@ class Mind:
             a.brain = self.world_brain.get(world.id, INSTINCT)
             brain = self.brain_for(a)
         if brain is None or not brain.healthy():
+            if brain is not None:  # its mind can't vote or weigh an offer now: the simulator's rule stands in
+                from ..sim import ballots as BAL
+
+                BAL.skip(world, a.id)
+                o = BAL.pending_offer(world, a.id)
+                if o is not None:
+                    BAL.answer_offer(world, a.id, o["tick"], None)
             ask = (getattr(world, "civic", None) or {}).get("ask")
             if brain is not None and ask and ask.get("leader") == a.id and not ask.get("sent"):
                 diag.chief(world, "blocked: the chief's brain unavailable", ask)
@@ -243,6 +253,7 @@ class Mind:
                 else:
                     self._instinct_plan(world, a, "instinct" if brain is None else f"instinct ({brain.label} unavailable)")
             return
+        self._civic_asks(world, a, brain)
         # the village needs its next project and this chit is its chief: put the choice to its model
         ask = (getattr(world, "civic", None) or {}).get("ask")
         if ask and ask.get("leader") == a.id and not ask.get("sent"):
@@ -307,12 +318,13 @@ class Mind:
         if need and not a.thinking and a.pending_plan is None:
             if not a.plan and self.focused(brain) and self._routine(world, a):
                 return  # eating and sleeping don't need the model
-            if not self.strict and brain.stats.queued >= QUEUE_PER_SLOT * max(1, brain.cfg.max_concurrency):
+            slots = max(1, brain.cfg.max_concurrency)
+            if not self.strict and (brain.stats.queued >= QUEUE_PER_SLOT * slots
+                                    or self.plans_out[brain.id] >= (QUEUE_PER_SLOT + 1) * slots):
                 # the model is far behind: a request now would wait a minute and come back stale (live, 229 queued
                 # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
-                if not a.plan:
-                    self._instinct_plan(world, a, f"instinct ({brain.label} queue full)")
-                diag.of(world).plans["shed"] += 1
+                if not a.plan:  # (counted once, as shed: counted as instinct too, it still diluted the model's share)
+                    self._instinct_plan(world, a, f"instinct ({brain.label} queue full)", kind="shed")
                 return
             self._ask(world, a, brain)
         if not a.plan and a.thinking and world.tick - a.think_started > self.patience_ticks:
@@ -338,7 +350,7 @@ class Mind:
         rec["tick_resolved"] = tick
         if rec.get("match", self.match) != self.match:
             return  # a reply from the previous match
-        if outcome == "adopted" and rec.get("style") != "chief-project":
+        if outcome == "adopted" and rec.get("style") not in CIVIC_STYLES:
             self.adopted[rec.get("world")] += 1
         if self.on_decision:
             try:
@@ -406,7 +418,7 @@ class Mind:
         diag.plan_from(world, "routine")
         return True
 
-    def _instinct_plan(self, world, a: Agent, source: str, filler: bool = False) -> None:
+    def _instinct_plan(self, world, a: Agent, source: str, filler: bool = False, kind: str = "") -> None:
         p = self.instinct.plan(world, a)
         steps = p["steps"]  # the whole plan: cut to its first step, "gather clay" never reached "experiment"
         if filler:
@@ -416,7 +428,7 @@ class Mind:
         if not filler or not a.goal:
             a.goal = p["goal"]
             a.thought = p["thought"]
-        kind = "filler" if filler else ("fallback" if "unavailable" in source else "instinct")
+        kind = kind or ("filler" if filler else ("fallback" if "unavailable" in source else "instinct"))
         a.plan_source = {"filler": "instinct-filler", "fallback": "instinct-fallback"}.get(kind, "instinct")
         a.plan_started = world.tick
         a.plan_id = uuid.uuid4().hex
@@ -426,15 +438,26 @@ class Mind:
         diag.plan_from(world, kind)
 
     # ------------------------------------------------------------ async requests
-    def _spawn(self, coro) -> None:
+    def _spawn(self, coro):
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             coro.close()
-            return
+            return None
         t = loop.create_task(coro)
         self._tasks.add(t)
         t.add_done_callback(self._tasks.discard)
+        return t
+
+    def _spawn_plan(self, brain: LLMBrain, coro) -> None:
+        """A plan request, counted out against its brain until it finishes. The count is taken here, when the request
+        is made: the brain's own queue count only rises once the task first runs, after the whole tick, so every chit
+        in a tick saw the same short queue and all of them went past the cap (Codex, #29)."""
+        t = self._spawn(coro)
+        if t is not None:
+            bid = brain.id
+            self.plans_out[bid] += 1
+            t.add_done_callback(lambda _t: self.plans_out.subtract([bid]))
 
     def _ask(self, world, a: Agent, brain: LLMBrain) -> None:
         style = getattr(brain.cfg, "prompt_style", "full") or "full"
@@ -473,7 +496,7 @@ class Mind:
             return fresh
 
         sent: Dict[str, Any] = {"msgs": msgs}
-        self._spawn(self._think(world, a, brain, at_send, rec, sent))
+        self._spawn_plan(brain, self._think(world, a, brain, at_send, rec, sent))
 
     def _ask_choice(self, world, a: Agent, brain: LLMBrain, cascade: bool = False) -> None:
         """Choose mode: instinct drafts a few plans, the model picks one by letter (one output token, scored by
@@ -504,7 +527,7 @@ class Mind:
             rec["prompt_hash"] = hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16]
             return msgs
 
-        self._spawn(self._choose(world, a, brain, at_send, rec, sent, cascade))
+        self._spawn_plan(brain, self._choose(world, a, brain, at_send, rec, sent, cascade))
 
     def _ask_chief(self, world, a: Agent, brain: LLMBrain, ask: Dict[str, Any]) -> None:
         """The chief chooses the village's next project from the world's candidates: one token, scored by logprobs,
@@ -553,6 +576,76 @@ class Mind:
                 rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}"
                 self._resolve(rec, "failed", world.tick)
                 diag.chief(world, "request failed", ask, error=type(e).__name__)
+
+        self._spawn(run())
+
+    def _civic_asks(self, world, a: Agent, brain: LLMBrain) -> None:
+        """An election this chit votes in, or a trade offered to it: one letter from its own mind (sim/ballots.py)."""
+        from ..sim import ballots as BAL
+
+        p = BAL.poll(world)
+        if p and a.id in p["voters"] and a.id not in p["sent"] and a.id not in p["ballots"] and a.id not in p["skipped"]:
+            p["sent"].append(a.id)
+            cands = [world.agents[c] for c in BAL.ballot_for(world, a.id)]
+            if not cands:
+                BAL.skip(world, a.id)
+            else:
+                ids = [o.id for o in cands]
+                self._ask_letter(world, a, brain, "vote", P.vote_messages(world, a, cands), len(cands),
+                                 lambda i: BAL.cast(world, a.id, ids[i]), lambda: BAL.skip(world, a.id),
+                                 {"options": [o.name for o in cands]})
+        o = BAL.pending_offer(world, a.id)
+        if o is not None and not o["sent"]:
+            o["sent"] = True
+            trader = world.agents.get(o["from"])
+            if trader is None:
+                BAL.answer_offer(world, a.id, o["tick"], None)
+                return
+            t0 = o["tick"]
+            self._ask_letter(world, a, brain, "trade-offer", P.trade_messages(world, a, trader, o["give"], o["get"]), 2,
+                             lambda i: BAL.answer_offer(world, a.id, t0, i == 0),
+                             lambda: BAL.answer_offer(world, a.id, t0, None),
+                             {"options": ["accept", "refuse"], "from": trader.name})
+
+    def _ask_letter(self, world, a: Agent, brain: LLMBrain, style: str, msgs, n: int, on_choice, on_fail,
+                    info: Dict[str, Any]) -> None:
+        """A one-letter question to a chit's mind, scored by logprobs and recorded as a decision. `on_choice(i)` hands
+        the world the answer (it returns whether the world took it); `on_fail()` lets the simulator decide."""
+        rec = {"request_id": uuid.uuid4().hex, "world": world.id, "epoch": getattr(world, "epoch", ""),
+               "agent": a.id, "agent_name": a.name, "brain": brain.id, "style": style,
+               "model": brain.cfg.model or brain.stats.resolved_model, "base_url": brain.cfg.base_url,
+               "tick_requested": world.tick, "rev_requested": a.rev, "prompt_version": P.PROMPT_VERSION,
+               "prompt_hash": hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16],
+               "temperature": brain.cfg.temperature, "max_tokens": 1, "latency_ms": None, "tokens_in": None,
+               "tokens_out": None, "response_hash": None, "parse": None, "rejected_steps": 0, "outcome": "pending",
+               "tick_resolved": None, "plan_id": None, "match": self.match}
+        self.decisions.append(rec)
+
+        async def run() -> None:
+            try:
+                res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
+                if rec.get("match") != self.match:
+                    return
+                valid = P.LETTERS[:n]
+                scores = {t.strip().upper(): lp for t, lp in (res.get("top_logprobs") or {}).items()
+                          if t.strip().upper() in valid and len(t.strip()) == 1}
+                letter = max(scores, key=scores.get) if scores else res["text"].strip().upper()
+                rec.update(latency_ms=round(res["latency_ms"]), tokens_in=res.get("tokens_in"),
+                           tokens_out=res.get("tokens_out"), response_hash=letter[:1])
+                if letter not in valid or len(letter) != 1:
+                    rec["parse"] = "invalid_choice"
+                    brain.stats.parse_failed += 1
+                    on_fail()
+                    self._resolve(rec, "failed", world.tick)
+                    return
+                rec["parse"] = "choice"
+                rec["choice"] = {"requested": letter, "confidence": round(math.exp(scores[letter]), 2) if letter in scores
+                                 else None, **info}
+                self._resolve(rec, "adopted" if on_choice(valid.index(letter)) else "stale", world.tick)
+            except Exception as e:  # no answer: the simulator's rule decides
+                rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}"
+                on_fail()
+                self._resolve(rec, "failed", world.tick)
 
         self._spawn(run())
 

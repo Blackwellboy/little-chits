@@ -212,7 +212,7 @@ class LLMBrain:
 
     async def chat(self, messages: Any, *, max_tokens: Optional[int] = None,
                    temperature: Optional[float] = None, extra: Optional[Dict[str, Any]] = None,
-                   json_reply: bool = True, priority: Optional[int] = None) -> Dict[str, Any]:
+                   json_reply: bool = True, priority: Optional[int] = None, force: bool = False) -> Dict[str, Any]:
         """Returns {"text", "latency_ms", "tokens_in", "tokens_out"}; raises on transport/HTTP failure.
         `priority`: DECISION or PLAN; by default a one-token request is a DECISION and goes ahead of the queue.
         `messages` may be a function that builds them: it's called once a slot is free, so a request that queued
@@ -225,11 +225,12 @@ class LLMBrain:
             self.stats.queued -= 1
         queue_ms = (time.monotonic() - queued_at) * 1000
         try:
-            if not self.healthy():
+            if not force and not self.healthy():
                 # the server went down while this waited for a slot: don't send it into the same 90 s hang (live,
                 # with the 3090's server gone, 111 queued requests each waited their turn to time out)
                 self.stats.skipped += 1
-                raise ModelCoolingDown(f"{self.label} is cooling down after {self.stats.consecutive_fail} failures in a row")
+                raise ModelCoolingDown(f"{self.label} is switched off" if not self.cfg.enabled else
+                                       f"{self.label} is cooling down after {self.stats.consecutive_fail} failures in a row")
             if callable(messages):
                 messages = messages()
             tape = getattr(self, "tape", None)  # a BrainTape (brain/tape.py): record every reply, or replay them
@@ -349,7 +350,8 @@ class LLMBrain:
             res = await self.chat([
                 {"role": "system", "content": "Reply with JSON only."},
                 {"role": "user", "content": 'Reply exactly: {"ok": true, "word": "chit"}'},
-            ], max_tokens=40, temperature=0.0)
+            ], max_tokens=40, temperature=0.0, force=True)  # (the Test button asks even a switched-off or cooling
+            # brain: that's how you find out its server is back, Codex #28)
         except Exception as e:
             return {"ok": False, "models": models, "error": f"{type(e).__name__}: {e}"[:300]}
         return {"ok": True, "models": models, "model": self.stats.resolved_model, "reply": res["text"][:200],

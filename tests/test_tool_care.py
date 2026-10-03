@@ -31,7 +31,8 @@ def run(w, a, step, ticks=120):
 
 
 def test_metal_tools_and_their_metal_come_from_the_recipes():
-    assert actions.METAL_OF == {"copper_axe": "copper", "copper_pick": "copper", "iron_axe": "iron", "iron_pick": "iron"}
+    assert actions.METAL_OF == {"copper_axe": "copper", "copper_pick": "copper", "iron_axe": "iron", "iron_pick": "iron",
+                                "plough": "iron"}  # (the plough has no tool class, but wears out: Codex, #18)
 
 
 def test_a_worn_metal_tool_is_mended_at_a_workshop_with_one_wood():
@@ -86,3 +87,21 @@ def test_a_models_scene_says_which_tool_is_worn():
     scene = P.scene(w, a)
     assert "iron pick (worn)" in scene and "copper axe (worn)" not in scene
     assert '"do":"smelt"' in P.system_prompt(w, a)
+
+
+def test_a_worn_plough_is_mended_like_any_metal_tool():
+    # it has no tool class, so a worn plough was never mended and broke, taking its iron with it (Codex, #18)
+    w, a = setup("workshop")
+    a.inventory.update({"plough": 1, "wood": 1})
+    a.tool_wear["plough"] = actions.tool_wear_limit("plough") // 2
+    plan = I.tool_care_plan(w, a)
+    assert plan and plan["steps"][-1] == {"do": "repair", "what": "plough"}
+
+
+def test_a_replaced_tool_is_smelted_not_mended_first():
+    # a worn copper pick beside an iron one was given a new haft, and then melted down (Codex, #18)
+    w, a = setup("workshop", "furnace")
+    a.inventory.update({"copper_pick": 1, "iron_pick": 1, "wood": 1})
+    a.tool_wear["copper_pick"] = actions.tool_wear_limit("copper_pick") // 2
+    plan = I.tool_care_plan(w, a)
+    assert plan and plan["steps"] == [{"do": "smelt", "what": "copper_pick"}]

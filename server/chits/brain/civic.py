@@ -69,7 +69,7 @@ def project_options(ins, world, a: Agent, rng) -> List[Opt]:
         if not steps and any(a.inventory.get(k, 0) < n for k, n in mats.items()):
             return []  # can't source the materials
         plan = {"goal": f"start the village's {name}", "thought": f"We agreed on a {name}. Someone has to start it.",
-                "steps": steps[:4] + [{"do": "build", "what": p["key"]}]}
+                "steps": steps[:4] + [dict({"do": "build", "what": p["key"]}, **({"near": p["near"]} if p.get("near") else {}))]}
         return [(PROJECT_W, _tag(plan, p["id"]))]
     if p["kind"] == "make":
         plan = make_plan(world, a, p)
@@ -164,8 +164,10 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     left = p["n"] - projects.stock(world, key, target)
     if left <= 0:
         return None
+    # (an ingredient to try for a discovery has no building: with no design to look for, any unfinished site that
+    # needed one took it, an engine meant for the dynamo went into a steam pump, Codex #39)
     site = next((s for s in world.structures_near(a.x, a.y, 30, target) if not s.complete and s.needs.get(key)
-                 and _reachable(world, a, s)), None)
+                 and _reachable(world, a, s)), None) if target in DESIGNS else None
     pile = next((s for s in world.structures_near(a.x, a.y, 25, "stockpile") if s.functional), None)
     what, where = item_name(key), DESIGNS[target].name if target in DESIGNS else "village"
     if a.knows_recipe(key):
@@ -179,7 +181,8 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not world.flags.get("say") or not any(o.knows_recipe(key) for o in world.agents.values()):
         return None
     r = world.recipe(key)
-    raw = [k for k, _ in (r.inputs if r else ()) if k in GATHER_RULES and (k != "ore" or a.best_tool("pick"))]
+    raw = [k for k, _ in (r.inputs if r else ()) if k in GATHER_RULES
+           and (not GATHER_RULES[k]["requires"] or a.best_tool(GATHER_RULES[k]["tool"]))]  # (iron ore too, Codex #46)
     if not raw or pile is None:
         return None
     k = min(raw, key=lambda x: projects.stock(world, x))  # what the stores are shortest of

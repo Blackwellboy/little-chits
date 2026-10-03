@@ -157,6 +157,11 @@ def _count(world, design: str) -> int:
     return sum(1 for s in world.structures.values() if s.design == design and not s.ruined)
 
 
+def _count_all(world, design: str) -> int:
+    """Every one of a design, ruins too: what the build itself counts against a step's cap (sim/actions.py)."""
+    return sum(1 for s in world.structures.values() if s.design == design)
+
+
 def _none_near(world, x: int, y: int, design: str, radius: int) -> bool:
     return not world.structures_near(x, y, radius, design)
 
@@ -218,12 +223,14 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         if plan:
             opts.append((w, plan))
 
-    if a.knows_design("mine") and (a.knows_recipe("copper") or a.knows_recipe("iron")) \
-            and _none_near(world, a.x, a.y, "mine", 30) and world.nearest_resource(a.x, a.y, "ore", 26) is None \
-            and world.nearest_resource(a.x, a.y, "iron_ore", 26) is None:
+    # the ores it smelts: one dug out is reason enough (iron is the commoner, and copper ran out first while iron
+    # deposits kept the mine from being built, Codex #46)
+    smelts = [k for k, metal in (("ore", "copper"), ("iron_ore", "iron")) if a.knows_recipe(metal)]
+    if a.knows_design("mine") and smelts and _none_near(world, a.x, a.y, "mine", 30) \
+            and any(world.nearest_resource(a.x, a.y, k, 26) is None for k in smelts):
         add(2.0, _build(world, a, "mine", max(1, pop // 15), "The ore near home is dug out. A mine in the rocks would give more."))
     if a.knows_design("sand_pit") and a.reflex_rest.get("scarce:sand", 0) > world.tick \
-            and _none_near(world, a.x, a.y, "sand_pit", 30):
+            and _none_near(world, a.x, a.y, "sand_pit", BLD.PIT_REACH):
         # (it just found no sand within reach: dig a pit by the nearest water)
         add(2.0, _build(world, a, "sand_pit", max(1, pop // 20), "There's no sand left near home. A pit by the water would give some every day."))
     if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):
@@ -291,12 +298,18 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     out: List[Tuple[float, Plan]] = []
     if a.is_child(world.tick):
         return out
-    hall = BLD.hall_near(world, a, SE.HALL_REACH)
+    # its own village's hall: a daughter village 35-70 tiles from its mother (sim/pioneers.py) never got one while
+    # the mother's hall stood within 40 tiles of its middle, or within reach of the chit (Codex, #30)
+    v = _my_village(world, a)
+    hall = world.structures.get(v.hall) if v is not None and v.hall else None
+    if hall is None and v is None:
+        hall = BLD.hall_near(world, a, SE.HALL_REACH)  # (no home village: the town it stands in)
     if hall is None:
-        v = _my_village(world, a) if a.knows_design("town_hall") else None
-        if v is not None and len(v.residents) >= SE.TOWN_POP and not v.hall \
-                and _none_near(world, int(v.x), int(v.y), "town_hall", 40):
-            plan = _build(world, a, "town_hall", max(1, len(world.agents) // SE.TOWN_POP),
+        if v is not None and a.knows_design("town_hall") and len(v.residents) >= SE.TOWN_POP \
+                and _none_near(world, int(v.x), int(v.y), "town_hall", SE.HALL_REACH):
+            # one hall per village (the reach check above); the cap only stops two of its chits starting two at once
+            # (a share of the world's people counted the mother's hall against its daughter)
+            plan = _build(world, a, "town_hall", _count_all(world, "town_hall") + 1,  # (a ruin counts at the build)
                           f"{v.name} has grown big enough for a town hall.", near=(int(v.x), int(v.y)))
             if plan:
                 out.append((2.0, plan))
@@ -310,7 +323,8 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     if street is not None:
         have = a.inventory.get("stone", 0) + _stock(world, a).get("stone", 0)
         if have >= 1:
-            steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": 2}]
+            # (one stone paves a tile: asking for two where one was stored failed the take, Codex #30)
+            steps = [] if a.has("stone") else [{"do": "take", "what": "stone", "qty": min(2, have)}]
             out.append((1.2, {"goal": "pave a street", "thought": "Everyone walks this way. It should be paved.",
                               "steps": steps + [{"do": "build", "what": "road", "at": f"{street[0]},{street[1]}"}]}))
     return out
@@ -340,7 +354,7 @@ def palisade_option(world, a: Agent) -> List[Tuple[float, Plan]]:
     if hall is None or a.is_child(world.tick) or not a.knows_design("palisade") or not _wolves_about(world, a) \
             or not _none_near(world, hall.x, hall.y, "palisade", BLD.PALISADE_RADIUS):
         return []
-    plan = _build(world, a, "palisade", max(1, len(world.agents) // SE.TOWN_POP), "Wolves keep coming into the town. A wall would keep them out.",
+    plan = _build(world, a, "palisade", _count_all(world, "palisade") + 1, "Wolves keep coming into the town. A wall would keep them out.",
                   near=(hall.x, hall.y))
     return [(2.0, plan)] if plan else []
 
@@ -418,9 +432,15 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     if not a.knows_recipe("ale") and a.knows_design("town_hall") \
             and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
         fetch = []
+        # (the stores this chit can walk to, around it, as its take looks: the town's, round the hall, offered a brew
+        # its take then failed to fetch, Codex #40)
+        mine: Dict[str, int] = {}
+        for p in village_stores(world, a.x, a.y, 30, a):  # (the take's own reach)
+            for k, n in p.storage.items():
+                mine[k] = mine.get(k, 0) + n
         for k, n in (("grain", 2), ("berries", 1)):
             short = n - a.inventory.get(k, 0)
-            if short > 0 and stock.get(k, 0) >= short:
+            if short > 0 and mine.get(k, 0) >= short:
                 fetch.append({"do": "take", "what": k, "qty": short})
             elif short > 0:
                 fetch = None
@@ -446,13 +466,14 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         for d, w, thought in (("university", 1.8, "A city should have a university, so what we know is kept and shared."),
                               ("theatre", 1.2, "A city deserves a theatre.")):
             if a.knows_design(d) and _none_near(world, hall.x, hall.y, d, SE.HALL_REACH):
-                plan = _build(world, a, d, max(1, pop // 40), thought)
+                plan = _build(world, a, d, _count_all(world, d) + 1, thought)  # (one per city: the check above)
                 if plan:
                     out.append((w, plan))
-    if a.knows_design("harbour") and _none_near(world, hall.x, hall.y, "harbour", 40) \
-            and world.nearest_resource(hall.x, hall.y, "fish", 20) is not None:
-        plan = _build(world, a, "harbour", max(1, pop // 40), "Boats and a quay would bring in twice the fish.",
-                      near=(hall.x, hall.y))
+    fish = world.nearest_resource(hall.x, hall.y, "fish", 20) if a.knows_design("harbour") else None
+    if fish is not None and _none_near(world, hall.x, hall.y, "harbour", 40):
+        # one per town (a share of the world's people kept a second town from its own), by the fish it's for
+        plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
+                      near=fish)
         if plan:
             out.append((1.3, plan))
     return out

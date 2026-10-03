@@ -151,4 +151,93 @@ def test_a_village_takes_on_a_steam_pump_as_a_project_once_it_can_make_what_it_n
         a.learn(k, "discovered", w.tick)
     w.check_insights(a)
     assert a.knows_design("steam_pump")
-    assert any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    # only where it would water something: a pump with no farm near went up wherever its builder stood (Codex, #23)
+    hut = put(w, "hut", a)
+    for o in ags:
+        o.home = hut.id
+    assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    farms = [put(w, "farm", a, (a.x + dx, a.y + 4)) for dx in (-4, 4)]
+    w.tick += 1  # (the villages are looked up once a tick)
+    pump = next(c for c in PJ.candidates(w) if c[1] == "build" and c[2] == "steam_pump")
+    x, y = map(int, pump[4]["near"].split(","))
+    assert all(max(abs(f.x - x), abs(f.y - y)) <= 10 for f in farms)  # among the fields it waters
+
+
+def test_a_power_station_doesnt_speed_a_cooking_fire():
+    # its words name workshops, kilns, furnaces, forges, mills and factories; cooking went half as fast again too
+    # (Codex, #23)
+    from chits.sim.items import RECIPES
+
+    w, (a, _) = village()
+    put(w, "power_station", a)
+    w.tick += 1
+    fire = next(k for k, r in RECIPES.items() if r.station == "fire")
+    assert BLD.craft_speed(w, a, fire) == 1.0
+    assert BLD.craft_speed(w, a, "brick") == BLD.POWER_SPEED
+
+
+
+def test_a_utility_project_is_built_where_it_was_sited():
+    # the project's build step carries its site, so the pump goes up among the fields, not where its builder stands
+    import random
+
+    from chits.brain import civic
+    from chits.brain.instinct import Instinct
+    from chits.sim import projects as PJ
+    from chits.sim.items import DESIGNS
+
+    w, ags = village(n=4)
+    a = ags[0]
+    a.learn("design:steam_pump", "taught", w.tick)
+    PJ.init(w)
+    PJ.start(w, "build", "steam_pump", "the village has none", a, "need", {"near": "37,38"})
+    a.inventory.update(DESIGNS["steam_pump"].material_map)
+    [(_, plan)] = civic.project_options(Instinct(), w, a, random.Random(1))
+    assert plan["steps"][-1]["do"] == "build" and plan["steps"][-1]["near"] == "37,38"
+
+
+def test_a_pump_project_needs_two_farms_one_pump_can_water():
+    # an average of every farm could water none of them: farms 20 apart put the pump between, out of reach of both
+    # (Codex, #57)
+    from chits.sim import projects as PJ
+
+    w, ags = village(n=4)
+    a = ags[0]
+    hut = put(w, "hut", a)
+    for o in ags:
+        o.home = hut.id
+    far = [put(w, "farm", a, (a.x + dx, a.y + 4), 3) for dx in (-11, 11)]
+    assert max(abs(far[0].x - far[1].x), abs(far[0].y - far[1].y)) > BLD.PUMP_RADIUS
+    w.tick += 1
+    assert PJ._utility_site(w, "steam_pump") is None
+    near = put(w, "farm", a, (far[1].x + 4, far[1].y), 3)
+    w.tick += 1
+    x, y = PJ._utility_site(w, "steam_pump")
+    assert all(max(abs(f.x - x), abs(f.y - y)) <= BLD.PUMP_RADIUS for f in (far[1], near))
+
+
+def test_a_street_lamp_project_goes_where_the_wolf_comes():
+    # at the town's middle, a lamp's six tiles of light missed a wolf at its edge (Codex, #57)
+    from chits.sim import animals as AN
+    from chits.sim import projects as PJ
+
+    w, ags = village(n=4)
+    a = ags[0]
+    home = put(w, "hut", a)
+    edge = put(w, "hut", a, (a.x + 18, a.y), 4)
+    w.animals.clear()
+    AN._add(w, "wolf", edge.x + 2, edge.y)
+    assert PJ._utility_site(w, "street_lamp") == (edge.x, edge.y)
+
+
+def test_a_tablet_far_away_doesnt_stop_the_press_printing():
+    # every shelf and loose tablet on the map counted as readable: one on another island kept a press from printing a
+    # recipe dying out round it (Codex, #23)
+    from chits.sim.world import Tablet
+
+    w, lib, pile = _press_village(paper=2)
+    press = next(s for s in w.structures.values() if s.design == "printing_press")
+    far = (press.x + BLD.PRESS_READ + 10, press.y) if press.x + BLD.PRESS_READ + 10 < w.w else (press.x - BLD.PRESS_READ - 10, press.y)
+    w.tablets["t_far"] = Tablet("t_far", "recipe:steel", "x", "a smith", w.tick, far[0], far[1], None, "steel")
+    BLD._presses(w)
+    assert any(w.tablets[t].knowledge == "recipe:steel" for t in lib.shelf if t in w.tablets)

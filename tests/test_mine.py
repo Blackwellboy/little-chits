@@ -118,3 +118,43 @@ def test_with_the_seam_dug_out_for_today_the_mine_is_dug_deeper_three_times_as_s
     slow, still = ticks_for_ore(0)
     assert left == 6 and still == 0  # (deep digging takes nothing from the seam)
     assert 2.5 * fast <= slow <= 3.5 * fast, (fast, slow)
+
+
+def test_a_stocked_mine_comes_before_digging_deep_in_a_nearer_one():
+    # digging deep is three times the work: the nearest mine was chosen though its seam was out and one a little
+    # farther had ore (Codex, #43)
+    w, a = _by_the_rocks()
+    near = _mine(w, a)
+    far = None
+    for dx in range(8, 20):
+        pos = w.find_site("mine", a.x + dx, a.y, 6, reach=(a.x, a.y))
+        if pos and near.dist(*pos) > 4:
+            far = w.place_site("mine", *pos, a)
+            w.complete_structure(far, a)
+            break
+    assert far is not None and far.dist(a.x, a.y) > near.dist(a.x, a.y)
+    near.storage["ore"], far.storage["ore"] = 0, 5
+    assert BLD.mine_near(w, a, BLD.PIT_REACH, "ore") is far
+    far.storage["ore"] = 0
+    assert BLD.mine_near(w, a, BLD.PIT_REACH, "ore") is near  # (none stocked: the nearest, to dig deep)
+
+
+def test_a_mine_once_the_copper_is_gone_though_iron_ore_remains():
+    # iron ore is the commoner: with the copper ore dug out near home and iron ore left, no mine was ever built, and
+    # the copper that a mine gives back every day was lost (Codex, #46)
+    w, a = _by_the_rocks(30)
+    k = T.RES_INDEX["ore"]
+    i = next(y * w.w + x for y in range(a.y - 8, a.y + 9) for x in range(a.x - 8, a.x + 9)
+             if w.inb(x, y) and w.passable(x, y) and w.ore_item(y * w.w + x) == "iron_ore")
+    w.res_kind[i], w.res_amt[i] = k, 20  # an iron-ore deposit near home; the copper ore stays dug out
+    assert w.nearest_resource(a.x, a.y, "iron_ore", 26) is not None and w.nearest_resource(a.x, a.y, "ore", 26) is None
+    a.inventory.update({"wood": 8, "stone": 6, "cord": 2})
+
+    def mine_planned():
+        plans = [p for _, p in BI.building_options(w, a, random.Random(1))]
+        return any(s.get("what") == "mine" for p in plans for s in p["steps"] if s.get("do") == "build")
+
+    assert mine_planned()  # it smelts copper, and the copper is gone
+    a.knows.pop("recipe:copper", None)
+    a.learn("recipe:iron", "discovered", w.tick)
+    assert not mine_planned()  # it smelts iron only, and iron ore is still about

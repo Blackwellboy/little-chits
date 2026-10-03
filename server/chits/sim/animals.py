@@ -151,7 +151,8 @@ def attacks(world) -> None:
                 or BLD.walled(world, w["x"], w["y"]) is not None:
             continue  # (under a watchtower's eye, or in a street lamp's light, no wolf gets close enough to bite)
         for c in world.agents.values():
-            if max(abs(c.x - w["x"]), abs(c.y - w["y"])) > 1 or world.in_home(c):
+            if max(abs(c.x - w["x"]), abs(c.y - w["y"])) > 1 or world.in_home(c) \
+                    or BLD.walled(world, c.x, c.y) is not None:  # (a wolf just outside the wall bit those inside, Codex #47)
                 continue
             if _defend(world, w, c, night):
                 break

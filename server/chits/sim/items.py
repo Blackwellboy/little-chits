@@ -341,7 +341,7 @@ DESIGNS: Dict[str, Design] = {
         # town life: each needs the idea of a town hall, so nothing changes until a world has towns
         _d("tavern", "tavern", {"wood": 12, "brick": 6, "stone": 4}, 50, (("recipe", "ale"), ("design", "town_hall")),
            size=(2, 2), blurb="ale and company: in the evening everyone within 10 tiles drops in, and with ale from the "
-                              "stores nearby spirits lift twice as much and friendships grow"),
+                              "stores nearby spirits lift three times as much and friendships grow"),
         _d("bakery", "bakery", {"brick": 10, "stone": 4, "wood": 4}, 40, (("design", "mill"), ("design", "town_hall")),
            size=(2, 2), station="fire", blurb="a baker's oven: bread, loaves and tarts baked here come out two for one"),
         _d("healer", "healer's house", {"wood": 10, "stone": 6, "pot": 2}, 40, (("recipe", "pot"), ("design", "town_hall")),

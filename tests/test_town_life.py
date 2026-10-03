@@ -141,3 +141,91 @@ def test_a_town_tries_brewing_with_grain_and_berries_from_its_stores():
     w.tick += 1
     plan = next(p for _, p in BI.town_life_options(w, a) if p["goal"] == "try brewing")
     assert plan["steps"][:2] == [{"do": "take", "what": "grain", "qty": 2}, {"do": "take", "what": "berries", "qty": 1}]
+
+
+def test_a_shift_at_a_bakery_stores_counts_and_reports_every_loaf():
+    # a bakery's batch is two for one, and the shift counted, reported and delivered one per batch: half the bread
+    # stayed in the baker's arms and the station's tally read half (Codex, #33)
+    from test_production import _build, _run, _world
+
+    w, a = _world()
+    evs = []
+    w.listeners.append(evs.append)
+    bk = _build(w, a, "bakery", 5)
+    pile = _build(w, a, "stockpile", -4, 0, {"grain": 30})
+    w.learned(a, "recipe:bread", "taught")
+    r = _run(w, a, {"do": "work", "at": "bakery"})
+    assert r == actions.DONE
+    bread = pile.storage.get("bread", 0)
+    assert bread >= 4 and bread % BLD.BAKERY_MULT == 0, pile.storage
+    assert not a.inventory.get("bread") and bk.produced == {"bread": bread} and a.stats["produced_bread"] == bread
+    ev = [e for e in evs if e.kind == "produced"][-1]
+    assert actions._count_words(w, "bread", bread) in ev.text
+
+
+def test_a_bakery_shift_saved_before_loaves_were_counted_counts_them_all():
+    # a shift saved mid-way by an older version has batches made but no goods counted: resumed, its earlier loaves
+    # were left out of the store and the tally (Codex, #51)
+    from test_production import _build, _run, _world
+
+    w, a = _world()
+    _build(w, a, "bakery", 5)
+    pile = _build(w, a, "stockpile", -4, 0, {"grain": 30})
+    w.learned(a, "recipe:bread", "taught")
+    step = {"do": "work", "at": "bakery"}
+    s = None
+    for _ in range(700):
+        actions.advance(w, a, step)
+        w.tick += 1
+        s = step.get("_s") or {}
+        if s.get("made") == 1:
+            break
+    assert s.get("made") == 1 and s.pop("out") == BLD.BAKERY_MULT  # (saved now, by the older version)
+    assert _run(w, a, step) == actions.DONE
+    bread = pile.storage.get("bread", 0)
+    assert bread >= 4 and not a.inventory.get("bread"), (bread, a.inventory)
+
+
+def test_the_taverns_words_say_how_much_ale_cheers():
+    # the blurb said twice as much; it's three times (Codex, #33). The model reads these words.
+    times = {2: "twice", 3: "three times", 4: "four times"}[round((BLD.TAVERN_MOOD + BLD.ALE_MOOD) / BLD.TAVERN_MOOD)]
+    assert f"spirits lift {times} as much" in DESIGNS["tavern"].blurb
+
+
+def test_brewing_counts_only_the_stores_the_brewer_can_reach():
+    # the town's stores round its hall were counted, though the brewer's take looks only at stores it can walk to:
+    # the brew was offered and failed at once (Codex, #40)
+    w, a, hall = town()
+    a.learn("design:town_hall", "taught", w.tick)
+    a.inventory.clear()
+    ws = put(w, "workshop", a, near=(a.x, a.y), radius=12)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(ws)))
+    for st in w.structures.values():
+        st.storage.pop("grain", None)
+        st.storage.pop("berries", None)
+    pile = put(w, "stockpile", a, near=(hall.x, hall.y), radius=10)
+    pile.storage.update({"grain": 4, "berries": 2})
+    w.tick = 4 * TICKS_PER_DAY + 120
+    a.reflex_rest["unreach:" + pile.id] = w.tick + TICKS_PER_DAY  # (it just failed to get there)
+    assert not any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))
+    a.reflex_rest.clear()
+    assert any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))
+
+
+def test_brewing_counts_stores_as_far_as_the_take_reaches():
+    # the take looks 30 tiles round the brewer; counting only 25 left a store at 26-30 out (Codex, #57)
+    w, a, hall = town()
+    a.learn("design:town_hall", "taught", w.tick)
+    a.inventory.clear()
+    ws = put(w, "workshop", a, near=(a.x, a.y), radius=12)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(ws)))
+    for st in w.structures.values():
+        st.storage.pop("grain", None)
+        st.storage.pop("berries", None)
+    spot = next(((a.x + dx, a.y + dy) for dx, dy in ((28, 0), (-28, 0), (0, 28), (0, -28))
+                 if w.find_site("stockpile", a.x + dx, a.y + dy, 2, reach=(a.x, a.y))), None)
+    pile = put(w, "stockpile", a, near=spot, radius=2)
+    assert 25 < pile.dist(a.x, a.y) <= 30
+    pile.storage.update({"grain": 4, "berries": 2})
+    w.tick = 4 * TICKS_PER_DAY + 120
+    assert any(p["goal"] == "try brewing" for _, p in BI.town_life_options(w, a))

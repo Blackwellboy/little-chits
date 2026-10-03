@@ -77,14 +77,16 @@ def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
 
 
 def _keeper_counts(world) -> Dict[str, int]:
-    """How many living chits know each thing, counted once a tick."""
+    """How many living chits know each thing, counted again whenever anyone learns, forgets or dies (a count kept
+    for the whole tick ranked a recipe taught to five watchers mid-tick as still rare, Codex #26)."""
+    stamp = (world.tick, len(world.agents), sum(len(o.knows) for o in world.agents.values()))
     c = getattr(world, "_keepers_n", None)
-    if c is None or c[0] != world.tick:
+    if c is None or c[0] != stamp:
         n: Dict[str, int] = {}
         for o in world.agents.values():
             for k in o.knows:
                 n[k] = n.get(k, 0) + 1
-        c = (world.tick, n)
+        c = (stamp, n)
         world._keepers_n = c
     return c[1]
 
@@ -105,21 +107,28 @@ def tool_care_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
 
     if a.is_child(world.tick):
         return None
-    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
+    mine = sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0)
+
+    def better(tool):
+        it = a._item(tool)
+        return [t for t in a.inventory if t != tool and a.inventory[t] > 0 and it.tool and a._item(t)
+                and a._item(t).tool == it.tool and a._item(t).tool_power > it.tool_power]
+
+    for tool in mine:
+        if better(tool):
+            continue  # (smelted below, not mended first: a wood and a workshop visit spent on a pick about to melt)
         worn = a.tool_wear.get(tool, 0) >= tool_wear_limit(tool) // 2
         wood = a.has("wood") or any(p.storage.get("wood", 0) > 0 for p in village_stores(world, a.x, a.y, 25, a))
         if worn and wood and world.nearest_station(a.x, a.y, "workshop", STATION_NEAR):
             steps = [] if a.has("wood") else [{"do": "take", "what": "wood", "qty": 1}]
             return {"goal": f"mend my {item_name(tool)}", "thought": f"My {item_name(tool)} is getting worn. A new haft will save the metal.",
                     "steps": steps + [{"do": "repair", "what": tool}]}
-    for tool in sorted(t for t in a.inventory if t in METAL_OF and a.inventory[t] > 0):
-        it = a._item(tool)
-        better = [t for t in a.inventory if t != tool and a.inventory[t] > 0 and a._item(t) and a._item(t).tool == it.tool
-                  and a._item(t).tool_power > it.tool_power]
-        if better and world.nearest_station(a.x, a.y, "furnace", STATION_NEAR):
+    for tool in mine:
+        best = better(tool)
+        if best and world.nearest_station(a.x, a.y, "furnace", STATION_NEAR):
             metal = METAL_OF[tool]
             return {"goal": f"smelt down my old {item_name(tool)}",
-                    "thought": f"I don't need the {item_name(tool)} now I have a {item_name(better[0])}. The {item_name(metal)} is worth more.",
+                    "thought": f"I don't need the {item_name(tool)} now I have a {item_name(best[0])}. The {item_name(metal)} is worth more.",
                     "steps": [{"do": "smelt", "what": tool}]}
     return None
 
@@ -133,8 +142,18 @@ def feed_furnace_plan(world, a: Agent) -> Optional[Dict[str, Any]]:
     """
     if not a.best_tool("pick") or not (a.knows_recipe("iron") or a.knows_recipe("copper")):
         return None
-    # the ore the furnace needs next (issue #4): iron ore while iron is the way forward, else copper ore
-    kind = "iron_ore" if a.knows_recipe("iron") and "iron" in era_path(world) else "ore"
+    # the ore the furnace needs next (issue #4): iron ore while iron is the way forward, else copper ore. When the
+    # stores by the furnace already hold enough of that one, the other: once iron was on the path, copper ore was
+    # never carried again, though wire and lanterns need copper (Codex, #46)
+    iron_first = a.knows_recipe("iron") and "iron" in era_path(world)
+    for kind in (("iron_ore", "ore") if iron_first else ("ore", "iron_ore")):
+        plan = _feed_furnace(world, a, kind)
+        if plan is not None:
+            return plan
+    return None
+
+
+def _feed_furnace(world, a: Agent, kind: str) -> Optional[Dict[str, Any]]:
     # A supply plan may use only infrastructure this chit can plausibly know. A nearby furnace is visible in the
     # same local scene a model would receive; a farther mine is eligible only when the chit remembers/heard its ore
     # location. Never scan the whole landmass for private infrastructure.
@@ -821,13 +840,14 @@ class Instinct:
             lost = sorted((max(abs(tb.x - a.x), abs(tb.y - a.y)), tb.id) for tb in world.tablets.values()
                           if tb.in_structure is None and tb.knowledge.startswith("recipe:") and _tablet_new(a, tb)
                           and max(abs(tb.x - a.x), abs(tb.y - a.y)) <= LOST_TABLET_TRIP
+                          and world.same_land_xy(a, tb.x, tb.y)  # (one across the water was chosen again and again)
+                          and a.reflex_rest.get("unreach:" + tb.id, 0) <= world.tick
                           and not any(tb.knowledge in o.knows for o in world.agents.values()))
             for d, tid in lost:
-                if d <= 25:
+                if d <= 25:  # (this tablet: a bare read went to a library or an earlier tablet first, Codex #25)
                     return {"goal": "read an old tablet", "thought": "Someone wrote something on that tablet.",
-                            "steps": [{"do": "read"}]}
-                tb = world.tablets[tid]
-                if world.same_land_xy(a, tb.x, tb.y) and not a.is_child(world.tick):
+                            "steps": [{"do": "read", "tablet": tid}]}
+                if not a.is_child(world.tick):
                     # out of the read step's own 25 tiles: a deliberate trip to it (live World B's only tablet of
                     # steel lay 30+ tiles from where anyone went, and steel stayed lost)
                     return {"goal": "fetch lost knowledge",

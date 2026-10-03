@@ -28,3 +28,19 @@ def test_a_teacher_passes_on_what_fewest_others_know():
         if p.get("goal") == f"teach {pupil.name}":
             taught.add(p["steps"][0]["what"])
     assert taught == {"recipe:steel"}, taught
+
+
+def test_keeper_counts_follow_learning_within_a_tick():
+    # counted once a tick, a recipe taught to several watchers mid-tick still looked rare to the next teacher
+    # (Codex, #26)
+    from chits.brain import instinct as I
+    from chits.sim.world import World
+
+    w = World("A", "A", 5, "direct", 64, 4)
+    ags = list(w.agents.values())
+    before = I._keeper_counts(w).get("recipe:cord", 0)
+    new = [o for o in ags[:3] if not o.knows_recipe("cord")]
+    assert new
+    for o in new:
+        o.learn("recipe:cord", "taught", w.tick)  # (the same tick)
+    assert I._keeper_counts(w)["recipe:cord"] == before + len(new)

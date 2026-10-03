@@ -95,3 +95,43 @@ def test_a_city_plans_its_university():
     a.inventory.update({"brick": 30, "stone": 20, "glass": 6, "paper": 8})
     w.tick = (w.tick // TICKS_PER_DAY + 1) * TICKS_PER_DAY + 120  # (midday)
     assert any(p["goal"] == "build a university" for _, p in BI.city_options(w, a))
+
+
+def test_another_citys_university_doesnt_count_against_this_one():
+    # one per city (the check round its hall); a share of the world's people let only one city in the world have one
+    w, a, hall = city()
+    a.learn("design:university", "taught", w.tick)
+    a.inventory.update({"brick": 30, "stone": 20, "glass": 6, "paper": 8})
+    w.tick = (w.tick // TICKS_PER_DAY + 1) * TICKS_PER_DAY + 120  # (midday)
+    other = next((x, y) for x, y in ((hall.x + 45, hall.y), (hall.x - 45, hall.y), (hall.x, hall.y + 45), (hall.x, hall.y - 45))
+                 if 4 <= x < w.w - 4 and 4 <= y < w.h - 4 and w.find_site("university", x, y, 6))
+    put(w, "university", a, other, 6)
+    assert len(w.agents) // 40 <= 1
+    assert any(p["goal"] == "build a university" for _, p in BI.city_options(w, a))
+
+
+def test_a_harbour_is_planned_by_the_fish_it_is_for(monkeypatch):
+    w, a, hall = city()
+    a.learn("design:harbour", "taught", w.tick)
+    fish = (hall.x + 14, hall.y + 3)
+    real = w.nearest_resource
+    monkeypatch.setattr(w, "nearest_resource", lambda x, y, kind, *r, **k: fish if kind == "fish" else real(x, y, kind, *r, **k))
+    seen = []
+    monkeypatch.setattr(BI, "_build", lambda world, ag, d, cap, thought, near=None: seen.append((d, cap, near)) or None)
+    BI.city_options(w, a)
+    assert ("harbour", 1, fish) in seen
+
+
+def test_a_ruined_university_elsewhere_counts_in_the_cap_as_the_build_counts_it():
+    # the build counts ruins against a step's cap ("they get restored"), so the cap must too, or the build refuses
+    # (Codex, #55)
+    w, a, hall = city()
+    a.learn("design:university", "taught", w.tick)
+    a.inventory.update({"brick": 30, "stone": 20, "glass": 6, "paper": 8})
+    w.tick = (w.tick // TICKS_PER_DAY + 1) * TICKS_PER_DAY + 120  # (midday)
+    other = next((x, y) for x, y in ((hall.x + 45, hall.y), (hall.x - 45, hall.y), (hall.x, hall.y + 45), (hall.x, hall.y - 45))
+                 if 4 <= x < w.w - 4 and 4 <= y < w.h - 4 and w.find_site("university", x, y, 6))
+    ruin = put(w, "university", a, other, 6)
+    ruin.durability, ruin.ruined_at = 0.0, w.tick
+    step = next(s for _, p in BI.city_options(w, a) for s in p["steps"] if s.get("what") == "university")
+    assert step["_cap"] == sum(1 for s in w.structures.values() if s.design == "university") + 1
