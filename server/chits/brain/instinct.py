@@ -1207,7 +1207,7 @@ class Instinct:
         village = world.village_failed(a)  # what the neighbours already tried without luck
         stations = [None] + [s for s in STATIONS if world.nearest_station(a.x, a.y, s, STATION_NEAR)]  # (blind: by choice)
         for _ in range(12):
-            size = rng.choice((1, 2, 2, 2, 3, 3, 4, 5))  # iron, engines and clothes take 4 or 5
+            size = rng.choice((1, 2, 2, 2, 3, 3, 4))  # (a 5 draw now and then cost the 60-day A/B 3.5 discoveries and 0.6 era: dropped)
             bag = [rng.choice(pool) for _ in range(size)]
             if size == 2 and rng.random() < 0.3:
                 bag[1] = bag[0]  # two of the same (cord, sharp stone): drawn at random it was 3 bags in 299

@@ -113,12 +113,3 @@ def test_tinkering_plans_resolve_names_through_the_world():
     assert plan and plan["steps"][-1]["with"] == ["inv_a_1", "stone"], plan
     assert Instinct()._exp_plan(a, ["stone", "stone"], None, "try")  # without a world the base table still serves
 
-
-def test_blind_tinkering_can_draw_a_bag_of_five():
-    import inspect
-
-    from chits.brain import instinct as I
-
-    # iron takes 4 and an engine 5: a draw that never reached 5 left them to the "wrong amounts" hunch alone
-    src = inspect.getsource(I.Instinct._experiment)
-    assert "(1, 2, 2, 2, 3, 3, 4, 5)" in src
