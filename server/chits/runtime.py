@@ -351,6 +351,7 @@ class Runtime:
                 "pacing": self.pace_to_brain, "contact": self.contact,
                 "first_contact_tick": int(self.store.get_meta("first_contact_tick") or 0) or None,
                 "valid": not bool(self.invalid_reason), "invalid_reason": self.invalid_reason or None,
+                "experiment_ended": json.loads(self.store.get_meta("experiment_ended") or "null"),
                 "durable_tick": {wid: getattr(w, "_durable_tick", -1) for wid, w in self.worlds.items()},
                 "sandbox_modified": self.store.get_meta("sandbox_modified") == "1",
                 "sandbox_reasons": json.loads(self.store.get_meta("sandbox_reasons") or "[]")}
@@ -1046,10 +1047,19 @@ class Runtime:
         swap with no way back from the observer (issue #64)."""
         if self.contract != "experiment":
             return
+        # what the experiment was stays on record (when it ended, and whether it had already lost its validity), but
+        # an experiment's lost durability no longer holds the play game's resume (Codex review)
+        self.store.set_meta("experiment_ended", json.dumps(
+            {"ticks": {wid: w.tick for wid, w in self.worlds.items()}, "invalid_reason": self.invalid_reason or None}))
+        self.invalid_reason = ""
         self.contract = "play"
         self.mind.strict = False
         self.pace_to_brain = _pace_default()
         self.store.set_meta("contract", "play")
+        try:
+            self.write_manifest()  # (the run's record on disk says so too, Codex review)
+        except Exception as e:
+            log.error("could not write the manifest of an ended experiment: %s", e)
         for w in self.worlds.values():
             w.emit("contract", "The experiment ended here: from now on this world is played, not measured", 4)
         self._broadcast_snapshots()

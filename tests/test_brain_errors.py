@@ -136,3 +136,24 @@ def test_an_experiment_can_be_ended_into_play_and_brains_swapped_again(env):
         assert ctl["contract"] == "play" and not rt.mind.strict and rt.store.get_meta("contract") == "play"
         assert any(e.kind == "contract" for e in rt.worlds["A"].events)
         assert c.post("/api/worlds/A/brain", json={"brain": "m1"}).status_code == 200
+
+
+def test_an_ended_experiment_that_had_lost_a_save_can_play_on_and_its_record_says_so(env):
+    # an experiment's lost durability held the resume forever, and the run's manifest still said "experiment"
+    # (Codex review)
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from chits.app import R, app
+
+    with TestClient(app) as c:
+        rt = R()
+        rt.contract, rt.mind.strict = "experiment", True
+        rt.invalid_reason = "durability failure in World A at tick 5: disk full"
+        rt.paused = True
+        assert c.post("/api/control", json={"paused": False}).status_code == 409
+        c.post("/api/experiment/end")
+        assert c.post("/api/control", json={"paused": False}).status_code == 200
+        m = json.loads((env / "runs" / rt.run_id / "manifest.json").read_text())
+        assert m["contract"] == "play" and m["experiment_ended"]["invalid_reason"].startswith("durability failure")

@@ -12,3 +12,22 @@ describe("errorText", () => {
     expect(errorText(new Error("network down"))).toBe("network down");
   });
 });
+
+describe("api", () => {
+  it("marks a request that got no answer at all, so it gets a toast too", async () => {
+    const { api, ApiError } = await import("../../web/src/net/socket");
+    const real = globalThis.fetch;
+    const g = globalThis as any;
+    const hadLocation = "location" in g;
+    if (!hadLocation) g.location = { search: "" };  // (the test runner has no page)
+    globalThis.fetch = (() => Promise.reject(new TypeError("Failed to fetch"))) as typeof fetch;
+    try {
+      const e = await api("/api/health").catch((x) => x);
+      expect(e).toBeInstanceOf(ApiError);
+      expect(errorText(e)).toBe("Can't reach the game server (Failed to fetch)");
+    } finally {
+      globalThis.fetch = real;
+      if (!hadLocation) delete g.location;
+    }
+  });
+});
