@@ -8,6 +8,21 @@ type BrainRow = { config: any; stats: any; label: string; healthy: boolean; spee
 
 const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, disable_thinking: true, json_mode: true, temperature: 0.7, max_tokens: 600 };
 
+function thoughtText(l: any): string {
+  if (!l.ok) return "";
+  const head = l.goal ?? l.chose ?? "";
+  if (l.steps) {
+    const chain = l.steps.map((s: any) =>
+      s.do + (s.what ? " " + (Array.isArray(s.what) ? s.what.join("+") : s.what) : s.with ? " " + s.with.join("+") : "")).join(" → ");
+    return ": " + chain;
+  }
+  if (l.chose) {
+    const conf = l.confidence != null ? " (" + Math.round(l.confidence * 100) + "%)" : "";
+    return " picked " + l.chose + conf + (l.escalated ? " · escalated to a full plan" : "");
+  }
+  return "";
+}
+
 function ago(t: number): string {
   const s = Math.max(0, Date.now() / 1000 - t);
   return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
@@ -200,7 +215,7 @@ export function BrainsModal() {
               {status.log.slice().reverse().slice(0, 12).map((l: any, i: number) => (
                 <li key={i} className={l.ok ? "" : "bad"}>
                   <b>{l.agent}</b> <small className="muted">{l.brain} · {l.wall_ms} ms</small>
-                  {l.ok ? <p>“{l.thought}” → <i>{l.goal}</i>: {l.steps.map((s: any) => s.do + (s.what ? ` ${Array.isArray(s.what) ? s.what.join("+") : s.what}` : s.with ? ` ${s.with.join("+")}` : "")).join(" → ")}</p>
+                  {l.ok ? <p>“{l.thought}” → <i>{l.goal ?? l.chose}</i>{thoughtText(l)}</p>
                     : <p className="err">{l.error}{l.raw ? ` — “${l.raw.slice(0, 120)}”` : ""}</p>}
                 </li>
               ))}
