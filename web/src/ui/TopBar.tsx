@@ -2,12 +2,15 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
 import { api } from "../net/socket";
 import { localStorageSet, useUI, worlds } from "../state/store";
+import { themeFor } from "../theme";
+import { BrandMark } from "./BrandMark";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
 const SPEED_LABEL: Record<number, string> = { 1: "1×", 2: "2×", 5: "5×", 10: "10×", 25: "25×", 100: "MAX" };
 
 export function TopBar() {
+  const theme = useUI((s) => s.theme);
   const { view, control, brains, conn, worlds: metas, set, nightMode, director, recording } = useUI(useShallow((s) => ({ view: s.view, control: s.control, brains: s.brains, conn: s.conn, worlds: s.worlds, set: s.set, nightMode: s.nightMode, director: s.director, recording: s.recording })));
   useEffect(() => {  // 🎞 shows a red dot while auto-record is filming
     const poll = () => api<{ recording: boolean }>("/api/recorder").then((r) => set({ recording: r.recording })).catch(() => {});
@@ -35,8 +38,8 @@ export function TopBar() {
   return (
     <header className="topbar">
       <div className="brand">
-        <span className="logo">●</span>
-        <span className="brand-text">LITTLE CHITS</span>
+        <BrandMark />
+        <span className="brand-text">{themeFor(theme).brand}</span>
       </div>
 
       {metas.length > 1 && (
@@ -83,6 +86,12 @@ export function TopBar() {
       <button className="icon-btn" title={`Night: ${nightMode} (click to change)`}
         onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
         {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
+      </button>
+      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`}
+        title={theme === "norse" ? "Look: Fjordfolk, the Norse theme (click for the classic look)"
+          : "Look: classic (click for Fjordfolk, the Norse theme: Nordic art, and Norse names for chits born from now on)"}
+        onClick={() => api("/api/theme", { theme: theme === "norse" ? "default" : "norse" }).catch(() => {})}>
+        {theme === "norse" ? "ᚠ" : "●"}<small>{theme === "norse" ? "norse" : "classic"}</small>
       </button>
       <button className={`icon-btn ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
         onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>

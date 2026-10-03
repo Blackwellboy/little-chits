@@ -58,9 +58,26 @@ const PREVIEW: Record<number, string> = {
   [FOREST]: "#467f37", [HILLS]: "#93a45c", [ROCK]: "#7b7d85", [CLAY]: "#b06a4a",
 };
 
+/** The ground's colours: a theme (see ../theme.ts) can bring its own. */
+export type TerrainPalette = {
+  tiles: Record<number, [string, string]>; // two shades per tile, blended by noise
+  preview: Record<number, string>; // one pixel per tile, while chunks bake
+  minimap: Record<number, string>;
+  flowers: string[]; // meadow specks
+};
+
+export const DEFAULT_TERRAIN: TerrainPalette = {
+  tiles: TILE_BASE,
+  preview: PREVIEW,
+  minimap: {
+    0: "#1c4a82", 1: "#2f86bd", 2: "#e0cc92", 3: "#6fae4f", 4: "#8cc053", 5: "#3f7a31", 6: "#98a95f", 7: "#7f8189", 8: "#b8704e",
+  },
+  flowers: ["#fff6c2", "#ffd3e8", "#f7e26b", "#ffffff"],
+};
+
 /** One pixel per tile: a cheap stand-in shown while the detailed chunks bake. */
-export function previewCanvas(tiles: Uint8Array, size: number): HTMLCanvasElement {
-  return pixelCanvas(tiles, size, PREVIEW);
+export function previewCanvas(tiles: Uint8Array, size: number, pal: TerrainPalette = DEFAULT_TERRAIN): HTMLCanvasElement {
+  return pixelCanvas(tiles, size, pal.preview);
 }
 
 /** One pixel per tile, written straight into the image (fillRect per tile took ~150 ms on a 512 island). */
@@ -88,13 +105,14 @@ export type Region = { x0: number; y0: number; w: number; h: number };
 const tileRng = (seed: number, i: number) => rng((seed * 2654435761 + i * 40503 + 12345) >>> 0);
 
 /** Bake terrain for a region: noise shading, soft edges, shore foam, rock relief. */
-export function bakeTerrain(tiles: Uint8Array, size: number, seed: number, reg: Region = { x0: 0, y0: 0, w: size, h: size }): HTMLCanvasElement {
+export function bakeTerrain(tiles: Uint8Array, size: number, seed: number, reg: Region = { x0: 0, y0: 0, w: size, h: size },
+  pal: TerrainPalette = DEFAULT_TERRAIN): HTMLCanvasElement {
   const [c, ctx] = canvas(reg.w * TS, reg.h * TS);
   const img = ctx.createImageData(reg.w * TS, reg.h * TS);
   const d = img.data;
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= size || y >= size ? DEEP : tiles[y * size + x]);
   const baseRGB: Record<number, [number, number, number][]> = {};
-  for (const k in TILE_BASE) baseRGB[k] = TILE_BASE[k].map(hex);
+  for (const k in pal.tiles) baseRGB[k] = pal.tiles[k].map(hex);
   // low-frequency brightness field for large-scale variation
   const lf = (x: number, y: number) =>
     Math.sin(x * 0.045 + seed) * Math.cos(y * 0.05 - seed * 0.3) * 0.06 + Math.sin((x + y) * 0.013) * 0.04;
@@ -134,12 +152,12 @@ export function bakeTerrain(tiles: Uint8Array, size: number, seed: number, reg: 
       if (t === GRASS || t === MEADOW || t === FOREST || t === HILLS) {
         const blades = t === FOREST ? 3 : 5;
         for (let i = 0; i < blades; i++) {
-          ctx.fillStyle = shade(TILE_BASE[t][0], r() < 0.5 ? 0.18 : -0.18);
+          ctx.fillStyle = shade(pal.tiles[t][0], r() < 0.5 ? 0.18 : -0.18);
           const bx = X + Math.floor(r() * 15), by = Y + Math.floor(r() * 14);
           ctx.fillRect(bx, by, 1, 2);
         }
         if (t === MEADOW && r() < 0.6) {
-          ctx.fillStyle = ["#fff6c2", "#ffd3e8", "#f7e26b", "#ffffff"][Math.floor(r() * 4)];
+          ctx.fillStyle = pal.flowers[Math.floor(r() * 4)];
           ctx.fillRect(X + Math.floor(r() * 14) + 1, Y + Math.floor(r() * 14) + 1, 1, 1);
         }
         if (t === HILLS && r() < 0.5) {
@@ -398,6 +416,15 @@ export function sparkleCanvas(): HTMLCanvasElement {
 
 // ----------------------------------------------------------------- chits
 
+/** HSL to a 0xRRGGBB number, for tinting sprites. */
+export function hsl(h: number, s: number, l: number): number {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return (Math.round(f(0) * 255) << 16) | (Math.round(f(8) * 255) << 8) | Math.round(f(4) * 255);
+}
+
 /** Grayscale body so it can be tinted per individual. 14x14. */
 export function chitBody(): HTMLCanvasElement {
   const [c, ctx] = canvas(14, 14);
@@ -416,6 +443,19 @@ export function chitBody(): HTMLCanvasElement {
   ctx.fillStyle = "rgba(255,255,255,0.55)";
   ctx.fillRect(5, 8, 4, 3);
   return c;
+}
+
+/** The body tinted to one chit's hue, for drawing outside Pixi (the inspector's portrait). */
+export function tintedChitBody(hue: number): HTMLCanvasElement {
+  // draw grayscale then multiply by colour inside the body's alpha
+  const [bc, bctx] = canvas(14, 14);
+  bctx.drawImage(chitBody(), 0, 0);
+  bctx.globalCompositeOperation = "multiply";
+  bctx.fillStyle = `hsl(${hue} 58% 64%)`;
+  bctx.fillRect(0, 0, 14, 14);
+  bctx.globalCompositeOperation = "destination-in";
+  bctx.drawImage(chitBody(), 0, 0);
+  return bc;
 }
 
 export function chitOutline(): HTMLCanvasElement {

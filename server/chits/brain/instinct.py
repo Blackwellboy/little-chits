@@ -63,6 +63,7 @@ def _better_carrier(world, a: Agent) -> Optional[tuple]:
     return None
 
 
+HAUL_TRY = 0.3  # how often a chit who could try for the wagon does, when it experiments
 LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what nobody alive still knows
 
 
@@ -1150,6 +1151,9 @@ class Instinct:
 
     def _experiment(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
         """Blind trial-and-error, nudged by the world's feedback in past attempts."""
+        haul = self._haul_idea(world, a, rng)
+        if haul:
+            return haul
         if rng.random() < 0.35:
             bag = self._heat_idea(world, a, rng)
             if bag:
@@ -1219,6 +1223,26 @@ class Instinct:
                 continue
             return self._exp_plan(a, bag, station, "What happens if I put these together?")
         return None
+
+    def _haul_idea(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
+        """Something that hauls more than a cart (issue #9): a chit who has handled a cart, knows how wheels and iron
+        are made and stands by a workshop may try for it with the hunch "a cart, more wheels, iron to hold them"
+        (brain/civic.py). No age or building ever made the wagon a village project, so the hunch never ran (Codex,
+        #41); as a village project it took the one project slot from work that counted for more (#58), so it's a
+        curious chit's own try instead."""
+        if a.knows_recipe("wagon") or "cart" not in a.familiar or not (a.knows_recipe("wheel") and a.knows_recipe("iron")) \
+                or rng.random() >= HAUL_TRY:
+            return None
+        # a workshop it can walk to (the nearest may be across water: tried and failed, again and again, Codex #66)
+        if not any(s.functional and "workshop" in s.stations() and _reachable(world, a, s)
+                   for s in world.structures_near(a.x, a.y, STATION_REACH)):
+            return None
+        from . import civic
+
+        bag = civic._hunch(world, rng, set(world.item("wagon").props), civic._handled(world, a))
+        if not bag or civic._combo(bag, "workshop") in set(a.failed_experiments) | set(world.village_failed(a)):
+            return None
+        return self._exp_plan(a, sorted(bag), "workshop", "A cart with more wheels, and iron to hold them... it might haul more.")
 
     def _exp_plan(self, a: Agent, bag: List[str], station: Optional[str], thought: str) -> Optional[Dict[str, Any]]:
         from ..sim.items import normalize_item

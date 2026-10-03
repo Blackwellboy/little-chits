@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import views
+from . import theme, views
 from .brain.llm import BrainConfig, LLMBrain, probe_endpoint, scan_local
 from .brain.mind import INSTINCT
 from .runtime import SPEEDS, Runtime
@@ -96,7 +96,7 @@ def health():
     r = R()
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
-            "autodetected": r.autodetected,
+            "autodetected": r.autodetected, "theme": theme.active(),
             "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()}}
 
 
@@ -213,7 +213,8 @@ def replay_export(days: int = 7):
 
     r = R()
     days = max(1, min(400, days))
-    out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode, "worlds": {}}
+    out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode,
+                           "theme": theme.active(), "worlds": {}}
     summary = r.brain_summary()
     for wid, w in r.worlds.items():
         frm = max(0, w.tick - days * 240)
@@ -634,6 +635,30 @@ class Control(BaseModel):
     speed: Optional[int] = None
     paused: Optional[bool] = None
     pace_to_brain: Optional[bool] = None
+
+
+class ThemeBody(BaseModel):
+    theme: str
+
+
+@app.get("/api/theme")
+def get_theme():
+    return {"theme": theme.active(), "themes": list(theme.THEMES)}
+
+
+@app.post("/api/theme")
+def set_theme(b: ThemeBody):
+    """The Look button: switch the theme in the game. Presentation only (the same random numbers either way); every
+    observer redraws, and chits born from now on get the theme's names."""
+    r = R()
+    if r.contract == "experiment":  # (newborns' names reach the models' prompts: an experiment stays untouched)
+        raise HTTPException(409, "the look can't be switched during an experiment run")
+    try:
+        t = theme.choose(b.theme, r.data_dir)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    r._broadcast_snapshots()  # (the hello carries the theme: each observer reloads into it)
+    return {"ok": True, "theme": t}
 
 
 @app.post("/api/control")

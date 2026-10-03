@@ -277,6 +277,21 @@ The scoreboard card is at `/api/story/card.svg`, and the thread as JSON is at `/
 - **Split view** shows both worlds side by side. The speed control goes from 1× to MAX. The world keeps
   running with the browser closed, and it saves every in-game day and resumes on restart.
 
+## Norse theme
+
+An optional look: **Fjordfolk**. Switch it on in the game with the **Look** button in the top bar (● classic, ᚠ norse),
+or start the server with `CHITS_THEME=norse` (for example `CHITS_THEME=norse make play`). The button's choice is kept
+beside the saves and wins over `CHITS_THEME`. New chits get Norse names ("Astrid of the Fjord"), new worlds are called Fjordhaven
+and Pineholm, and the observer switches to cool fjord colours, wool-clad villagers and timber halls under turf roofs.
+
+- It is presentation only: the simulation draws the same random numbers, so a seed plays out exactly as it does
+  without the theme. Saved names are kept as they are, so turn it on before starting a new game.
+- Without `CHITS_THEME`, everything looks and behaves as before.
+- `?theme=norse` or `?theme=default` in the observer's URL overrides the server's choice, for screenshots.
+
+The names and how they map are in [`docs/norse-theme.md`](docs/norse-theme.md). Norse theme contributed by
+@poptartsmmmgood117-bit.
+
 ## Configuration
 
 | Env var | Default | |
@@ -293,6 +308,7 @@ The scoreboard card is at `/api/story/card.svg`, and the thread as JSON is at `/
 | `CHITS_SPEED` | 1 | 0, 1, 2, 5, 10, 25 or 100 |
 | `CHITS_PACE` | 0 | `1` slows the world when models fall behind instead of letting instinct cover (experiment games always do) |
 | `CHITS_DATA_DIR` | `data` | SQLite snapshots, event log, `brains.json` |
+| `CHITS_THEME` | – | `norse` for the Norse theme (Fjordfolk); see [Norse theme](#norse-theme) |
 
 **Throughput tip:**
 - Each chit asks its model for a new plan every in-game hour or two (about 1,100 prompt tokens and a
