@@ -316,6 +316,19 @@ and Pineholm, and the observer switches to cool fjord colours, wool-clad village
 The names and how they map are in [`docs/norse-theme.md`](docs/norse-theme.md). Norse theme contributed by
 @poptartsmmmgood117-bit.
 
+## Content packs
+
+A content pack is a JSON file that adds items and recipes to a game: data only, nothing in it is run. The chits
+find the new recipes by experiment. Try the example, [`docs/packs/honey.json`](docs/packs/honey.json) (a hive,
+honeycomb, honey and mead): **⟲ New game → 📦 Content pack**, or `CHITS_PACK=$PWD/docs/packs/honey.json make play`
+on a fresh install.
+
+- Every world of a game gets the same pack. It is saved with the world and named in the run manifest and replays.
+- Without a pack, the game is exactly what it was. Experiment runs refuse packs.
+- This first version adds items and recipes, not building designs.
+
+How to write one, the rules and the limits: [`docs/modding.md`](docs/modding.md).
+
 ## Configuration
 
 | Env var | Default | |
@@ -333,6 +346,8 @@ The names and how they map are in [`docs/norse-theme.md`](docs/norse-theme.md). 
 | `CHITS_PACE` | 0 | `1` slows the world when models fall behind instead of letting instinct cover (experiment games always do) |
 | `CHITS_DATA_DIR` | `data` | SQLite snapshots, event log, `brains.json` |
 | `CHITS_THEME` | – | `norse` for the Norse theme (Fjordfolk); see [Norse theme](#norse-theme) |
+| `CHITS_PACK` | – | path of a content pack for a fresh install; see [Content packs](#content-packs) |
+| `CHITS_SCAN_HOST` | `127.0.0.1` | where to look for model servers (`host.docker.internal` in Docker Desktop) |
 
 **Throughput tip:**
 - Each chit asks its model for a new plan every in-game hour or two (about 1,100 prompt tokens and a

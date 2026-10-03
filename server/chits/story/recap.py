@@ -27,7 +27,7 @@ def _age_days(w: World) -> Dict[str, int]:
 
 def lost_arts(w: World, limit: int = 4) -> List[str]:
     """Things this world once made or built that nobody alive knows how to any more."""
-    from ..sim.items import base_value
+    base_value = w.catalog.value  # (base_value, and a content pack's items by what goes into them)
 
     known = {k for a in w.agents.values() for k in a.knows}
     age = {key: i for i, (_, key) in enumerate(ERAS) if key}

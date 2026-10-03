@@ -89,7 +89,10 @@ FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "f
 
 def food_items(a: Agent) -> List[str]:
     # a world's own invented dishes (T20) count as food too; they're filling, so they go first
-    mine = [k for k, n in a.inventory.items() if n > 0 and k.startswith("inv_") and (it := a._item(k)) and it.food > 0]
+    # (and so does food from a content pack, sim/packs.py)
+    packed = a.catalog.pack_items if a.catalog is not None else {}
+    mine = [k for k, n in a.inventory.items() if n > 0 and (k.startswith("inv_") or k in packed)
+            and (it := a._item(k)) and it.food > 0]
     return mine + [f for f in FOODS if a.inventory.get(f, 0) > 0]
 
 
@@ -1461,7 +1464,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
     for st in tries:
         if st is not None and st not in here:
             continue
-        recipe = match_recipe(bag, st)
+        recipe = world.catalog.match(bag, st)
         if recipe:
             break
     combo = " + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
@@ -1486,7 +1489,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
             s["note"] = f"Made {world.item_name(recipe.key)} from {combo}"
         _observers_learn(world, a, f"recipe:{recipe.key}")
         return DONE
-    hint = _experiment_hint(bag, here | ({station} if station else set()))
+    hint = _experiment_hint(bag, here | ({station} if station else set()), world.catalog.physics())
     key = f"{combo}{where}"
     if key not in a.failed_experiments:
         a.failed_experiments.append(key)
@@ -1520,9 +1523,10 @@ def _do_invent(world, a: Agent, step, s) -> str:
     name = sanitize_name(step.get("name"))
     if not name:
         return "an invention needs a name (\"name\": what you call it)"
-    taken = normalize_item(name) or normalize_design(name) or world.invention_by_name(name)
+    taken = (normalize_item(name) or normalize_design(name) or world.invention_by_name(name)
+             or world.catalog.pack_key(name))
     if taken:  # otherwise "wood" or "spear" would mean the invention for everyone here from now on
-        return f"the name {name} is already taken by {world.item_name(taken) if normalize_item(name) or world.invention_by_name(name) else DESIGNS[taken].name}: give it a new name"
+        return f"the name {name} is already taken by {world.item_name(taken) if normalize_item(name) or world.invention_by_name(name) or world.catalog.pack_key(name) else DESIGNS[taken].name}: give it a new name"
     purpose_text = str(step.get("purpose") or "").strip()
     a.activity = "inventing"
     a.set_emote("💡", world.tick, 4)
@@ -1648,8 +1652,6 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
     """{"do":"trade","at":"stores"}: a trader from over the sea swaps its load at this village's stores for goods of
     the same worth (a silent trade, as between peoples with no common tongue: it works in any culture), preferring what
     it has never had."""
-    from .items import base_value
-
     if not a.origin or a.voyage_intent != "trade":
         return "only a trader from over the sea barters at the stores"
     if a.stats.get("traded_trip"):
@@ -1671,6 +1673,7 @@ def _trade_at_stores(world, a: Agent, step, s) -> str:
         return "couldn't reach the stores"
     if mv != "arrived":
         return RUNNING
+    base_value = world.catalog.value  # (a content pack's goods are worth what goes into them)
     worth = sum(base_value(k) * n for k, n in load.items())
     wares = sorted(((k, n) for k, n in pile.storage.items() if n > 0 and k not in load),
                    key=lambda kn: (kn[0] in a.familiar, -base_value(kn[0]), kn[0]))
@@ -1985,10 +1988,12 @@ def sanitize_name(raw: Any) -> Optional[str]:
     return s
 
 
-def _experiment_hint(bag: Dict[str, int], stations: Set[str]) -> str:
-    """Physical feedback: the world 'feels' close without revealing recipes."""
+def _experiment_hint(bag: Dict[str, int], stations: Set[str], recipes: Optional[List[Any]] = None) -> str:
+    """Physical feedback: the world 'feels' close without revealing recipes. `recipes`: this world's physics (the
+    base recipes, then a content pack's)."""
     have = set(bag)
-    for r in RECIPES.values():
+    recipes = list(RECIPES.values()) if recipes is None else recipes
+    for r in recipes:
         need = dict(r.inputs)
         if need == bag and r.station and r.station not in stations:
             return {"fire": "It felt like it needed heat.", "kiln": "It needed far more heat than a campfire gives.",
@@ -1997,7 +2002,7 @@ def _experiment_hint(bag: Dict[str, int], stations: Set[str]) -> str:
                     "forge": "It needed a blast of heat beyond any furnace.",
                     "factory": "This needs machines, not hands.",
                     "mill": "It wanted grinding: a millstone might do it."}.get(r.station, "")
-    for r in RECIPES.values():
+    for r in recipes:
         need = dict(r.inputs)
         if have < set(need) and all(bag[k] <= need[k] for k in bag):
             return "The pieces seemed to want something more."
@@ -2484,6 +2489,8 @@ def _knowledge_key(raw: Any, world=None) -> Optional[str]:
         k = k.strip().replace(" ", "_")
         if (kind == "recipe" and k in RECIPES) or (kind == "design" and k in DESIGNS):
             return f"{kind}:{k}"
+        if kind == "recipe" and world is not None and k in world.catalog.pack_recipes:
+            return f"recipe:{k}"
         r = k
     for p in ("how to make ", "how to build ", "making ", "building ", "a ", "the "):
         if r.startswith(p):
@@ -2491,6 +2498,8 @@ def _knowledge_key(raw: Any, world=None) -> Optional[str]:
     it = normalize_item(r)
     if it and it in RECIPES:
         return f"recipe:{it}"
+    if it is None and world is not None and world.catalog.pack_key(r) in world.catalog.pack_recipes:
+        return f"recipe:{world.catalog.pack_key(r)}"  # (a content pack's recipe, by key or name)
     d = normalize_design(r)
     if d:
         return f"design:{d}"

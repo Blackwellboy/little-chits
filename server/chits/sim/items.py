@@ -437,12 +437,58 @@ class Catalog:
     def __init__(self) -> None:
         self.items: Dict[str, Item] = {}
         self.recipes: Dict[str, Recipe] = {}
+        # a content pack's items and recipes (sim/packs.py): part of this world's physics from tick 0, found by
+        # experiment like the base recipes. Empty without a pack, and then every lookup below is the base one.
+        self.pack_items: Dict[str, Item] = {}
+        self.pack_recipes: Dict[str, Recipe] = {}
+        self._pack_value: Dict[str, float] = {}
 
     def item(self, key: str) -> Optional[Item]:
-        return self.items.get(key) or ITEMS.get(key)
+        return self.items.get(key) or ITEMS.get(key) or self.pack_items.get(key)
 
     def recipe(self, key: str) -> Optional[Recipe]:
-        return self.recipes.get(key) or RECIPES.get(key)
+        return self.recipes.get(key) or RECIPES.get(key) or self.pack_recipes.get(key)
+
+    def match(self, bag: Dict[str, int], station: Optional[str]) -> Optional[Recipe]:
+        """What an experiment with `bag` at `station` makes in this world: the base physics, then the pack's.
+        (Inventions are not found by experiment: they are made by the invent action.)"""
+        r = match_recipe(bag, station)
+        if r is None and self.pack_recipes:
+            key = frozenset((k, v) for k, v in bag.items() if v > 0)
+            for p in self.pack_recipes.values():
+                if p.input_bag == key and (p.station is None or p.station == station):
+                    return p
+        return r
+
+    def physics(self) -> List[Recipe]:
+        """Every recipe an experiment can find here: the base ones, then the pack's."""
+        return list(RECIPES.values()) + list(self.pack_recipes.values())
+
+    def pack_key(self, raw: object) -> Optional[str]:
+        """Free text -> one of the pack's items, by key or name ("honeycomb", "Honeycombs", "a honeycomb")."""
+        if not self.pack_items or raw is None:
+            return None
+        s = " ".join(str(raw).strip().lower().replace("-", " ").replace("_", " ").split())
+        for p in ("a ", "an ", "the "):
+            if s.startswith(p) and s[len(p):]:
+                s = s[len(p):]
+        for cand in (s, s[:-1] if s.endswith("s") else s):
+            for k, it in self.pack_items.items():
+                if cand in (k.replace("_", " "), it.name.replace("-", " ")):
+                    return k
+        return None
+
+    def value(self, key: str) -> float:
+        """What a thing is worth in this world: base_value, with the pack's items worked out from their recipes the
+        same way (kept here, so a pack never writes into the shared table)."""
+        r = self.pack_recipes.get(key)
+        if r is None or key in ITEMS:
+            return base_value(key)
+        if key not in self._pack_value:
+            self._pack_value[key] = 1.0  # guard against cycles while computing
+            self._pack_value[key] = (sum(self.value(i) * n for i, n in r.inputs) / r.qty * 1.5
+                                     + (0.5 if r.station else 0.0))
+        return self._pack_value[key]
 
     def describe(self, r: Recipe) -> str:
         parts = " + ".join(f"{n} {item_name(k, self)}" if n > 1 else item_name(k, self) for k, n in r.inputs)

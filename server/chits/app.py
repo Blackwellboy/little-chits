@@ -96,7 +96,7 @@ def health():
     r = R()
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
-            "autodetected": r.autodetected, "theme": theme.active(),
+            "autodetected": r.autodetected, "theme": theme.active(), "pack": r.pack_info(),
             "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()}}
 
 
@@ -214,7 +214,7 @@ def replay_export(days: int = 7):
     r = R()
     days = max(1, min(400, days))
     out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode,
-                           "theme": theme.active(), "worlds": {}}
+                           "theme": theme.active(), "pack": r.pack_info(), "worlds": {}}
     summary = r.brain_summary()
     for wid, w in r.worlds.items():
         frm = max(0, w.tick - days * 240)
@@ -700,6 +700,9 @@ class Reset(BaseModel):
     brains: Optional[Dict[str, str]] = None  # world id -> brain id for the new match
     contract: Optional[str] = None  # "play" (resilient, default) or "experiment" (strict, see F1)
     contact: Optional[bool] = None  # boats between the islands (never in experiments)
+    # a content pack for the new match (docs/modding.md): the pack's JSON itself, never a path. Left out: keep the
+    # current pack. {}: play without one. Refused in experiments.
+    pack: Optional[Dict[str, Any]] = None
 
 
 @app.post("/api/reset")
@@ -718,10 +721,40 @@ def reset(body: Reset):
     if body.contract is not None and body.contract not in CONTRACTS:
         raise HTTPException(400, f"contract must be one of {', '.join(CONTRACTS)}")
     try:
-        r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact)
+        r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact, body.pack)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "worlds": [views.world_meta(w) for w in r.worlds.values()]}
+
+
+@app.get("/api/pack")
+def pack():
+    """The content pack of the running match (None: the base game only), and the limits a pack must keep."""
+    from .sim import packs
+
+    r = R()
+    return {"pack": r.pack_info(), "content": r.pack, "limits": {
+        "bytes": packs.MAX_BYTES, "items": packs.MAX_ITEMS, "recipes": packs.MAX_RECIPES, "schema": packs.SCHEMA}}
+
+
+class PackBody(BaseModel):
+    pack: Dict[str, Any]
+
+
+@app.post("/api/pack/check")
+def pack_check(b: PackBody):
+    """Validate a pack without starting anything (the New game dialog does this when a file is picked)."""
+    from .sim import packs
+
+    try:
+        if len(json.dumps(b.pack)) > 4 * packs.MAX_BYTES:
+            raise packs.PackError(f"content pack refused: larger than {packs.MAX_BYTES // 1024} KiB")
+        p = packs.validate(b.pack)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    cat = packs.Catalog()
+    packs.apply(cat, p)
+    return {"ok": True, "pack": packs.describe(p), "recipes": [cat.describe(x) for x in cat.pack_recipes.values()]}
 
 
 @app.post("/api/save")

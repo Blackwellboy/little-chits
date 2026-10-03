@@ -281,6 +281,8 @@ button.danger { color: var(--bad); }
 .pace-btn.on { color: #ffd28a; border-color: rgba(255,200,120,0.4); }
 .nw-strict { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .nw-strict b { color: var(--text); }
+.nw-pack { font-size: 12px; margin: 0 0 12px; }
+.nw-pack p { margin: 4px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .badge { font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
 .badge.exp { color: #9fe0ff; border-color: rgba(120,200,255,0.4); }
 .badge.mod { color: #e7b6ff; border-color: rgba(220,160,255,0.4); }

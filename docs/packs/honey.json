@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "id": "honey",
+  "name": "Honey",
+  "version": "1.0",
+  "description": "Bees. A woven hive, honeycomb, honey and mead: four things to find by experiment.",
+  "author": "Little Chits",
+  "items": [
+    {
+      "key": "skep",
+      "name": "skep",
+      "props": ["woven", "hollow", "shelters bees"],
+      "icon": "🛖"
+    },
+    {
+      "key": "honeycomb",
+      "name": "honeycomb",
+      "props": ["edible", "waxy", "sweet", "sticky"],
+      "food": 15,
+      "icon": "🍯"
+    },
+    {
+      "key": "honey",
+      "name": "honey",
+      "props": ["edible", "sweet", "golden", "keeps well"],
+      "food": 45,
+      "icon": "🍯"
+    },
+    {
+      "key": "mead",
+      "name": "mead",
+      "props": ["drink", "brewed", "sweet"],
+      "food": 10,
+      "icon": "🍶"
+    }
+  ],
+  "recipes": [
+    { "makes": "skep", "inputs": { "fiber": 3, "cord": 1 }, "work": 8 },
+    { "makes": "honeycomb", "inputs": { "skep": 1, "berries": 2 }, "qty": 2, "work": 8 },
+    { "makes": "honey", "inputs": { "honeycomb": 2, "pot": 1 }, "station": "fire", "qty": 2, "work": 6 },
+    { "makes": "mead", "inputs": { "honey": 1, "grain": 2 }, "station": "workshop", "qty": 2, "work": 8 }
+  ]
+}
