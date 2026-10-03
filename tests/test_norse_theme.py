@@ -32,6 +32,7 @@ def upstream_name(rng, taken):
         n = n.capitalize()
         if n not in taken and 3 <= len(n) <= 7:
             return n
+    rng = random.Random(f"names:{len(taken)}")  # (the longer names have a stream of their own, #57)
     for _ in range(400):
         n = (rng.choice(_UP_A) + rng.choice(_UP_A) + rng.choice(_UP_B)).capitalize()
         if n not in taken and len(n) <= 9:
@@ -183,6 +184,7 @@ def _unthemed(plain: World, themed: World) -> dict:
     assert set(people) == set(others)
     swap = {people[i].name: others[i].name for i in people}
     assert all(k in norse().reverse for k in swap)
+    swap.update({k.lower(): v.lower() for k, v in list(swap.items())})  # (an action keeps the name it was asked for, lowercased)
     pat = re.compile(r"(?<![A-Za-z])(" + "|".join(re.escape(k) for k in sorted(swap, key=len, reverse=True))
                      + r")(?![A-Za-z])")
     return json.loads(pat.sub(lambda m: swap[m.group(1)], json.dumps(_comparable(themed))))
