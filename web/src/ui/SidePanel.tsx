@@ -1,5 +1,5 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, authedUrl } from "../net/socket";
 import { nextStep, stepLabel, type Checklist } from "../state/milestones";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
@@ -431,6 +431,12 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
   const bel = usePoll(() => api<Record<string, any[]>>("/api/beliefs"), 5000, []);
   const [cmpOpen, setCmpOpen] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  // the entry opens below the whole table (thousands of pixels down in an old world): bring it to the reader, or a
+  // click on a row looks like nothing happened
+  const openRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (openKey) openRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [openKey]);
   if (!rows) return <p className="muted">Loading…</p>;
   const shown = rows.filter((r) => r.discovered);
   const hidden = rows.length - shown.length;
@@ -467,7 +473,8 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
           ))}
         </tbody>
       </table>
-      {openKey && <div className="spread">
+      {openKey && <div className="spread" ref={openRef}>
+        <button className="spread-close" onClick={() => setOpenKey(null)} title="Close this entry and go back to the list">✕ close</button>
         {metas.map((m) => <EntryCard key={m.id + openKey} world={m.id} name={m.name} k={openKey} />)}
         {metas.map((m) => <SpreadTree key={m.id} world={m.id} name={m.name} k={openKey} />)}
       </div>}

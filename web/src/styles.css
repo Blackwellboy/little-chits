@@ -570,3 +570,6 @@ button.danger { color: var(--bad); }
 [data-theme="norse"] .welcome-brand .logo { width: 56px; height: 56px; }
 [data-theme="norse"] .welcome-brand h2 { font-size: 29px; margin: 3px 0 0; }
 [data-theme="norse"] .eyebrow { font-size: 10px; color: var(--accent); letter-spacing: .13em; text-transform: uppercase; }
+.spread-close { float: right; font-size: 11px; padding: 2px 8px; margin: 0 0 4px 8px; opacity: .8; border-radius: 8px;
+  background: rgba(255,255,255,0.08); border: 1px solid var(--line); color: inherit; cursor: pointer; }
+.spread-close:hover { opacity: 1; }

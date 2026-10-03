@@ -168,7 +168,8 @@ export function BrainsModal() {
               </div>
             </div>
           ))}
-          {!brains.length && <p className="muted">No models yet. Add one below. The chits run on instinct until you do.</p>}
+          {/* (a busy server takes seconds to answer: "No models yet" over a game with two brains read as a fault) */}
+          {!brains.length && <p className="muted">{status ? "No models yet. Add one below. The chits run on instinct until you do." : "Loading…"}</p>}
         </div>
 
         {!form && (
