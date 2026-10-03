@@ -116,16 +116,36 @@ export function authedUrl(path: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}`;
 }
 
+/** The server's own words for a failed request: api() throws "<status> <body>", and the body is FastAPI's
+ *  {"detail": "..."} (issue #63: a 409 only ever reached the browser console). */
+/** A request the game server refused, or couldn't be sent at all (the server restarting, say). */
+export class ApiError extends Error {}
+
+export function errorText(e: unknown): string {
+  const m = String((e as Error)?.message ?? e).match(/^(\d{3}) ([\s\S]*)$/);
+  if (!m) return String((e as Error)?.message ?? e);
+  try {
+    const d = JSON.parse(m[2]).detail;
+    if (d) return typeof d === "string" ? d : JSON.stringify(d);
+  } catch { /* not JSON */ }
+  return `${m[1]} ${m[2].slice(0, 200)}`;
+}
+
 export async function api<T = any>(path: string, body?: any, method?: string): Promise<T> {
   const t = accessToken();
   const headers: Record<string, string> = {};
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (t) headers["Authorization"] = `Bearer ${t}`;
-  const r = await fetch(path, {
-    method: method || (body !== undefined ? "POST" : "GET"),
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  let r: Response;
+  try {
+    r = await fetch(path, {
+      method: method || (body !== undefined ? "POST" : "GET"),
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (e) {  // (no answer at all: it gets a toast too, Codex review)
+    throw new ApiError(`Can't reach the game server (${(e as Error)?.message ?? e})`);
+  }
+  if (!r.ok) throw new ApiError(`${r.status} ${await r.text()}`);
   return r.json();
 }

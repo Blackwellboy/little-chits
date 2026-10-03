@@ -79,7 +79,13 @@ export function TopBar() {
         </button>
       )}
 
-      {control?.contract === "experiment" && <span className="badge exp" title="Experiment run: every decision is the model's own, settings are locked">🧪 experiment</span>}
+      {control?.contract === "experiment" && (
+        <button className="badge exp" title="Experiment run: every decision is the model's own, settings are locked. Click to end the experiment and keep playing these worlds."
+          onClick={() => {
+            if (window.confirm("End the experiment and keep playing these worlds? Models can be swapped again and instinct covers a slow model. It can't be made an experiment again (that starts with a new game)."))
+              api("/api/experiment/end", {}).then((c) => set({ control: c }));
+          }}>🧪 experiment</button>
+      )}
       {control?.sandbox_modified && <span className="badge mod" title="Someone reached into this world (god mode or a rewind). Great for stories, not for comparisons.">🪄<span className="mod-text"> modified</span></span>}
       <div className="spacer" />
 

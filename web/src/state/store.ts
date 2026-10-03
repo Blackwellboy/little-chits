@@ -68,6 +68,14 @@ export const worlds: Record<string, WorldData> = { A: new WorldData("A"), B: new
 
 export const socket = new Socket(socketUrl());
 
+let errSeq = 0;
+/** Say a failed action out loud: a toast with the server's reason (issue #63). */
+export function notifyError(text: string) {
+  const ui = useUI.getState();
+  ui.set({ toasts: [...ui.toasts, { seq: 0, tick: 0, kind: "error", text, importance: 4, actor: null, x: null, y: null, data: {},
+    world: "", key: `err-${++errSeq}` }].slice(-5) });
+}
+
 let frameCount = 0;
 let helloSeen = false;
 socket.onStatus((s) => useUI.getState().set({ conn: s }));

@@ -192,6 +192,8 @@ table.know { width: 100%; border-collapse: collapse; font-size: 12px; }
 .toast.k-death { border-color: rgba(180,190,230,0.3); background: rgba(12,14,24,0.85); }
 .toast.k-death p { color: #d8def0; }
 .toast.k-birth { border-color: rgba(255,140,180,0.4); }
+.toast.k-error { border-color: rgba(255,120,120,0.55); background: rgba(30,10,12,0.9); }
+.toast.k-error p { color: #ffd0d0; }
 
 .minimap { position: absolute; right: 12px; bottom: 12px; width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,0.45); image-rendering: pixelated; cursor: crosshair; z-index: 5; background: #000; }
 
