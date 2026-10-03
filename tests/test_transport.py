@@ -52,3 +52,42 @@ def test_instinct_gets_round_to_making_one():
     ins = I.Instinct()
     goals = {(ins._progress(w, a, random.Random(s)) or {}).get("goal") for s in range(200)}
     assert "make a sled" in goals
+
+
+def test_a_chit_who_knows_carts_tries_for_something_that_hauls_and_finds_the_wagon():
+    # the wagon's hunch is a curious chit's own try: no age or building made it a village project (Codex, #41), and
+    # as one it took the village's one project slot (#58)
+    from chits.sim import actions
+
+    w, (a, _) = village()
+    a.inventory.clear()
+    for k in ("recipe:cart", "recipe:wheel", "recipe:iron"):
+        a.learn(k, "taught", w.tick)
+    a.inventory.update({"cart": 1, "wheel": 2, "iron": 1})
+    a.familiar |= {"cart", "wheel", "iron"}
+    ins = I.Instinct()
+    ins._world = w
+
+    def tries():
+        return [p for p in (ins._haul_idea(w, a, random.Random(s)) for s in range(40)) if p]
+
+    assert not tries()  # no workshop to try it at
+    ws = put(w, "workshop", a)
+    a.reflex_rest["unreach:" + ws.id] = w.tick + 240  # one it can't get to (across water, say) is none (Codex, #66)
+    assert not tries()
+    a.reflex_rest.clear()
+    plans = tries()
+    assert plans and 4 <= len(plans) <= 24  # some of the time, not every time
+    step = plans[0]["steps"][-1]
+    assert step == {"do": "experiment", "with": ["cart", "iron", "wheel", "wheel"], "at": "workshop"}
+    # (and it's one of the ideas a chit experimenting has)
+    assert any((ins._experiment(w, a, random.Random(s)) or {}).get("steps", [{}])[-1] == step for s in range(40))
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(ws)))
+    s = {}
+    for _ in range(300):
+        w.tick += 1
+        if actions._do_experiment(w, a, step, s) != actions.RUNNING:
+            break
+    assert a.knows_recipe("wagon")
+    a.inventory.update({"cart": 1, "wheel": 2, "iron": 1})
+    assert not tries()  # (known now, with all it needs still to hand)
