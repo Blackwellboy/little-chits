@@ -33,6 +33,14 @@ A failed checkpoint is not treated as a harmless logging error.
 4. An **experiment** is permanently marked invalid after any durability failure. A later successful save can preserve
    the state for inspection, but that run cannot be resumed as a valid experiment; start a fresh experiment instead.
 
+A skip ahead (the ⏩ control, play only) stops at once on a failed checkpoint and the game stays paused as above. A
+skip also stops on a failed write that normal play only logs (a replay keyframe, a chronicle page, the diagnostics
+log), so a long stretch is never run at full speed on storage that is failing.
+
+Save files (the 💾 Saves entry, play only) add nothing to this boundary: an export reads a stored save point, and an
+import adds one save-point row after the file has been checked. Loading a save is the save-point restore: it
+checkpoints the current worlds, replaces them, starts a new timeline and checkpoints again.
+
 A restart always follows `active_snapshot:<world>` and therefore resumes the last committed checkpoint, not whatever
 newer tick happened to exist only in the dead process's memory.
 

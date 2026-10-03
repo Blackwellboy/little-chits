@@ -759,14 +759,51 @@ def control(c: Control):
     if c.speed is not None:
         if c.speed not in SPEEDS:
             raise HTTPException(400, f"speed must be one of {list(SPEEDS)}")
+        r.stop_skip()  # (picking a speed or pausing ends a skip: the player took the clock back)
         r.speed = c.speed
         r.paused = c.speed == 0
     if c.paused is not None:
+        r.stop_skip()
         r.paused = c.paused
     if c.pace_to_brain is not None:
         if r.contract == "experiment" and not c.pace_to_brain:
             raise HTTPException(409, "an experiment run always waits for its models")
         r.pace_to_brain = c.pace_to_brain
+    return r.control_state()
+
+
+class SkipBody(BaseModel):
+    until: str = "discovery"  # "discovery", "moment" (the next big moment) or "days"
+    days: Optional[int] = None
+
+
+SKIP_NO = ("skipping ahead is off in an experiment run: skipped time is mostly instinct-driven, and in an experiment "
+           "every decision is the model's own")
+
+
+@app.post("/api/skip")
+async def skip_start(b: SkipBody):
+    """⏩ Run forward at full speed until the next discovery, the next big moment or N days (Runtime.start_skip)."""
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, SKIP_NO)
+    try:
+        r.start_skip(b.until.strip().lower(), b.days)
+    except PermissionError:
+        raise HTTPException(409, SKIP_NO)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return r.control_state()
+
+
+@app.post("/api/skip/stop")
+async def skip_stop():
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, SKIP_NO)
+    r.stop_skip()
     return r.control_state()
 
 

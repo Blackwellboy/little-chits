@@ -4,6 +4,7 @@ import { api } from "../net/socket";
 import { localStorageSet, useUI, worlds } from "../state/store";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
+import { SkipControl } from "./SkipControl";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
@@ -69,6 +70,7 @@ export function TopBar() {
           <button key={s} className={!control?.paused && control?.speed === s ? "on" : ""} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]}</button>
         ))}
       </div>
+      {control?.contract !== "experiment" && <SkipControl />}
       {brainsInUse && control?.contract !== "experiment" && (
         <button className={`pace-btn ${control?.pace_to_brain ? "on" : ""}`}
           title={control?.pace_to_brain
