@@ -1,0 +1,24 @@
+# Docker Desktop (Windows, macOS) and any Docker without host networking. Also works on Linux.
+#   CHITS_TOKEN=pick-a-secret docker compose -f docker-compose.desktop.yml up --build
+#   then open http://localhost:8000/?token=pick-a-secret
+# The game listens on this computer only (127.0.0.1). Model servers running on this computer are reached at
+# http://host.docker.internal:PORT/v1, and the first-run scan and the Scan button in ⚙ Brains look there too.
+services:
+  little-chits:
+    build: .
+    image: ${CHITS_IMAGE:-little-chits:local}
+    ports:
+      - "127.0.0.1:${CHITS_PORT:-8000}:8000"
+    extra_hosts:
+      # Docker Desktop provides this name itself; this line makes it work on Linux too
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/data
+    environment:
+      # no default: the container listens on every interface inside its network, so a token is required
+      CHITS_TOKEN: ${CHITS_TOKEN:?Set CHITS_TOKEN to a secret of your choice, e.g. CHITS_TOKEN=pick-a-secret}
+      # where to look for model servers (the computer running Docker, not the container)
+      CHITS_SCAN_HOST: host.docker.internal
+      # optional: put one model in both worlds, e.g. http://host.docker.internal:8080/v1
+      CHITS_MODEL_URL: ${CHITS_MODEL_URL:-}
+    restart: unless-stopped

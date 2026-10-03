@@ -31,10 +31,30 @@ CHITS_TOKEN=pick-a-secret docker compose up --build
 # open http://localhost:8000/?token=pick-a-secret
 ```
 
-On **Docker Desktop for Windows or macOS** there is no host networking: in `docker-compose.yml` remove
-`network_mode: host`, add `ports: ["8000:8000"]`, and point the game at your models with
-`http://host.docker.internal:PORT/v1`. **On Windows the native WSL launcher is easier** (`make play` inside
-WSL, or `make shortcut` for a desktop icon).
+**Docker Desktop on Windows or macOS** has no host networking, so it has its own file. Nothing to edit:
+
+```bash
+CHITS_TOKEN=pick-a-secret docker compose -f docker-compose.desktop.yml up --build
+# open http://localhost:8000/?token=pick-a-secret
+```
+
+- In PowerShell, set the token first: `$env:CHITS_TOKEN = "pick-a-secret"`, then run the `docker compose` line.
+  With `make`, it is `CHITS_TOKEN=pick-a-secret make docker-desktop`.
+- It refuses to start without `CHITS_TOKEN`. The game is published on this computer only (`127.0.0.1:8000`).
+- Model servers on your computer are found by themselves: the first-run scan and **⚙ Brains → 🔍 Scan** look at
+  `host.docker.internal`. To add one by hand, use `http://host.docker.internal:PORT/v1` (not `localhost`: inside
+  the container that is the container itself).
+- Your model server must accept connections from Docker, not only from `127.0.0.1` (for example
+  `llama-server --host 0.0.0.0`, or `OLLAMA_HOST=0.0.0.0`).
+- Another port: `CHITS_PORT=8010`. One model in both worlds: `CHITS_MODEL_URL=http://host.docker.internal:8080/v1`.
+- The same file works on Linux. Saves are kept in `./data`.
+- Auto-record (🎞) is not available in the container: it has no browser or `ffmpeg`.
+
+Pushing a version tag (`v*`) builds the image and publishes it to GHCR (`.github/workflows/image.yml`). Once a
+release exists you can skip the build: set `CHITS_IMAGE=ghcr.io/<owner>/<repo>:latest` and leave out `--build`.
+
+On Windows the native WSL launcher is still the easiest way to use your GPUs (`make play` inside WSL, or
+`make shortcut` for a desktop icon).
 
 **If something goes wrong**
 

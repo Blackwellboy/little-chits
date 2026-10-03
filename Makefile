@@ -4,7 +4,7 @@ VENV = .venv
 BIN = $(VENV)/bin
 PORT ?= 8000
 
-.PHONY: play play-single install web run open stop dual dual-doctor bench experiment clip compare doctor gpus diagnose shortcut dev test fake-model clean-data plan-status plan-next plan-loop
+.PHONY: play play-single docker-desktop install web run open stop dual dual-doctor bench experiment clip compare doctor gpus diagnose shortcut dev test fake-model clean-data plan-status plan-next plan-loop
 
 play:               ## the easy way: set up if needed, then start and open the browser (PORT=8010 to change the port)
 	@test -d $(VENV) || $(MAKE) install
@@ -15,6 +15,9 @@ play-single:        ## like play, but one world driven by one model
 	@test -d $(VENV) || $(MAKE) install
 	@test -d web/dist || $(MAKE) web
 	cd server && ../$(BIN)/python -m chits.cli --port $(PORT) --mode single $(ARGS)
+
+docker-desktop:     ## Docker Desktop on Windows or macOS (and Linux): CHITS_TOKEN=pick-a-secret make docker-desktop
+	docker compose -f docker-compose.desktop.yml up --build
 
 install:            ## python venv + web deps
 	$(PY) -m venv $(VENV)

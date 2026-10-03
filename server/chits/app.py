@@ -814,8 +814,11 @@ async def probe(p: Probe):
 
 
 @app.get("/api/brains/scan")
-async def scan(host: str = "127.0.0.1"):
+async def scan(host: Optional[str] = None):
     """Find model servers on the usual local ports (5090/3090 presets, llama.cpp, Ollama, LM Studio...)."""
+    from .brain.llm import scan_host
+
+    host = host or scan_host()
     found = await scan_local(host)
     known = {b.cfg.base_url.rstrip("/") for b in R().mind.brains.values() if hasattr(b, "cfg")}
     for f in found:
