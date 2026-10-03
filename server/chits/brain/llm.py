@@ -169,6 +169,9 @@ class LLMBrain:
         self.cfg = cfg
         self.stats = BrainStats()
         self.latencies: deque = deque(maxlen=300)
+        # the same, apart: one-token choices and written replies (a cascade's speed is both: sizing.live_latency)
+        self.choice_latencies: deque = deque(maxlen=300)
+        self.plan_latencies: deque = deque(maxlen=300)
         self.done_log: deque = deque(maxlen=2000)  # (finish time, tokens out) for real throughput
         self.sem = PriorityGate(max(1, cfg.max_concurrency))
         self._client: Optional[httpx.AsyncClient] = None
@@ -342,6 +345,7 @@ class LLMBrain:
                 self.stats.tokens_in += int(usage.get("prompt_tokens") or 0)
                 self.stats.record_latency(ms)
                 self.latencies.append(ms)
+                (self.choice_latencies if body["max_tokens"] == 1 else self.plan_latencies).append(ms)
                 self.done_log.append((time.monotonic(), tout))
                 if ms > 0:
                     tps = tout / (ms / 1000)

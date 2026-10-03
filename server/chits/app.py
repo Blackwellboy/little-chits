@@ -370,6 +370,9 @@ async def saves_load(sid: int):
         raise HTTPException(409, SAVES_NO)
     except ValueError as e:
         raise HTTPException(409, str(e))
+    except Exception as e:  # (a restore is all the worlds or none: Runtime.restore_point)
+        log.exception("loading save %s failed", sid)
+        raise HTTPException(500, f"The save could not be loaded, and no world was changed ({type(e).__name__}: {str(e)[:200]}).")
     if not ok:
         raise HTTPException(404, "no such save")
     return {"ok": True, "control": r.control_state()}

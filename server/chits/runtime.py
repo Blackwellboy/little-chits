@@ -1177,19 +1177,43 @@ class Runtime:
         return {"id": sid, "name": name, "tick": tick}
 
     def restore_point(self, sid: int) -> bool:
+        """Every world goes back to a save point, as a unit: all of them, or (on any failure) none of them. The run is
+        marked as a sandbox and each world starts a new timeline. PermissionError in an experiment."""
         sp = self.store.load_save_point(sid)
         if not sp:
             return False
-        self.mark_sandbox(f"restored save point {sp['name']}")  # PermissionError in an experiment
-        self.stop_skip()  # (a skip was looking for news in the worlds that are about to be replaced)
-        for wid, d in sp["worlds"].items():
-            self._flush_events(self.worlds[wid]) if wid in self.worlds else None
-            w = World.from_dict(d)
-            self._adopt(w)
-            w.fork_epoch(f"restored save point {sp['name']}")
+        if self.contract == "experiment":
+            raise PermissionError("not allowed in an experiment run")
+        reason = f"restored save point {sp['name']}"
+        # 1. Build every replacement first. A save that does not load has changed nothing.
+        staged = [World.from_dict(d) for d in sp["worlds"].values()]
+        # 2. Make every world that is about to be replaced durable. A failed checkpoint pauses the game (DURABILITY.md)
+        #    and raises here, with every current world still in place.
+        for w in staged:
+            if w.id in self.worlds:
+                self._flush_events(self.worlds[w.id])
+        # 3. One transaction: each restored world's carried events (under the timeline they happened in), its first
+        #    checkpoint in its new timeline and its active pointer, and the sandbox mark. If it fails, storage still
+        #    points at the checkpoints of step 2 and the worlds in memory are those same worlds.
+        entries = []
+        for w in staged:
+            identity, carried, mark = (w.id, w.uuid, w.epoch), list(w.events), w.seq
+            w.fork_epoch(reason)
+            entries.append({"identity": identity, "carried": carried, "world": w.to_dict(),
+                            "events": [e for e in w.events if e.seq > mark]})
+        reasons = json.loads(self.store.get_meta("sandbox_reasons") or "[]") + [reason]
+        self.store.save_worlds(entries, {"sandbox_modified": "1", "sandbox_reasons": json.dumps(reasons[-50:])})
+        # 4. Committed: only now do the restored worlds replace the running ones.
+        self.stop_skip()  # (a skip was looking for news in the worlds that have just been replaced)
+        for w in staged:
+            w._stored_seq, w._durable_tick = w.seq, w.tick
             self._attach(w)
+            self.save_errors.pop(w.id, None)
         self.gen += 1
-        self.save_all()
+        try:
+            self.write_manifest()
+        except Exception as e:  # (the mark is already committed in the store; the file copy follows at the next write)
+            log.error("could not write the manifest after a restore: %s", e)
         self._broadcast_snapshots()
         return True
 
@@ -1235,6 +1259,60 @@ class Runtime:
         slug = "".join(ch if ch.isascii() and ch.isalnum() else "-" for ch in sp["name"]).strip("-")[:40] or "save"
         return f"little-chits-{slug}.lcsave", gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), 6)
 
+    SAVE_TRIAL_TICKS = 24  # an imported world must run this long on a throwaway copy before it is kept
+
+    @staticmethod
+    def _snapshot_problem(w: World) -> str:
+        """What is wrong with the shape of a world read from a save file, or "". World.from_dict copies what the file
+        says: a per-tile list of the wrong length, or a chit or building off the map, loads and then crashes the first
+        step that looks at that tile."""
+        n = w.w * w.h
+
+        def number(v) -> bool:
+            return type(v) in (int, float) and v == v and abs(v) != float("inf")
+
+        def tile(x, y) -> bool:
+            return type(x) is int and type(y) is int and w.inb(x, y)
+
+        for name, arr in (("resource amounts", w.res_amt), ("paths", w.traffic)):
+            if len(arr) != n or not all(map(number, arr)):
+                return f"its {name} do not cover the {w.w} by {w.h} map"
+        if not all(type(i) is int and 0 <= i < n for i in [*w.roads, *w.tunnels]):
+            return "a road or tunnel is off the map"
+        if not all(tile(a.x, a.y) for a in [*w.agents.values(), *w.dead.values()]):
+            return "a chit is off the map"
+        if not all(type(v) is int and v > 0 for s in w.structures.values() for v in (s.w, s.h)) \
+                or not all(tile(s.x, s.y) and tile(s.x + s.w - 1, s.y + s.h - 1) for s in w.structures.values()):
+            return "a building is off the map"
+        if not all(tile(t.x, t.y) for t in w.tablets.values()):
+            return "a tablet is off the map"
+        for key in w.ground:
+            x, _, y = str(key).partition(",")
+            if not (x.isdigit() and y.isdigit() and w.inb(int(x), int(y))):
+                return "a pile on the ground is off the map"
+        if not all(isinstance(a, dict) and tile(a.get("x"), a.get("y")) for a in w.animals.values()):
+            return "an animal is off the map"
+        return ""
+
+    @staticmethod
+    def _match_problem(worlds: Dict[str, Dict[str, Any]]) -> str:
+        """Why the snapshots of a save file can't be one game, or "". Every world of a match is built from the same
+        seed and differs only in its culture (MODES); a save point takes them all at one moment. Two unrelated
+        islands in one file would be loaded and then played, scored and compared as twins."""
+        ids = sorted(worlds)
+        cultures = tuple(worlds[wid].get("culture") for wid in ids)
+        if cultures not in {tuple(m["culture"][wid] for wid in m["worlds"]) for m in MODES.values()}:
+            return "no game mode has worlds with these cultures (" + ", ".join(str(c)[:20] for c in cultures) + ")"
+        for key, what, default in (("seed", "seeds", None), ("size", "sizes", None),
+                                   ("terrain_version", "terrain versions", 1), ("rng_scheme", "random-number schemes", 1),
+                                   ("schema", "snapshot versions", 1)):
+            if len({json.dumps(worlds[wid].get(key, default)) for wid in ids}) > 1:
+                return f"they have different {what}"
+        ticks = [worlds[wid]["tick"] for wid in ids]
+        if max(ticks) - min(ticks) > TICKS_PER_DAY:  # (twins step together; a crash can leave them a checkpoint apart)
+            return "they are more than a day apart"
+        return ""
+
     def import_save(self, raw: bytes) -> Dict[str, Any]:
         """A save file becomes a new save point (nothing is loaded, and nothing is written but that row). The file is
         untrusted: its size, format name and version are checked, it is only ever parsed as JSON, and every world in
@@ -1269,11 +1347,24 @@ class Runtime:
             if type(size) is not int or not MIN_SIZE <= size <= MAX_SIZE or type(tick) is not int or tick < 0 \
                     or d.get("id") != wid or not isinstance(d.get("agents"), list) or len(d["agents"]) > 5000:
                 raise ValueError(f"World {wid} in this save file is not a world this build can read.")
-            try:
-                World.from_dict(d)  # (refuses a snapshot schema newer than this build; the copy is thrown away)
+            try:  # (a copy: the trial below steps it, and what is kept must be the file's own snapshot)
+                trial = World.from_dict(json.loads(json.dumps(d)))  # refuses a snapshot schema newer than this build
             except Exception as e:
                 raise ValueError(f"World {wid} in this save file can't be read by this build "
                                  f"({type(e).__name__}: {str(e)[:120]}).")
+            wrong = self._snapshot_problem(trial)
+            if wrong:
+                raise ValueError(f"World {wid} in this save file is damaged: {wrong}.")
+            try:  # it loads and it is whole: can it run? (on instinct, no model is asked; the copy is thrown away)
+                hook = Mind(None).hook
+                for _ in range(self.SAVE_TRIAL_TICKS):
+                    trial.step(hook)
+            except Exception as e:
+                raise ValueError(f"World {wid} in this save file loads but can't run in this build "
+                                 f"({type(e).__name__}: {str(e)[:120]}).")
+        wrong = self._match_problem(worlds)
+        if wrong:
+            raise ValueError(f"The worlds in this save file are not one game: {wrong}.")
         name = "".join(ch for ch in str(doc.get("name") or "") if ch.isprintable()).strip()[:60] or "imported save"
         tick = max(d["tick"] for d in worlds.values())
         summary = {**save_summary(worlds), "imported": True}
