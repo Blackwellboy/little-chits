@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
 from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item, ORE_KINDS, IRON_ORE_SHARE
+from .items import LIBRARIES
 from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
 from . import projects as PROJECTS  # village projects, research and wants (their shared state: world.civic)
@@ -1142,8 +1143,9 @@ class World:
     def structures_near(self, x: int, y: int, radius: int, design: Optional[str] = None) -> List[Structure]:
         out = []
         for s in self.structures.values():
-            if design and s.design != design and not (design == "stockpile" and s.design in STORES):
-                continue  # (asking for stockpiles finds outpost camps' stores too)
+            if design and s.design != design and not (design == "stockpile" and s.design in STORES) \
+                    and not (design == "library" and s.design in LIBRARIES):
+                continue  # (asking for stockpiles finds outpost camps' stores too; for libraries, the great library)
             if s.dist(x, y) <= radius:
                 out.append(s)
         out.sort(key=lambda s: s.dist(x, y))

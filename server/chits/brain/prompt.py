@@ -15,7 +15,7 @@ from ..sim import buildings as BLD
 from ..sim import terrain as T
 from ..sim.actions import FOODS as _FOODS, STATION_REACH
 from ..sim.agent import Agent
-from ..sim.items import DESIGNS, ITEMS, RECIPES, STATIONS, STORES, item_name
+from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, item_name
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
@@ -472,7 +472,7 @@ def scene(world, a: Agent) -> str:
         if s.design in STORES:
             inv = ", ".join(f"{n} {world.item_name(k)}" for k, n in sorted(s.storage.items(), key=lambda kv: -kv[1])[:8])
             state.append(f"holds {inv}" if inv else "empty")
-        if s.design == "library":
+        if s.design in LIBRARIES:
             state.append(f"{len(s.shelf)} tablets")
         if s.design == "shrine" and s.name:
             state.append(s.name + (" (your belief)" if s.belief and s.belief == a.belief else ""))
