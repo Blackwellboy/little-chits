@@ -1231,7 +1231,11 @@ class Instinct:
         #41); as a village project it took the one project slot from work that counted for more (#58), so it's a
         curious chit's own try instead."""
         if a.knows_recipe("wagon") or "cart" not in a.familiar or not (a.knows_recipe("wheel") and a.knows_recipe("iron")) \
-                or rng.random() >= HAUL_TRY or not world.nearest_station(a.x, a.y, "workshop", STATION_REACH):
+                or rng.random() >= HAUL_TRY:
+            return None
+        # a workshop it can walk to (the nearest may be across water: tried and failed, again and again, Codex #66)
+        if not any(s.functional and "workshop" in s.stations() and _reachable(world, a, s)
+                   for s in world.structures_near(a.x, a.y, STATION_REACH)):
             return None
         from . import civic
 

@@ -73,6 +73,9 @@ def test_a_chit_who_knows_carts_tries_for_something_that_hauls_and_finds_the_wag
 
     assert not tries()  # no workshop to try it at
     ws = put(w, "workshop", a)
+    a.reflex_rest["unreach:" + ws.id] = w.tick + 240  # one it can't get to (across water, say) is none (Codex, #66)
+    assert not tries()
+    a.reflex_rest.clear()
     plans = tries()
     assert plans and 4 <= len(plans) <= 24  # some of the time, not every time
     step = plans[0]["steps"][-1]
