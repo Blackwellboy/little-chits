@@ -354,6 +354,10 @@ button.danger { color: var(--bad); }
 .save-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .save-row .grow { flex: 1; }
 .god-msg { margin-top: 10px; color: #ffcf99; }
+.modal.saves-modal { width: min(640px, 100%); }
+.save-row .save-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.saves-modal .save-row button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 12px; }
+.saves-modal button:disabled { opacity: 0.5; }
 .god-banner { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); z-index: 30; padding: 8px 14px; border-radius: 10px;
   background: var(--glass); border: 1px solid rgba(255, 184, 107, 0.6); backdrop-filter: blur(8px); display: flex; gap: 10px; align-items: center; }
 .god-grid button { background: rgba(255, 255, 255, 0.06); color: var(--text); border: 1px solid var(--line); border-radius: 10px; }

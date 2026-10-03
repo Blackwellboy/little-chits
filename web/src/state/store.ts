@@ -23,6 +23,7 @@ type UI = {
   focus: { world: string; x: number; y: number; t: number } | null;
   director: boolean; // 🎬 the camera cuts to the drama by itself
   godOpen: boolean;
+  savesOpen: boolean; // 💾 saves in the main UI
   recordingsOpen: boolean;
   recording: boolean; // 🎞 auto-record is filming
   godTool: { action: string; item?: string; label: string } | null; // armed: the next map click applies it
@@ -50,6 +51,7 @@ export const useUI = create<UI>((set) => ({
   focus: null,
   director: localStorageGet("director") === "1",
   godOpen: false,
+  savesOpen: false,
   recordingsOpen: false,
   recording: false,
   godTool: null,

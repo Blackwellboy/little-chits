@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import shutil
 import logging
 import os
 import time
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -65,6 +67,18 @@ def source_commit() -> str:
         except Exception:
             _COMMIT = "unknown"
     return _COMMIT
+
+
+def save_summary(worlds: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """What the Saves list says about a save, from its snapshots alone: the day, how many chits, and the era."""
+    rows = {}
+    for wid, d in worlds.items():
+        i = max(0, min(len(ERAS) - 1, int(d.get("era_index") or 0)))
+        rows[wid] = {"name": str(d.get("name") or wid)[:60], "day": int(d.get("tick") or 0) // TICKS_PER_DAY + 1,
+                     "population": len(d.get("agents") or []), "era": ERAS[i][0], "era_index": i}
+    furthest = max(rows.values(), key=lambda r: r["era_index"], default={"era": ""})
+    return {"day": max((r["day"] for r in rows.values()), default=1),
+            "population": sum(r["population"] for r in rows.values()), "era": furthest["era"], "worlds": rows}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -972,7 +986,8 @@ class Runtime:
     def save_point(self, name: str) -> Dict[str, Any]:
         name = (name or "").strip()[:60] or time.strftime("save %H:%M")
         tick = max((w.tick for w in self.worlds.values()), default=0)
-        sid = self.store.save_point(name, tick, {wid: w.to_dict() for wid, w in self.worlds.items()})
+        worlds = {wid: w.to_dict() for wid, w in self.worlds.items()}
+        sid = self.store.save_point(name, tick, worlds, save_summary(worlds))
         return {"id": sid, "name": name, "tick": tick}
 
     def restore_point(self, sid: int) -> bool:
@@ -990,6 +1005,93 @@ class Runtime:
         self.save_all()
         self._broadcast_snapshots()
         return True
+
+    # -------------------------------------------------------------- 💾 saves in the main UI, and save files
+    SAVE_FORMAT, SAVE_VERSION = "little-chits-save", 1
+    SAVE_FILE_MAX = 64 * 1024 * 1024  # an uploaded save file, as sent
+    SAVE_JSON_MAX = 256 * 1024 * 1024  # and what it may unpack to
+
+    def _play_only(self, what: str) -> None:
+        if self.contract == "experiment":
+            raise PermissionError(f"{what} not allowed in an experiment run")
+
+    def saves(self) -> List[Dict[str, Any]]:
+        """Every save point, newest first, with its day, population and era."""
+        return self.store.save_summaries(save_summary)
+
+    def load_save(self, sid: int) -> bool:
+        """Load a save from the main UI. This is god mode's save-point restore and nothing else (restore_point: the
+        run is marked as a sandbox and every world starts a new timeline), after checking the save fits this game.
+        Raises PermissionError (experiment) or ValueError (the save holds other worlds than this game has)."""
+        self._play_only("loading a save is")
+        row = next((s for s in self.saves() if s["id"] == sid), None)
+        if row is None:
+            return False
+        want = set(row.get("worlds") or self.worlds)
+        if want != set(self.worlds):
+            n, m = len(want), len(self.worlds)
+            raise ValueError(f"This save holds {n} world{'s' if n != 1 else ''} and this game has {m}. "
+                             f"Start a new game with {n} world{'s' if n != 1 else ''}, then load it.")
+        ok = self.restore_point(sid)
+        if ok and row.get("imported"):  # (the world now running was made somewhere else: say so on the run's record)
+            self.mark_sandbox(f"save point {row['name']} came from an imported file")
+        return ok
+
+    def export_save(self, sid: int) -> Optional[Tuple[str, bytes]]:
+        """One save as one file: gzipped JSON with a format name and version. Returns (file name, bytes)."""
+        self._play_only("exporting a save is")
+        sp = self.store.load_save_point(sid)
+        if not sp:
+            return None
+        doc = {"format": self.SAVE_FORMAT, "version": self.SAVE_VERSION, "name": sp["name"], "tick": sp["tick"],
+               "exported": time.strftime("%Y-%m-%dT%H:%M:%S"), "build": source_commit(), "worlds": sp["worlds"]}
+        slug = "".join(ch if ch.isascii() and ch.isalnum() else "-" for ch in sp["name"]).strip("-")[:40] or "save"
+        return f"little-chits-{slug}.lcsave", gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), 6)
+
+    def import_save(self, raw: bytes) -> Dict[str, Any]:
+        """A save file becomes a new save point (nothing is loaded, and nothing is written but that row). The file is
+        untrusted: its size, format name and version are checked, it is only ever parsed as JSON, and every world in
+        it must load in this build before it is kept. Raises ValueError with a plain reason."""
+        self._play_only("importing a save is")
+        if len(raw) > self.SAVE_FILE_MAX:
+            raise ValueError(f"This file is too big (the limit is {self.SAVE_FILE_MAX // 2 ** 20} MB).")
+        if raw[:2] == b"\x1f\x8b":
+            try:
+                unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                text = unpack.decompress(raw, self.SAVE_JSON_MAX + 1)
+            except zlib.error:
+                raise ValueError("This file is damaged: it could not be unpacked.")
+            if len(text) > self.SAVE_JSON_MAX or unpack.unconsumed_tail:
+                raise ValueError("This file unpacks to more than a save can hold.")
+        else:
+            text = raw
+        try:
+            doc = json.loads(text)
+        except (ValueError, RecursionError):
+            raise ValueError("This file is not a Little Chits save.")
+        if not isinstance(doc, dict) or doc.get("format") != self.SAVE_FORMAT:
+            raise ValueError("This file is not a Little Chits save.")
+        version = doc.get("version")
+        if type(version) is not int or version != self.SAVE_VERSION:
+            raise ValueError(f"This save file is version {str(version)[:20]}; this build reads version {self.SAVE_VERSION}.")
+        worlds = doc.get("worlds")
+        if not isinstance(worlds, dict) or sorted(worlds) not in (["A"], ["A", "B"]):
+            raise ValueError("This save file holds no worlds this game knows.")
+        for wid, d in worlds.items():
+            size, tick = (d.get("size"), d.get("tick")) if isinstance(d, dict) else (None, None)
+            if type(size) is not int or not MIN_SIZE <= size <= MAX_SIZE or type(tick) is not int or tick < 0 \
+                    or d.get("id") != wid or not isinstance(d.get("agents"), list) or len(d["agents"]) > 5000:
+                raise ValueError(f"World {wid} in this save file is not a world this build can read.")
+            try:
+                World.from_dict(d)  # (refuses a snapshot schema newer than this build; the copy is thrown away)
+            except Exception as e:
+                raise ValueError(f"World {wid} in this save file can't be read by this build "
+                                 f"({type(e).__name__}: {str(e)[:120]}).")
+        name = "".join(ch for ch in str(doc.get("name") or "") if ch.isprintable()).strip()[:60] or "imported save"
+        tick = max(d["tick"] for d in worlds.values())
+        summary = {**save_summary(worlds), "imported": True}
+        sid = self.store.save_point(name, tick, worlds, summary)
+        return {"id": sid, "name": name, "tick": tick, **summary}
 
     @staticmethod
     def _signs_once(w: World):

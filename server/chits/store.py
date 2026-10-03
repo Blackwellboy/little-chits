@@ -69,6 +69,8 @@ class Store:
             if col not in cols:
                 self.db.execute(f"ALTER TABLE events ADD COLUMN {col} TEXT")
         self.db.execute("CREATE INDEX IF NOT EXISTS events_by_epoch ON events (world_id, epoch)")
+        if "summary" not in {r[1] for r in self.db.execute("PRAGMA table_info(savepoints)")}:
+            self.db.execute("ALTER TABLE savepoints ADD COLUMN summary TEXT")  # what the Saves list shows
         self.db.commit()
         self._migrate_timelines()
 
@@ -274,14 +276,35 @@ class Store:
             self.db.commit()
 
     # save points (T28): every world at one moment, to rewind to after meddling
-    def save_point(self, name: str, tick: int, worlds: Dict[str, Any]) -> int:
+    def save_point(self, name: str, tick: int, worlds: Dict[str, Any], summary: Optional[Dict[str, Any]] = None) -> int:
         import time as _time
 
         with self.lock:
-            cur = self.db.execute("INSERT INTO savepoints (name, created, tick, data) VALUES (?,?,?,?)",
-                                  (name, _time.time(), tick, json.dumps(worlds, separators=(",", ":"))))
+            cur = self.db.execute("INSERT INTO savepoints (name, created, tick, data, summary) VALUES (?,?,?,?,?)",
+                                  (name, _time.time(), tick, json.dumps(worlds, separators=(",", ":")),
+                                   json.dumps(summary) if summary is not None else None))
             self.db.commit()
             return int(cur.lastrowid)
+
+    def save_summaries(self, summarise) -> List[Dict[str, Any]]:
+        """Save points, newest first, each with its summary (day, population, era). A save made before summaries
+        were kept gets one from its own data, once (`summarise(worlds) -> dict`)."""
+        with self.lock:
+            rows = self.db.execute("SELECT id, name, created, tick, summary FROM savepoints ORDER BY id DESC").fetchall()
+        out = []
+        for sid, name, created, tick, summary in rows:
+            if summary is None:
+                sp = self.load_save_point(sid)
+                try:
+                    made = summarise(sp["worlds"]) if sp else {}
+                except Exception:
+                    made = {}  # (an unreadable old save still lists, and can still be deleted)
+                summary = json.dumps(made)
+                with self.lock:
+                    self.db.execute("UPDATE savepoints SET summary=? WHERE id=?", (summary, sid))
+                    self.db.commit()
+            out.append({"id": sid, "name": name, "created": created, "tick": tick, **json.loads(summary)})
+        return out
 
     def save_points(self) -> List[Dict[str, Any]]:
         with self.lock:

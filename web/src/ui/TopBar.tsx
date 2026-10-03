@@ -104,6 +104,10 @@ export function TopBar() {
       <button className="icon-btn" title="Replay: scrub back through the last week (opens the replay viewer)"
         onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
       {control?.contract !== "experiment" && (
+        <button className="icon-btn" title="Saves: save this game now, load a save, or move one to another computer as a file"
+          onClick={() => set({ savesOpen: true })}>💾<small>saves</small></button>
+      )}
+      {control?.contract !== "experiment" && (
         <button className="icon-btn" title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
       )}
       <button className={`icon-btn ${recording ? "rec-on" : ""}`} title="Recordings: auto-record every day of the game as a clip with its story"
