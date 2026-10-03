@@ -37,6 +37,9 @@ export function NewWorldModal() {
         if (have.has(f.base_url.replace(/\/$/, "") + "|" + model)) continue;
         await api("/api/brains", { id: `auto${port}`, label: `${model || "model"} :${port}`, base_url: f.base_url, model,
           max_concurrency: f.suggested.max_concurrency, temperature: 0.7, max_tokens: 600, enabled: true });
+        // a brain just added: its first Test finds what its server takes (JSON mode, the thinking switch)
+        setScanMsg(`Testing ${model || "the model"} on :${port}…`);
+        await api(`/api/brains/auto${port}/test`, {}).catch(() => {});
       }
       const s = await loadBrains();
       const ms = (s.brains ?? []).filter((b: any) => b.config.enabled).map((b: any) => b.config.id);

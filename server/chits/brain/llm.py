@@ -48,6 +48,7 @@ class BrainConfig:
     #                              its own idea 3 times in 4, and a full plan on top of every choice swamped the 5090)
     focus: bool = True  # play games: plans that are only eating, sleeping, resting, sheltering or hauling are left to
     #                     instinct, so the model's time goes to the decisions that matter (never in an experiment)
+    detect: bool = False  # added without saying what its server takes: its first Test finds out (brain/checkup.py)
 
     def key(self) -> str:
         k = self.api_key or ""
@@ -353,7 +354,11 @@ class LLMBrain:
                 first = ((choice.get("logprobs") or {}).get("content") or [{}])[0] or {}
                 top = {t.get("token", ""): t.get("logprob", -99.0) for t in (first.get("top_logprobs") or [])}
                 reply = {"text": text, "latency_ms": ms, "tokens_in": usage.get("prompt_tokens"), "tokens_out": tout,
-                         "top_logprobs": top, "queue_ms": queue_ms, "finish_reason": choice.get("finish_reason")}
+                         "top_logprobs": top, "queue_ms": queue_ms, "finish_reason": choice.get("finish_reason"),
+                         # for the Test button's diagnosis: did it answer, and did it think first?
+                         "answered": bool(msg.get("content") or choice.get("text")),
+                         "reasoned": bool(msg.get("reasoning_content") or msg.get("reasoning")
+                                          or (usage.get("completion_tokens_details") or {}).get("reasoning_tokens"))}
                 if tape is not None:
                     tape.record(key, self.cfg.id, reply, messages)
                 return reply

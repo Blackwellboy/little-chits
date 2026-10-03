@@ -118,7 +118,11 @@ def hint_lines(rt) -> List[str]:
 async def first_run_hint(rt, say: Callable[[str], None] = print) -> List[str]:
     """The first run's hint (the `little-chits` command prints it): measure each model the new worlds think with,
     and say whether it keeps up."""
+    from .brain import checkup
+
     for bid in {b for wid, b in rt.mind.world_brain.items() if wid in rt.worlds and b in rt.mind.brains}:
+        if rt.mind.brains[bid].cfg.detect and rt.contract != "experiment":
+            await checkup.test_brain(rt.mind, rt.mind.brains[bid])  # (a model just found: settle what its server takes)
         await measure(rt.mind.brains[bid])
     lines = hint_lines(rt)
     for line in lines:

@@ -8,6 +8,7 @@ import hmac
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -782,8 +783,8 @@ class BrainBody(BaseModel):
     timeout: Optional[float] = 90
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 600
-    json_mode: Optional[bool] = True
-    disable_thinking: Optional[bool] = True
+    json_mode: Optional[bool] = None  # (a new brain that names neither starts plain, and its first Test finds
+    disable_thinking: Optional[bool] = None  # what its server takes: brain/checkup.py)
     enabled: Optional[bool] = True
     prompt_style: Optional[str] = "full"
     escalate_below: Optional[float] = 0.5
@@ -791,10 +792,14 @@ class BrainBody(BaseModel):
     focus: Optional[bool] = True
 
 
+def _in_experiment(bid: str) -> bool:
+    r = R()
+    return r.contract == "experiment" and bid in r.mind.world_brain.values()
+
+
 def _locked_brain(bid: str) -> None:
     """In an experiment, the brains the worlds use are frozen for the whole run."""
-    r = R()
-    if r.contract == "experiment" and bid in r.mind.world_brain.values():
+    if _in_experiment(bid):
         raise HTTPException(409, "this brain is in use by an experiment run and can't be changed")
 
 
@@ -810,6 +815,14 @@ def upsert_brain(b: BrainBody):
     existing = bid in R().mind.brains
     data = {k: v for k, v in b.model_dump(exclude_unset=existing).items() if v is not None}
     data["id"] = bid
+    if not existing:
+        # JSON mode on by default produced no decisions at all on servers that refuse it (issue #61): a new brain
+        # starts with the request every OpenAI-compatible server takes, and its first Test detects the rest
+        data["detect"] = b.json_mode is None and b.disable_thinking is None
+        data.setdefault("json_mode", False)
+        data.setdefault("disable_thinking", False)
+    elif "json_mode" in data or "disable_thinking" in data:
+        data["detect"] = False  # (set by hand: a Test no longer chooses them)
     _locked_brain(data["id"])
     br = R().mind.upsert(data)
     return {"ok": True, "brain": br.cfg.public()}
@@ -829,10 +842,18 @@ def delete_brain(bid: str):
 
 @app.post("/api/brains/{bid}/test")
 async def test_brain(bid: str):
-    b = R().mind.brains.get(bid)
+    """One real, tiny decision, and for whatever went wrong a plain cause and a fix (brain/checkup.py). A brain
+    added without settings gets the ones its server takes, unless an experiment is using it."""
+    from .brain import checkup
+
+    r = R()
+    b = r.mind.brains.get(bid)
     if not b:
         raise HTTPException(404, "no such brain")
-    return await b.test()
+    out = await checkup.test_brain(r.mind, b, locked=_in_experiment(bid))
+    if out["reply"] is not None:  # it answered: as before, a Test is how a brain is found to be back
+        b.stats.consecutive_fail, b.stats.last_ok = 0, time.time()
+    return out
 
 
 class Probe(BaseModel):

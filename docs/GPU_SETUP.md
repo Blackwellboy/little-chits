@@ -125,6 +125,11 @@ Both servers should now show **slots=8**.
 3. Press **Start**.
 4. In **⚙ Brains**, keep **"Ask reasoning models to skip long thinking"** ticked. Thinking makes every decision
    several times slower and doesn't help much here.
+5. If a model decides nothing, press **Test** on it in **⚙ Brains**. It asks one real decision and shows the
+   reply, whether it was a plan, whether the one-token choice came with logprobs, and how long it took. Each
+   problem comes with its cause and, where there is one, a button that fixes it (turn JSON mode off, disable
+   thinking, switch the prompt style to full). A model you have just added is tested once to find what its
+   server takes.
 
 ## Step 8 · Check it's running smoothly
 

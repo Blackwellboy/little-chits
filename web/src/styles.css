@@ -285,6 +285,12 @@ button.danger { color: var(--bad); }
 .nw-sizing button { flex: none; background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: 12px; }
 .capacity { display: block; font-size: 12px; margin-top: 3px; color: var(--muted); }
 .capacity button { margin-left: 6px; padding: 1px 8px; font-size: 11px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.07); }
+.test-report { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; color: var(--muted); }
+.test-report li { overflow-wrap: anywhere; }
+.test-report li.good { color: var(--good); }
+.test-report li.warn { color: #ffc85a; }
+.test-report li.bad { color: var(--bad); }
+.test-report button { margin-left: 6px; padding: 1px 8px; font-size: 11px; border-radius: 6px; }
 .nw-strict { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; color: var(--muted); margin: 0 0 12px; }
 .nw-strict b { color: var(--text); }
 .badge { font-size: 11px; padding: 3px 8px; border-radius: 8px; border: 1px solid var(--line); white-space: nowrap; }
