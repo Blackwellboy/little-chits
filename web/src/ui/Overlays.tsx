@@ -4,6 +4,7 @@ import { milestoneOf } from "../state/milestones";
 import { useUI, worlds } from "../state/store";
 import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
+import { bannerDriver, type Shown } from "./banner";
 
 const ICON: Record<string, string> = { error: "⚠", discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
 const worldLabel = (id: string) => (id === "A" ? "World A" : "World B");
@@ -38,17 +39,11 @@ export function Toasts() {
  *  moments a viewer (and the recorder) should not miss. An era toast used to slip by in the corner. */
 export function Banner() {
   const toasts = useUI((s) => s.toasts);
-  const [shown, setShown] = useState<{ key: string; kind: string; text: string; world: string; label: string; icon: string } | null>(null);
-  const seen = useRef(new Set<string>());
-  useEffect(() => {
-    const t = toasts.find((x) => (milestoneOf(x)?.banner || x.kind === "storyteller") && !seen.current.has(x.key));
-    if (!t) return;
-    seen.current.add(t.key);
-    const ms = milestoneOf(t);
-    setShown({ key: t.key, kind: t.kind, text: t.text, world: t.world, label: ms?.label ?? "news", icon: ms?.icon ?? "📣" });
-    const h = setTimeout(() => setShown(null), ms ? 6500 : 5500);
-    return () => clearTimeout(h);
-  }, [toasts]);
+  const [shown, setShown] = useState<Shown | null>(null);
+  const driver = useRef<ReturnType<typeof bannerDriver> | null>(null);
+  if (!driver.current) driver.current = bannerDriver(setShown);
+  useEffect(() => { driver.current!.update(toasts); }, [toasts]);  // (no cleanup: the banner's timer is its own)
+  useEffect(() => () => { driver.current!.stop(); setShown(null); }, []);  // (never left up with no timer)
   if (!shown) return null;
   return (
     <div key={shown.key} className={`banner k-${shown.kind}`} onClick={() => setShown(null)}>

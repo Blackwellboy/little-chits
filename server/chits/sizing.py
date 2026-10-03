@@ -25,16 +25,31 @@ def _chits(n: int) -> str:
     return f"{n} chit" + ("" if n == 1 else "s")
 
 
+def live_latency(brain) -> float:
+    """The time one decision takes, from a brain's live replies (0: too few to say). A cascade brain picks by one
+    token and writes a full plan for up to `escalate_share` of its decisions: the median of all its replies is a
+    choice's time (they are the many) and hides the plans, which on a live 9B model took 17-56 s against a fraction
+    of a second. So a cascade's decision costs a choice plus that share of a plan, as the probe counts it, and
+    until it has written a plan its live replies do not say how fast it is."""
+    if brain.cfg.prompt_style == "cascade":
+        choices, plans = list(brain.choice_latencies), list(brain.plan_latencies)
+        if len(choices) < LIVE_SAMPLES or not plans:
+            return 0.0
+        return _quant(choices, 0.5) + float(brain.cfg.escalate_share or 0) * _quant(plans, 0.5)
+    live = list(brain.latencies)
+    return _quant(live, 0.5) if len(live) >= LIVE_SAMPLES else 0.0
+
+
 def capacity(brain) -> Dict[str, Any]:
     """What is known about one brain's speed: {"chits": how many it keeps up with (None: not measured),
     "latency_ms", "slots", "source": "live" | "probe" | None, "text"}."""
     slots = max(1, brain.cfg.max_concurrency)
-    live = list(brain.latencies)
+    live = live_latency(brain)
     probe = getattr(brain, "probe", None) or {}
     out: Dict[str, Any] = {"chits": None, "latency_ms": 0, "slots": slots, "source": None,
                            "text": "Speed not measured yet."}
-    if len(live) >= LIVE_SAMPLES or (live and not probe.get("latency_ms")):
-        out.update(source="live", latency_ms=round(_quant(live, 0.5)))
+    if live:
+        out.update(source="live", latency_ms=round(live))
     elif probe.get("latency_ms"):
         out.update(source="probe", latency_ms=round(probe["latency_ms"]))
     elif probe.get("error"):
