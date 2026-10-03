@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { pixelCanvas } from "../render/art";
+import { milestoneOf } from "../state/milestones";
 import { useUI, worlds } from "../state/store";
 import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
 
 const ICON: Record<string, string> = { error: "⚠", discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
+const worldLabel = (id: string) => (id === "A" ? "World A" : "World B");
 
 export function Toasts() {
   const toasts = useUI((s) => s.toasts);
@@ -16,38 +18,42 @@ export function Toasts() {
   }, [toasts]);
   return (
     <div className="toasts">
-      {toasts.map((t) => (
-        <div key={t.key} className={`toast k-${t.kind}`} onClick={() => {
-          if (t.x != null) set({ focus: { world: t.world, x: t.x + 0.5, y: (t.y ?? 0) + 0.5, t: Date.now() } });
-          if (t.actor && worlds[t.world]?.agents.has(t.actor)) set({ selected: { world: t.world, id: t.actor } });
-        }}>
-          <span className="ico">{ICON[t.kind] ?? "✦"}</span>
-          <div><small>{t.kind === "error" ? "That didn't work" : `${t.world === "A" ? "World A" : "World B"} · day ${Math.floor(t.tick / 240) + 1}`}</small><p>{t.text}</p></div>
-        </div>
-      ))}
+      {toasts.map((t) => {
+        const ms = milestoneOf(t);
+        return (
+          <div key={t.key} className={`toast k-${t.kind}${ms ? " milestone" : ""}`} onClick={() => {
+            if (t.x != null) set({ focus: { world: t.world, x: t.x + 0.5, y: (t.y ?? 0) + 0.5, t: Date.now() } });
+            if (t.actor && worlds[t.world]?.agents.has(t.actor)) set({ selected: { world: t.world, id: t.actor } });
+          }}>
+            <span className="ico">{ms?.icon ?? ICON[t.kind] ?? "✦"}</span>
+            <div><small>{t.kind === "error" ? "That didn't work" : `${worldLabel(t.world)} · day ${Math.floor(t.tick / 240) + 1}${ms ? ` · ${ms.label}` : ""}`}</small><p>{t.text}</p></div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-/** A new era or the storyteller's news fills the screen for a few seconds: the moments a viewer (and the recorder)
- *  should not miss. An era toast used to slip by in the corner. */
+/** A new era, a village becoming a town or city, or the storyteller's news fills the screen for a few seconds: the
+ *  moments a viewer (and the recorder) should not miss. An era toast used to slip by in the corner. */
 export function Banner() {
   const toasts = useUI((s) => s.toasts);
-  const [shown, setShown] = useState<{ key: string; kind: string; text: string; world: string } | null>(null);
+  const [shown, setShown] = useState<{ key: string; kind: string; text: string; world: string; label: string; icon: string } | null>(null);
   const seen = useRef(new Set<string>());
   useEffect(() => {
-    const t = toasts.find((x) => (x.kind === "era" || x.kind === "storyteller") && !seen.current.has(x.key));
+    const t = toasts.find((x) => (milestoneOf(x)?.banner || x.kind === "storyteller") && !seen.current.has(x.key));
     if (!t) return;
     seen.current.add(t.key);
-    setShown({ key: t.key, kind: t.kind, text: t.text, world: t.world });
-    const h = setTimeout(() => setShown(null), t.kind === "era" ? 6500 : 5500);
+    const ms = milestoneOf(t);
+    setShown({ key: t.key, kind: t.kind, text: t.text, world: t.world, label: ms?.label ?? "news", icon: ms?.icon ?? "📣" });
+    const h = setTimeout(() => setShown(null), ms ? 6500 : 5500);
     return () => clearTimeout(h);
   }, [toasts]);
   if (!shown) return null;
   return (
     <div key={shown.key} className={`banner k-${shown.kind}`} onClick={() => setShown(null)}>
-      <small>{shown.world === "A" ? "World A" : "World B"}{shown.kind === "storyteller" ? " · news" : " · a new age"}</small>
-      <h1>{shown.kind === "era" ? "🏛 " : "📣 "}{shown.text}</h1>
+      <small>{worldLabel(shown.world)} · {shown.label}</small>
+      <h1>{shown.icon} {shown.text}</h1>
     </div>
   );
 }

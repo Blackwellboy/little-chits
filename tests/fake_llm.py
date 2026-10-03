@@ -96,6 +96,27 @@ async def chat(req: Request):
     msgs = body.get("messages", [])
     user = msgs[-1]["content"] if msgs else ""
     system = msgs[0]["content"] if msgs else ""
+    # opt-in server quirks, for the Test button's diagnosis (tests/test_brain_checkup.py)
+    if STATE.get("refuse_json") and "response_format" in body:  # as LM Studio does (issue #61)
+        return JSONResponse({"error": {"message": "'response_format.type' must be 'json_schema' or 'text'"}}, 422)
+    if STATE.get("refuse_switch") and "chat_template_kwargs" in body:
+        return JSONResponse({"error": {"message": "unknown field: chat_template_kwargs"}}, 400)
+    if STATE.get("thinks") and (body.get("chat_template_kwargs") or {}).get("enable_thinking") is not False:
+        # a reasoning model: the whole reply goes on thinking unless it is asked not to
+        return JSONResponse({"id": f"fake-{STATE['calls']}", "object": "chat.completion", "created": int(time.time()),
+                             "model": body.get("model", "fake-chit-7b"),
+                             "choices": [{"index": 0, "finish_reason": "length", "message": {
+                                 "role": "assistant", "content": "", "reasoning_content": "Let me think about what a chit would"}}],
+                             "usage": {"prompt_tokens": len(user) // 4, "completion_tokens": body.get("max_tokens", 1)}})
+    if STATE.get("letters") and body.get("max_tokens") == 1:
+        # a one-token choice, with logprobs when asked (opt-in: the tests of the mind's own handling leave it off)
+        choice = {"index": 0, "message": {"role": "assistant", "content": "A"}, "finish_reason": "length"}
+        if body.get("logprobs") and STATE.get("logprobs", True):
+            choice["logprobs"] = {"content": [{"token": "A", "logprob": -0.1, "top_logprobs": [
+                {"token": "A", "logprob": -0.1}, {"token": "B", "logprob": -2.6}, {"token": " the", "logprob": -5.0}]}]}
+        return JSONResponse({"id": f"fake-{STATE['calls']}", "object": "chat.completion", "created": int(time.time()),
+                             "model": body.get("model", "fake-chit-7b"), "choices": [choice],
+                             "usage": {"prompt_tokens": len(user) // 4, "completion_tokens": 1}})
     if "reflecting" in system:
         text = json.dumps({"lessons": ["Gathering food before dark keeps me alive.",
                                         "Working beside others finishes buildings faster."],
@@ -105,7 +126,8 @@ async def chat(req: Request):
     elif rng.random() < STATE["garbage_rate"]:
         text = "I think I will go and look for some berries, maybe."
     else:
-        text = _render(_plan_for(user + system, rng), rng)
+        plan = _plan_for(user + system, rng)
+        text = json.dumps(plan) if STATE.get("tidy") else _render(plan, rng)
     return JSONResponse({
         "id": f"fake-{STATE['calls']}", "object": "chat.completion", "created": int(time.time()),
         "model": body.get("model", "fake-chit-7b"),

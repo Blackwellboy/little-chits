@@ -1,9 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo, useState } from "react";
 import { api, authedUrl } from "../net/socket";
+import { nextStep, stepLabel, type Checklist } from "../state/milestones";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
+import { entryLines, type Entry } from "./encyclopedia";
 import { Portrait } from "./Portrait";
+import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -38,7 +41,7 @@ export function SidePanel() {
   return (
     <>
       <nav className="rail">
-        {([["progress", "🧭", "Progress"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"]] as const).map(([t, i, l]) => (
+        {([["progress", "🧭", "Progress"], ["why", "🐢", "Why slow?"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"]] as const).map(([t, i, l]) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)} title={l}><span>{i}</span><small>{l}</small></button>
         ))}
       </nav>
@@ -52,6 +55,7 @@ export function SidePanel() {
             </div>
           )}
           {tab === "progress" && metas.map((m) => (view === "split" || m.id === primary) && <Progress key={m.id} world={m.id} name={m.name} />)}
+          {tab === "why" && <Why metas={metas} />}
           {tab === "chronicle" && <Chronicle world={primary} />}
           {tab === "people" && <People world={primary} />}
           {tab === "knowledge" && <Knowledge metas={metas} />}
@@ -71,6 +75,7 @@ type RoadStep = { kind: string; key: string; name: string; done: boolean; needs:
 type ProgressData = {
   project?: { active: Project | null; done: { id: string; day: number; text: string }[] };
   road?: { age: string; steps: RoadStep[]; text: string } | null;
+  milestones?: Checklist | null;
   research?: { insight: number; next_idea: number; hints: { text: string; day: number; by: string; found: boolean }[] };
   famous?: { name: string; renown: number } | null;
   food_days?: number | null;
@@ -97,16 +102,7 @@ function Progress({ world, name }: { world: string; name: string }) {
         {p.next
           ? <small>Next: <b>{p.next.name}</b>, when someone works out how to make a <b>{p.next.needs}</b>.</small>
           : <small>🚀 They reached space!</small>}
-        {p.road && p.road.steps.length > 0 && (
-          <div className="prog-road" title="Everything still between this village and its next age, in order; ✗ marks what's missing">
-            <small className="muted">Road to the {p.road.age}: </small>
-            {p.road.steps.map((s, i) => (
-              <small key={s.kind + s.key} className={s.done ? "on" : "off"}>
-                {i > 0 && " · "}{s.name} {s.done ? "✓" : "✗"}{s.needs && <span className="muted"> ({s.needs})</span>}
-              </small>
-            ))}
-          </div>
-        )}
+        {p.milestones && p.milestones.steps.length > 0 && <RoadChecklist c={p.milestones} />}
       </div>
       <div className="prog-ladder">
         {p.ladder.map((r) => (
@@ -145,6 +141,23 @@ function Progress({ world, name }: { world: string; name: string }) {
   );
 }
 
+/** ☑ The road to the next age as a checklist: every step in order, done or not, and the one the village is on. */
+function RoadChecklist({ c }: { c: Checklist }) {
+  const next = nextStep(c);
+  return (
+    <div className="prog-check" title="Everything between this village and its next age, in order">
+      <small className="muted">Road to the {c.age}: {c.done} of {c.total} steps done</small>
+      <ol>
+        {c.steps.map((s, i) => (
+          <li key={s.action + s.key} className={s.done ? "on" : i === next ? "next" : ""}>
+            <span className="box">{s.done ? "☑" : "☐"}</span> {stepLabel(s)}{i === next && <small className="muted"> · next</small>}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 /** 🏗 The one thing the whole village is working towards now, its scholars' ideas, and who everyone looks up to. */
 function VillageProject({ p, plain }: { p: ProgressData; plain: (s: string) => string }) {
   const cur = p.project?.active;
@@ -166,6 +179,31 @@ function VillageProject({ p, plain }: { p: ProgressData; plain: (s: string) => s
         <ul className="prog-list">{hints.map((h, i) => <li key={i} className={h.found ? "muted" : ""}>day {h.day}{h.by ? ` (${h.by})` : ""}: {h.text}{h.found ? " ✔ came true" : ""}</li>)}</ul>
       </>)}
       {p.famous && <p className="small">⭐ Most renowned: <b>{p.famous.name}</b> <span className="muted">(renown {p.famous.renown}; chits near them follow their lead)</span></p>}
+    </div>
+  );
+}
+
+/** 🐢 Why is nothing happening? The biggest reasons each world is slow, in plain words, from the game's own
+ *  diagnostics (the same numbers as /api/diagnostics). */
+function Why({ metas }: { metas: { id: string; name: string; culture: string }[] }) {
+  const d = usePoll(() => api<WhyData>("/api/why"), 15000, []);
+  if (!d) return <p className="muted">Loading…</p>;
+  return (
+    <div className="why">
+      <div className="panel-head"><h3>Why is nothing happening?</h3></div>
+      <p className="muted small explain">The biggest things slowing each world down. Counts run since the game server last started.</p>
+      {metas.map((m) => {
+        const lines = whyLines(d, m.id);
+        return (
+          <div key={m.id} className="why-world">
+            <h4><span className={`dot ${m.culture}`} />{m.name}</h4>
+            {lines.length
+              ? <ol className="why-list">{lines.map((l, i) => <li key={i} className={`why-${l.kind}`}>{l.text}</li>)}</ol>
+              : <p className="small muted">{WHY_NOTHING}</p>}
+          </div>
+        );
+      })}
+      <p className="small"><a href={authedUrl("/api/diagnostics.txt")} target="_blank" rel="noreferrer">Open the full diagnostics</a></p>
     </div>
   );
 }
@@ -373,7 +411,21 @@ function SpreadTree({ world, name, k }: { world: string; name: string; k: string
   );
 }
 
+/** 📖 What a discovered thing is for, in one world: an item's properties, what it is made from and goes into, a
+ *  building's use, materials and size. Empty for a world that hasn't found it (the server answers 404). */
+function EntryCard({ world, name, k }: { world: string; name: string; k: string }) {
+  const e = usePoll(() => api<Entry>(`/api/worlds/${world}/encyclopedia/${encodeURIComponent(k)}`), 10000, [world, k]);
+  if (!e) return null;
+  return (
+    <div className="entry">
+      <h4>{e.icon} {e.name} <small className="muted">in {name}{e.first_by ? ` · first: ${e.first_by}, day ${e.first_day}` : ""}</small></h4>
+      <dl>{entryLines(e).map((l, i) => <div key={i}><dt>{l.label}</dt><dd>{l.text}</dd></div>)}</dl>
+    </div>
+  );
+}
+
 function Knowledge({ metas }: { metas: { id: string; name: string; culture: string }[] }) {
+  const [invOpen, setInvOpen] = useState<string | null>(null);
   const rows = usePoll(() => api<any[]>("/api/knowledge"), 3000, []);
   const inv = usePoll(() => api<Record<string, any[]>>("/api/inventions"), 5000, []);
   const bel = usePoll(() => api<Record<string, any[]>>("/api/beliefs"), 5000, []);
@@ -395,7 +447,7 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
         <tbody>
           {shown.map((r) => (
             <tr key={r.key}>
-              <td><b className="spread-open" title="How did they come to know it?" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
+              <td><b className="spread-open" title="What is it for, and how did they come to know it?" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
               {metas.map((m) => {
                 const w = r.worlds[m.id];
                 const pct = w.population ? (w.knowers / w.population) * 100 : 0;
@@ -415,7 +467,10 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
           ))}
         </tbody>
       </table>
-      {openKey && <div className="spread">{metas.map((m) => <SpreadTree key={m.id} world={m.id} name={m.name} k={openKey} />)}</div>}
+      {openKey && <div className="spread">
+        {metas.map((m) => <EntryCard key={m.id + openKey} world={m.id} name={m.name} k={openKey} />)}
+        {metas.map((m) => <SpreadTree key={m.id} world={m.id} name={m.name} k={openKey} />)}
+      </div>}
       <div className="panel-head inv-head"><h3>💡 Inventions</h3><small className="muted">things only one world thought of</small></div>
       {metas.map((m) => {
         const list = inv?.[m.id] || [];
@@ -424,9 +479,10 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
             <h4><span className={`dot ${m.culture}`} />{m.name}</h4>
             {list.length ? list.map((x) => (
               <div key={x.key} className="inv-row">
-                <b>💡 {x.name}</b> <small className="muted">for {x.purpose}</small>
+                <b className="spread-open" title="What is it for?" onClick={() => setInvOpen(invOpen === m.id + x.key ? null : m.id + x.key)}>💡 {x.name}</b> <small className="muted">for {x.purpose}</small>
                 <small className="muted"> · {x.by_name}, day {x.day} · {x.knowers} know it</small>
                 {x.purpose_text && <div className="small muted">“{x.purpose_text}”</div>}
+                {invOpen === m.id + x.key && <EntryCard world={m.id} name={m.name} k={`recipe:${x.key}`} />}
               </div>
             )) : <small className="muted">nothing invented yet</small>}
           </div>

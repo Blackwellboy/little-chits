@@ -1,8 +1,9 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useState } from "react";
-import { api } from "../net/socket";
+import { useEffect, useRef, useState } from "react";
+import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import { packForReset, packLabel, readPackText, type PackInfo } from "./packFile";
+import { Advice, adviceLine, clampChits, followAdvice } from "./sizing";
 
 /** Start a brand-new pair of worlds: new island (seed), population and map size. */
 export function NewWorldModal() {
@@ -54,6 +55,9 @@ export function NewWorldModal() {
         if (have.has(f.base_url.replace(/\/$/, "") + "|" + model)) continue;
         await api("/api/brains", { id: `auto${port}`, label: `${model || "model"} :${port}`, base_url: f.base_url, model,
           max_concurrency: f.suggested.max_concurrency, temperature: 0.7, max_tokens: 600, enabled: true });
+        // a brain just added: its first Test finds what its server takes (JSON mode, the thinking switch)
+        setScanMsg(`Testing ${model || "the model"} on :${port}…`);
+        await api(`/api/brains/auto${port}/test`, {}).catch(() => {});
       }
       const s = await loadBrains();
       const ms = (s.brains ?? []).filter((b: any) => b.config.enabled).map((b: any) => b.config.id);
@@ -78,7 +82,26 @@ export function NewWorldModal() {
   const models = (status?.brains ?? []).filter((b: any) => b.config.enabled);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  // size the world to the model: how many chits the chosen brains keep up with (advice; "Use N chits" takes it)
+  const [advice, setAdvice] = useState<Advice | null>(null);
+  const [measuring, setMeasuring] = useState(false);
+  const following = useRef(false);  // the number came from the advice (not typed): it follows a change of model
+  const picked = mode === "single" ? { A: pick.A } : { A: pick.A, B: pick.B };
+  const sizeUp = async (measure: boolean) => {
+    const a: Advice = await api("/api/sizing", { brains: picked, measure });
+    setAdvice(a);
+    setChits((c) => followAdvice(c, following.current, a));
+  };
+  useEffect(() => {
+    if (!newWorldOpen || !pick.A) return;
+    sizeUp(false).catch(() => setAdvice(null));
+  }, [newWorldOpen, mode, pick.A, pick.B]);
+  const measure = async () => {
+    setMeasuring(true);
+    try { await sizeUp(true); } catch (e) { setErr(errorText(e)); } finally { setMeasuring(false); }
+  };
   if (!newWorldOpen) return null;
+  const sizing = adviceLine(advice, chits);
   const go = async () => {
     setBusy(true); setErr("");
     try {
@@ -127,7 +150,7 @@ export function NewWorldModal() {
           <span><b>🧪 Experiment (strict)</b> — every decision is the model's own: no instinct stand-in, settings locked, no meddling. Slower, but fair to compare.</span></label>
         <div className="nw-grid">
           <label>Island seed<input value={seed} placeholder="random" onChange={(e) => setSeed(e.target.value.replace(/[^0-9]/g, ""))} /></label>
-          <label>Chits per world<input type="number" min={2} max={60} value={chits} onChange={(e) => setChits(Math.max(2, Math.min(60, +e.target.value || 2)))} /></label>
+          <label>Chits per world<input type="number" min={2} max={60} value={chits} onChange={(e) => { following.current = false; setChits(Math.max(2, Math.min(60, +e.target.value || 2))); }} /></label>
           <label>Map size
             <select value={size} onChange={(e) => setSize(+e.target.value)}>
               <option value={128}>Small · 128²</option>
@@ -156,6 +179,13 @@ export function NewWorldModal() {
           )}
           {packErr && <p className="err">{packErr}</p>}
         </div>
+        {sizing.text && (
+          <p className={`nw-sizing ${sizing.level}`}>
+            <span>{sizing.text}</span>
+            {sizing.use != null && <button onClick={() => { following.current = true; setChits(clampChits(sizing.use!)); }}>Use {sizing.use} chits</button>}
+            {sizing.measure && <button disabled={measuring} title="Asks the model a few real decisions and times them" onClick={measure}>{measuring ? "Measuring…" : "Measure its speed"}</button>}
+          </p>
+        )}
         <p className="warn">This permanently replaces the current worlds and their history.</p>
         {err && <p className="err">{err}</p>}
         <div className="row"><button className="primary" disabled={busy} onClick={go}>{busy ? "Creating…" : "Start"}</button><button onClick={() => set({ newWorldOpen: false })}>Cancel</button></div>

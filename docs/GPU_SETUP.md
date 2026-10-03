@@ -125,6 +125,11 @@ Both servers should now show **slots=8**.
 3. Press **Start**.
 4. In **⚙ Brains**, keep **"Ask reasoning models to skip long thinking"** ticked. Thinking makes every decision
    several times slower and doesn't help much here.
+5. If a model decides nothing, press **Test** on it in **⚙ Brains**. It asks one real decision and shows the
+   reply, whether it was a plan, whether the one-token choice came with logprobs, and how long it took. Each
+   problem comes with its cause and, where there is one, a button that fixes it (turn JSON mode off, disable
+   thinking, switch the prompt style to full). A model you have just added is tested once to find what its
+   server takes.
 
 ## Step 8 · Check it's running smoothly
 
@@ -160,6 +165,10 @@ dense 27B on a 3090 manages about 20, which is too slow for more than a handful 
 
 - ⚙ **Brains** shows each model as **Fast enough** (green), **Borderline** (amber) or **Too slow** (red), for
   the number of chits it drives right now.
+- ⚙ **Brains** also says **"Keeps up with about N chits"** for each model. A model that has not answered
+  anything yet has a **Measure** button: it asks a few real decisions and times them.
+- ⟲ **New game** shows that number for the models you picked, and **Use N chits** sizes the new world to it.
+  Instinct has no limit. The `little-chits` command prints the same hint on its first run.
 - `make diagnose PORT=8010` has a **speed:** line under each model, and a warning when it's too slow.
 - The desktop launcher's window warns you when it starts.
 
