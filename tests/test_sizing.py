@@ -121,6 +121,47 @@ async def test_a_choosing_brain_is_measured_by_one_token_choices(fake):
         state.pop("letters")
 
 
+def test_a_cascade_brains_live_number_counts_the_full_plans_it_writes():
+    # one-token choices are the many, so the median of all replies was a choice's time and the plans (17-56 s on
+    # a live 9B model) went uncounted: /api/sizing advised far more chits than the model served (Codex review)
+    b = _brain(8, prompt_style="cascade", escalate_share=0.3)
+    for ms in [200] * 30 + [20000] * 5:
+        b.latencies.append(ms)
+        (b.choice_latencies if ms == 200 else b.plan_latencies).append(ms)
+    cap = sizing.capacity(b)
+    assert cap["source"] == "live" and cap["latency_ms"] == 200 + 0.3 * 20000 == 6200
+    assert cap["chits"] == keeps_up_with(8, 6200) == 19  # (the mixed median said 200 ms: 600 chits)
+    # until it has written a plan its choices alone do not say how fast it is: not measured, so a probe is due
+    fresh = _brain(8, prompt_style="cascade")
+    fresh.latencies.extend([200] * 30)
+    fresh.choice_latencies.extend([200] * 30)
+    assert sizing.capacity(fresh)["source"] is None and sizing.capacity(fresh)["chits"] is None
+    # a brain that only chooses, or only writes plans, is read as before
+    for style in ("choose", "full"):
+        assert sizing.capacity(_brain(8, [200] * 30, prompt_style=style))["chits"] == 600
+
+
+async def test_a_cascade_brain_with_only_choices_so_far_is_probed_and_replies_are_kept_apart(fake):
+    import httpx
+
+    url, state = fake
+    state["letters"] = True
+    try:
+        b = LLMBrain(BrainConfig(id="c3", base_url=url, max_concurrency=2, prompt_style="cascade", json_mode=False))
+        await b.chat([{"role": "user", "content": "A or B?"}], max_tokens=1, json_reply=False)
+        await b.chat([{"role": "user", "content": "A or B?"}], max_tokens=1, json_reply=False)
+        await b.chat([{"role": "user", "content": "A or B?"}], max_tokens=1, json_reply=False)
+        assert len(b.choice_latencies) == 3 and not b.plan_latencies and len(b.latencies) == 3
+        before = state["calls"]
+        cap = await sizing.measure(b)
+        assert cap["source"] == "probe" and state["calls"] > before  # (three live replies used to bypass the probe)
+        await b.chat([{"role": "user", "content": "What do you do next?"}])
+        assert len(b.plan_latencies) == 1 and sizing.capacity(b)["source"] == "live"
+        await b.close()
+    finally:
+        state.pop("letters")
+
+
 async def test_a_probe_that_gets_no_answer_says_so():
     b = LLMBrain(BrainConfig(id="dead", base_url=f"http://127.0.0.1:{_free_port()}/v1", timeout=2))
     cap = await sizing.measure(b, samples=1)
