@@ -1175,6 +1175,41 @@ class Runtime:
         slug = "".join(ch if ch.isascii() and ch.isalnum() else "-" for ch in sp["name"]).strip("-")[:40] or "save"
         return f"little-chits-{slug}.lcsave", gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), 6)
 
+    SAVE_TRIAL_TICKS = 24  # an imported world must run this long on a throwaway copy before it is kept
+
+    @staticmethod
+    def _snapshot_problem(w: World) -> str:
+        """What is wrong with the shape of a world read from a save file, or "". World.from_dict copies what the file
+        says: a per-tile list of the wrong length, or a chit or building off the map, loads and then crashes the first
+        step that looks at that tile."""
+        n = w.w * w.h
+
+        def number(v) -> bool:
+            return type(v) in (int, float) and v == v and abs(v) != float("inf")
+
+        def tile(x, y) -> bool:
+            return type(x) is int and type(y) is int and w.inb(x, y)
+
+        for name, arr in (("resource amounts", w.res_amt), ("paths", w.traffic)):
+            if len(arr) != n or not all(map(number, arr)):
+                return f"its {name} do not cover the {w.w} by {w.h} map"
+        if not all(type(i) is int and 0 <= i < n for i in [*w.roads, *w.tunnels]):
+            return "a road or tunnel is off the map"
+        if not all(tile(a.x, a.y) for a in [*w.agents.values(), *w.dead.values()]):
+            return "a chit is off the map"
+        if not all(type(v) is int and v > 0 for s in w.structures.values() for v in (s.w, s.h)) \
+                or not all(tile(s.x, s.y) and tile(s.x + s.w - 1, s.y + s.h - 1) for s in w.structures.values()):
+            return "a building is off the map"
+        if not all(tile(t.x, t.y) for t in w.tablets.values()):
+            return "a tablet is off the map"
+        for key in w.ground:
+            x, _, y = str(key).partition(",")
+            if not (x.isdigit() and y.isdigit() and w.inb(int(x), int(y))):
+                return "a pile on the ground is off the map"
+        if not all(isinstance(a, dict) and tile(a.get("x"), a.get("y")) for a in w.animals.values()):
+            return "an animal is off the map"
+        return ""
+
     def import_save(self, raw: bytes) -> Dict[str, Any]:
         """A save file becomes a new save point (nothing is loaded, and nothing is written but that row). The file is
         untrusted: its size, format name and version are checked, it is only ever parsed as JSON, and every world in
@@ -1209,10 +1244,20 @@ class Runtime:
             if type(size) is not int or not MIN_SIZE <= size <= MAX_SIZE or type(tick) is not int or tick < 0 \
                     or d.get("id") != wid or not isinstance(d.get("agents"), list) or len(d["agents"]) > 5000:
                 raise ValueError(f"World {wid} in this save file is not a world this build can read.")
-            try:
-                World.from_dict(d)  # (refuses a snapshot schema newer than this build; the copy is thrown away)
+            try:  # (a copy: the trial below steps it, and what is kept must be the file's own snapshot)
+                trial = World.from_dict(json.loads(json.dumps(d)))  # refuses a snapshot schema newer than this build
             except Exception as e:
                 raise ValueError(f"World {wid} in this save file can't be read by this build "
+                                 f"({type(e).__name__}: {str(e)[:120]}).")
+            wrong = self._snapshot_problem(trial)
+            if wrong:
+                raise ValueError(f"World {wid} in this save file is damaged: {wrong}.")
+            try:  # it loads and it is whole: can it run? (on instinct, no model is asked; the copy is thrown away)
+                hook = Mind(None).hook
+                for _ in range(self.SAVE_TRIAL_TICKS):
+                    trial.step(hook)
+            except Exception as e:
+                raise ValueError(f"World {wid} in this save file loads but can't run in this build "
                                  f"({type(e).__name__}: {str(e)[:120]}).")
         name = "".join(ch for ch in str(doc.get("name") or "") if ch.isprintable()).strip()[:60] or "imported save"
         tick = max(d["tick"] for d in worlds.values())

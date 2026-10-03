@@ -156,6 +156,63 @@ def test_a_file_that_is_not_a_readable_save_is_refused_and_nothing_is_kept(env, 
         assert [s["id"] for s in c.get("/api/saves").json()["saves"]] == [made["id"]]
 
 
+def test_an_imported_world_must_be_whole_and_able_to_run_before_it_is_kept(env, monkeypatch):
+    """Codex on PR #72: a snapshot with a short per-tile list loads (from_dict copies it) and then crashes the first
+    step that looks at that tile. Refused at import: the lists cover the map, everything stands on it, and a
+    throwaway copy runs a few ticks."""
+    with client() as c:
+        r = rt()
+        r.step_worlds(10)
+        made = c.post("/api/saves", json={"name": "ok"}).json()
+        good = json.loads(gzip.decompress(c.get(f"/api/saves/{made['id']}/export").content))
+
+        def broken(change):
+            doc = json.loads(json.dumps(good))
+            change(doc["worlds"]["B"])
+            return json.dumps(doc).encode()
+
+        def off_map(key):
+            def change(w):
+                w[key][0]["x"] = 10 ** 6
+            return change
+
+        bad = {
+            "no paths at all": (lambda w: w.update(traffic=[]), "paths do not cover the 64 by 64 map"),
+            "paths cut short": (lambda w: w.update(traffic=w["traffic"][:100]), "paths do not cover"),
+            "resource amounts cut short": (lambda w: w.update(res_amt=w["res_amt"][:-1]), "resource amounts do not cover"),
+            "a resource amount that is no number": (lambda w: w["res_amt"].__setitem__(5, "lots"), "resource amounts"),
+            "a road off the map": (lambda w: w.update(roads=[64 * 64]), "a road or tunnel is off the map"),
+            "a chit off the map": (off_map("agents"), "a chit is off the map"),
+            "an animal off the map": (lambda w: w.update(animals={"n1": {"id": "n1", "kind": "sheep", "x": -3, "y": 2}}),
+                                      "an animal is off the map"),
+            "a pile off the map": (lambda w: w.update(ground={"900,2": {"wood": 1}}), "a pile on the ground is off the map"),
+        }
+        for what, (change, reason) in bad.items():
+            got = c.post("/api/saves/import", content=broken(change))
+            assert got.status_code == 400 and "World B" in got.json()["detail"] and reason in got.json()["detail"],                 (what, got.text)
+        assert [s["id"] for s in c.get("/api/saves").json()["saves"]] == [made["id"]]
+
+        # the copy that is tried is thrown away: the worlds running, and the snapshot kept, are untouched by the trial
+        before = {wid: (w.tick, w.seq) for wid, w in r.worlds.items()}
+        new = c.post("/api/saves/import", content=json.dumps(good).encode()).json()
+        assert r.store.load_save_point(new["id"])["worlds"] == good["worlds"]
+        assert {wid: (w.tick, w.seq) for wid, w in r.worlds.items()} == before
+
+        # a world that loads and is whole but cannot take a step is refused too
+        from chits.sim.world import World
+
+        steps = []
+
+        def stuck(self, hook):
+            steps.append(self.id)
+            raise KeyError("no such design")
+
+        with monkeypatch.context() as m:
+            m.setattr(World, "step", stuck)
+            got = c.post("/api/saves/import", content=json.dumps(good).encode())
+        assert got.status_code == 400 and "loads but can't run" in got.json()["detail"] and steps == ["A"]
+
+
 def test_a_save_with_other_worlds_than_this_game_is_not_loaded(env):
     with client() as c:
         r = rt()
