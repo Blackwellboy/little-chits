@@ -8,20 +8,51 @@ cost the generator extra draws) are checked against the same syllable names in b
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 from functools import lru_cache
-from typing import Dict, Sequence, Tuple
+from pathlib import Path
+from typing import Dict, Optional, Sequence, Tuple
 
 THEMES = ("default", "norse")
 
 WORLD_NAMES = {"norse": {"A": "Fjordhaven", "B": "Pineholm"}}
 
+THEME_FILE = "theme.json"  # the theme picked in the game (the Look button), kept beside the saves
+_chosen: Optional[str] = None
+
 
 def active() -> str:
-    """The theme this process runs with: `CHITS_THEME`, or "default" when unset or unknown."""
+    """The theme this process runs with: the one picked in the game, else `CHITS_THEME`, else "default"."""
+    if _chosen in THEMES:
+        return _chosen
     t = os.environ.get("CHITS_THEME", "").strip().lower()
     return t if t in THEMES else "default"
+
+
+def load(data_dir: Path) -> None:
+    """The theme picked in the game last time, if any (a fresh data directory has none: `CHITS_THEME` decides)."""
+    global _chosen
+    _chosen = None
+    try:
+        t = json.loads((Path(data_dir) / THEME_FILE).read_text()).get("theme")
+    except (OSError, ValueError, AttributeError):
+        return
+    _chosen = t if t in THEMES else None
+
+
+def choose(name: str, data_dir: Optional[Path] = None) -> str:
+    """Pick a theme in the game. Presentation only, so a world can switch at any time: new chits get the theme's
+    names from then on, chits already named keep their names, and the observers redraw."""
+    global _chosen
+    name = str(name or "").strip().lower()
+    if name not in THEMES:
+        raise ValueError(f"theme must be one of {list(THEMES)}")
+    _chosen = name
+    if data_dir is not None:
+        (Path(data_dir) / THEME_FILE).write_text(json.dumps({"theme": name}))
+    return name
 
 
 def world_name(wid: str) -> str:

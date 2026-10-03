@@ -637,6 +637,28 @@ class Control(BaseModel):
     pace_to_brain: Optional[bool] = None
 
 
+class ThemeBody(BaseModel):
+    theme: str
+
+
+@app.get("/api/theme")
+def get_theme():
+    return {"theme": theme.active(), "themes": list(theme.THEMES)}
+
+
+@app.post("/api/theme")
+def set_theme(b: ThemeBody):
+    """The Look button: switch the theme in the game. Presentation only (the same random numbers either way); every
+    observer redraws, and chits born from now on get the theme's names."""
+    r = R()
+    try:
+        t = theme.choose(b.theme, r.data_dir)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    r._broadcast_snapshots()  # (the hello carries the theme: each observer reloads into it)
+    return {"ok": True, "theme": t}
+
+
 @app.post("/api/control")
 def control(c: Control):
     r = R()

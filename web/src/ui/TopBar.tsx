@@ -87,6 +87,12 @@ export function TopBar() {
         onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
         {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
       </button>
+      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`}
+        title={theme === "norse" ? "Look: Fjordfolk, the Norse theme (click for the classic look)"
+          : "Look: classic (click for Fjordfolk, the Norse theme: Nordic art, and Norse names for chits born from now on)"}
+        onClick={() => api("/api/theme", { theme: theme === "norse" ? "default" : "norse" }).catch(() => {})}>
+        {theme === "norse" ? "ᚠ" : "●"}<small>{theme === "norse" ? "norse" : "classic"}</small>
+      </button>
       <button className={`icon-btn ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
         onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
       <button className="icon-btn" title="Replay: scrub back through the last week (opens the replay viewer)"

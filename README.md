@@ -279,8 +279,9 @@ The scoreboard card is at `/api/story/card.svg`, and the thread as JSON is at `/
 
 ## Norse theme
 
-An optional look: **Fjordfolk**. Start the server with `CHITS_THEME=norse` (for example
-`CHITS_THEME=norse make play`). New chits get Norse names ("Astrid of the Fjord"), new worlds are called Fjordhaven
+An optional look: **Fjordfolk**. Switch it on in the game with the **Look** button in the top bar (● classic, ᚠ norse),
+or start the server with `CHITS_THEME=norse` (for example `CHITS_THEME=norse make play`). The button's choice is kept
+beside the saves and wins over `CHITS_THEME`. New chits get Norse names ("Astrid of the Fjord"), new worlds are called Fjordhaven
 and Pineholm, and the observer switches to cool fjord colours, wool-clad villagers and timber halls under turf roofs.
 
 - It is presentation only: the simulation draws the same random numbers, so a seed plays out exactly as it does
