@@ -175,6 +175,15 @@ def knowledge():
     return views.knowledge_table(list(R().worlds.values()))
 
 
+@app.get("/api/worlds/{wid}/encyclopedia/{knowledge}")
+def encyclopedia(wid: str, knowledge: str):
+    """What a discovered thing is for (views.encyclopedia). 404 for what this world hasn't found."""
+    e = views.encyclopedia(world(wid), knowledge)
+    if e is None:
+        raise HTTPException(404, "this world hasn't discovered that")
+    return e
+
+
 @app.get("/api/inventions")
 def inventions():
     """Each world's own inventions (T20): what it is, what it's for, who invented it, how many know it."""
@@ -586,6 +595,14 @@ def diagnostics_txt():
     from . import diag
 
     return PlainTextResponse(diag.text(diag.report(R())))
+
+
+@app.get("/api/why")
+def why_slow():
+    """"Why is nothing happening?": the diagnostics as a few plain sentences per world (diag.why_slow)."""
+    from . import diag
+
+    return diag.why_slow(diag.report(R()))
 
 
 @app.get("/api/worlds/{wid}/log.txt")
