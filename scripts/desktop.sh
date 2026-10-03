@@ -16,7 +16,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 ROOT="$(pwd)"
 CMD="${1:-status}"; shift || true
-PORT=8000; WITH_MODELS=0
+PORT=8010; WITH_MODELS=0
 for a in "$@"; do
   case "$a" in
     --models) WITH_MODELS=1 ;;
