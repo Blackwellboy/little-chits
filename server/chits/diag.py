@@ -9,7 +9,7 @@ import re
 import time
 import weakref
 from collections import Counter, deque
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 _NUM = re.compile(r"\d+(\.\d+)?")
 _REPLY_WINDOW = 360  # ticks an addressed chit has to answer (a plan cycle can take 100+)
@@ -359,7 +359,7 @@ def report(rt) -> Dict[str, Any]:
         since_disc = (w.tick - firsts[-1]) / 240 if firsts else w.tick / 240
         hist = w.history[-6:]
         wd = {
-            "brain": bid, "day": w.day + 1, "population": len(w.agents), "discoveries": len(w.first),
+            "name": w.name, "brain": bid, "day": w.day + 1, "population": len(w.agents), "discoveries": len(w.first),
             "days_since_last_discovery": round(since_disc, 1),
             "trend": [{"day": h.get("day"), "pop": h.get("population"), "disc": h.get("discoveries"),
                        "structures": h.get("structures")} for h in hist],
@@ -455,6 +455,133 @@ def text(r: Dict[str, Any]) -> str:
         for s in w["stuck"]:
             L.append(f"  stuck: {s['name']} ({s['fails_in_a_row']} fails in a row, {s['doing']}): {s['last']}")
     return "\n".join(L) + "\n"
+
+
+# ---------------------------------------------------------------------------------------------- why is it slow?
+_NOTHING_NEAR = re.compile(r"there is no (.+?) (?:anywhere )?nearby")
+WHY_MAX = 5  # reasons shown per world
+WHY_MIN_FAILS = 10  # a failure counts as a reason once it has happened this often
+
+
+def _plural(n: int, one: str = "chit", many: str = "") -> str:
+    return f"{n} {one if n == 1 else (many or one + 's')}"
+
+
+def _fix_line(design: str, opps: Dict[str, Any]) -> str:
+    """What the report says about the building that would end a shortage. Nothing while nobody there knows it."""
+    from .sim.items import DESIGNS
+
+    name = DESIGNS[design].name
+    o = opps.get(f"design:{design}")
+    if o is None:  # (opportunities lists only what isn't standing)
+        return f" A {name} is already built."
+    if not o.get("known_by"):
+        return ""
+    if o.get("sites_started"):
+        return f" A {name} is being built."
+    if o.get("affordable_by"):
+        return f" A {name} would fix it and {_plural(o['affordable_by'])} could build one."
+    return f" A {name} would fix it. {_plural(o['known_by'])} know{'s' if o['known_by'] == 1 else ''} how, but none has the materials."
+
+
+def _failure_line(key: str, n: int, opps: Dict[str, Any]) -> Tuple[str, Optional[str]]:
+    """One of the report's top failures in words, and the building it names as the fix (if it names one)."""
+    from .sim.buildings import PIT_OF
+    from .sim.items import ITEMS
+
+    verb, _, reason = key.partition(": ")
+    m = _NOTHING_NEAR.search(reason)
+    if m:
+        item = next((k for k, it in ITEMS.items() if it.name == m.group(1)), None)
+        fix = _fix_line(PIT_OF[item], opps) if item in PIT_OF else ""
+        return f"No {m.group(1)} near home: {n} failed tries so far.{fix}", PIT_OF.get(item) if fix else None
+    said = reason.strip().rstrip(".") + ("…" if len(reason) >= 70 else ".")  # (step_failed keeps 70 characters)
+    return f"Chits keep failing to {verb.replace('_', ' ')}: {n} failed tries so far. They say: {said}", None
+
+
+def _world_reasons(wd: Dict[str, Any], brains: Dict[str, Any]) -> List[Dict[str, Any]]:
+    from .sim.items import DESIGNS
+
+    out: List[tuple] = []  # (score, kind, text): the highest scores are shown
+
+    def add(score: float, kind: str, text: str) -> None:
+        out.append((score, kind, text))
+
+    bid = wd.get("brain", "instinct")
+    plans = wd.get("plans") or {}
+    opps = wd.get("opportunities") or {}
+    if bid != "instinct":
+        b = brains.get(bid) or {}
+        speed = b.get("speed") or {}
+        decided = sum(plans.values()) - plans.get("routine", 0) - plans.get("duty", 0) - plans.get("shed", 0)
+        share = wd.get("model_share_pct", 0)
+        if b and not b.get("healthy", True):
+            add(95, "model", "The model is not answering. Chits act on instinct until it does.")
+        elif decided >= 20 and share < 70:
+            if speed.get("level") == "slow":
+                tail = f": it is too slow for {_plural(speed.get('chits', wd.get('population', 0)))}."
+            else:
+                tail = ". Instinct makes the rest."
+            add(90 - share / 2, "model", f"The model answers only {share:g}% of decisions{tail}")
+        if plans.get("shed", 0) >= 20:
+            add(50, "model", f"{plans['shed']} decisions were left to instinct because the model's queue was full.")
+        if wd.get("waiting_on_model_pct", 0) > 40:
+            add(55, "model", f"Chits spend {wd['waiting_on_model_pct']:g}% of their time waiting for the model.")
+    named: set = set()  # buildings a failure line already spoke of
+    for i, (key, n) in enumerate((wd.get("top_failures") or [])[:3]):
+        if n >= WHY_MIN_FAILS:
+            line, fix = _failure_line(key, n, opps)
+            named.add(fix)
+            add(70 - 5 * i, "failure", line)
+    steps = wd.get("steps_ok", 0) + wd.get("steps_failed", 0)
+    if steps > 200 and wd.get("step_success_pct", 100) < 60:
+        add(58, "steps", f"Only {wd['step_success_pct']:g}% of plan steps work.")
+    stuck = wd.get("stuck") or []
+    if stuck:
+        s = stuck[0]
+        add(45, "stuck", f"{_plural(len(stuck))} keep{'s' if len(stuck) == 1 else ''} failing the same step. "
+                         f"{s['name']} failed {s['fails_in_a_row']} times in a row.")
+    loops = (wd.get("loops") or {}).get("model", 0)
+    if loops >= 5:
+        add(42, "loops", f"The model repeated a failing step {LOOP_N} times in a row on {loops} occasions.")
+    since = wd.get("days_since_last_discovery", 0)
+    if wd.get("day", 0) > 4 and since > 3:
+        add(min(65, 30 + 3 * since), "discovery", f"No new discovery for {since:.0f} days.")
+    gaps = sorted(((k[7:], v) for k, v in opps.items()
+                   if k.startswith("design:") and k != "design:boat" and k[7:] in DESIGNS and k[7:] not in named
+                   and v.get("known_by")
+                   and v.get("affordable_by") and not v.get("sites_started") and not v.get("upgrades_started")),
+                  key=lambda kv: (-kv[1]["affordable_by"], -kv[1]["known_by"], kv[0]))
+    for i, (key, v) in enumerate(gaps[:2]):
+        add(36 - i, "not_built", f"Nobody has started a {DESIGNS[key].name}. {_plural(v['known_by'])} "
+                                 f"know{'s' if v['known_by'] == 1 else ''} how and {v['affordable_by']} "
+                                 f"{'has' if v['affordable_by'] == 1 else 'have'} the materials.")
+    if wd.get("day", 0) > 10 and wd.get("population", 0) < 6:
+        add(75, "population", f"Only {_plural(wd.get('population', 0))} {'is' if wd.get('population') == 1 else 'are'} left.")
+    out.sort(key=lambda t: -t[0])
+    return [{"kind": kind, "text": text} for _, kind, text in out[:WHY_MAX]]
+
+
+def why_slow(r: Dict[str, Any]) -> Dict[str, Any]:
+    """"Why is nothing happening?" for the observer: the report (report()) as a few plain sentences, the biggest
+    reasons first. Every sentence is one of the report's own numbers put into words; nothing here looks at a world, so
+    it can say nothing the report doesn't. Counts run since the game server last started (the counters live in memory).
+    `game` holds what stops every world at once."""
+    game: List[Dict[str, str]] = []
+    dur = r.get("durability") or {}
+    if dur.get("invalid_reason"):
+        game.append({"kind": "invalid", "text": "This experiment run is marked invalid. It stays paused."})
+    if dur.get("save_errors"):
+        game.append({"kind": "save", "text": "A save failed. The game is paused until a save works."})
+    elif r.get("paused"):
+        game.append({"kind": "paused", "text": "The game is paused."})
+    if r.get("pacing_to_brain") and not r.get("paused"):
+        game.append({"kind": "pacing", "text": "The clock is waiting for a model to answer."})
+    brains = r.get("brains") or {}
+    return {"game": game,
+            "worlds": {wid: {"name": wd.get("name", wid), "day": wd.get("day"), "brain": wd.get("brain", "instinct"),
+                             "reasons": _world_reasons(wd, brains)}
+                       for wid, wd in (r.get("worlds") or {}).items()}}
 
 
 # the metrics a scorecard compares, and which way is better
