@@ -651,6 +651,8 @@ def set_theme(b: ThemeBody):
     """The Look button: switch the theme in the game. Presentation only (the same random numbers either way); every
     observer redraws, and chits born from now on get the theme's names."""
     r = R()
+    if r.contract == "experiment":  # (newborns' names reach the models' prompts: an experiment stays untouched)
+        raise HTTPException(409, "the look can't be switched during an experiment run")
     try:
         t = theme.choose(b.theme, r.data_dir)
     except ValueError as e:

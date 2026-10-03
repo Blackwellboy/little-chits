@@ -75,6 +75,10 @@ def test_the_look_button_switches_the_running_game_and_every_observer_redraws(en
         assert redrawn == ["norse"]
         assert c.get("/api/health").json()["theme"] == "norse" and rt.hello()["theme"] == "norse"
         assert {w.id: w.name for w in rt.worlds.values()} == names  # (a world keeps its name)
+        # an experiment stays untouched: newborns' names reach the models' prompts (Codex, #67)
+        rt.contract = "experiment"
+        assert c.post("/api/theme", json={"theme": "default"}).status_code == 409 and theme.active() == "norse"
+        rt.contract = "play"
     assert json.loads((env / theme.THEME_FILE).read_text()) == {"theme": "norse"}
     from chits.runtime import Runtime
 
