@@ -4,6 +4,7 @@ import { api } from "../net/socket";
 import { localStorageSet, useUI, worlds } from "../state/store";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
+import { SkipControl } from "./SkipControl";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
@@ -69,6 +70,7 @@ export function TopBar() {
           <button key={s} className={!control?.paused && control?.speed === s ? "on" : ""} onClick={() => setSpeed(s)}>{SPEED_LABEL[s]}</button>
         ))}
       </div>
+      {control?.contract !== "experiment" && <SkipControl />}
       {brainsInUse && control?.contract !== "experiment" && (
         <button className={`pace-btn ${control?.pace_to_brain ? "on" : ""}`}
           title={control?.pace_to_brain
@@ -103,6 +105,10 @@ export function TopBar() {
         onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
       <button className="icon-btn" title="Replay: scrub back through the last week (opens the replay viewer)"
         onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
+      {control?.contract !== "experiment" && (
+        <button className="icon-btn" title="Saves: save this game now, load a save, or move one to another computer as a file"
+          onClick={() => set({ savesOpen: true })}>💾<small>saves</small></button>
+      )}
       {control?.contract !== "experiment" && (
         <button className="icon-btn" title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
       )}

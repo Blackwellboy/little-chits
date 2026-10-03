@@ -69,6 +69,8 @@ class Store:
             if col not in cols:
                 self.db.execute(f"ALTER TABLE events ADD COLUMN {col} TEXT")
         self.db.execute("CREATE INDEX IF NOT EXISTS events_by_epoch ON events (world_id, epoch)")
+        if "summary" not in {r[1] for r in self.db.execute("PRAGMA table_info(savepoints)")}:
+            self.db.execute("ALTER TABLE savepoints ADD COLUMN summary TEXT")  # what the Saves list shows
         self.db.commit()
         self._migrate_timelines()
 
@@ -120,24 +122,40 @@ class Store:
 
     def save_world(self, world_dict: Dict[str, Any], keep: int = 6, *, events=None, outcomes=None,
                    outcome_ticks: int = OUTCOME_TICKS) -> None:
+        with self.lock, self.db:
+            self._write_world(world_dict, keep, events, outcomes, outcome_ticks)
+
+    def save_worlds(self, entries: List[Dict[str, Any]], meta: Optional[Dict[str, str]] = None) -> None:
+        """Several worlds' checkpoints as ONE transaction (a save-point restore): for each entry the events its
+        snapshot carried (`carried`, stored under `identity`, the timeline they happened in), the snapshot `world`,
+        its new `events` and its active pointer; and the run's `meta`. All of it commits, or none of it does."""
+        with self.lock, self.db:
+            for e in entries:
+                if e.get("carried"):
+                    self._insert_events(e["identity"], e["carried"])
+                self._write_world(e["world"], 6, e.get("events"), None, OUTCOME_TICKS)
+            for key, value in (meta or {}).items():
+                self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)", (key, value))
+
+    def _write_world(self, world_dict: Dict[str, Any], keep: int, events, outcomes, outcome_ticks: int) -> None:
+        """One checkpoint's rows. The caller holds the lock and the transaction."""
         blob = gzip.compress(json.dumps(world_dict, separators=(",", ":")).encode(), 1)  # level 5 took twice as long for 25% less
         wid, tick = world_dict["id"], world_dict["tick"]
         identity = (wid, world_dict.get("uuid", ""), world_dict.get("epoch", ""))
-        with self.lock, self.db:
-            self.db.execute("INSERT OR REPLACE INTO snapshots (world_id,tick,data,world_uuid,epoch) VALUES (?,?,?,?,?)",
-                            (wid, tick, blob, identity[1], identity[2]))
-            self.db.execute("DELETE FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? AND tick NOT IN "
-                            "(SELECT tick FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? ORDER BY tick DESC LIMIT ?)",
-                            (*identity, *identity, keep))
-            self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
-                            ("active_snapshot:" + wid, json.dumps([identity[1], identity[2], tick])))
-            if events:
-                self._insert_events(identity, events)
-            if outcomes:
-                self.db.executemany("INSERT INTO action_outcomes VALUES (?,?,?,?)",
-                                    [(wid, x["tick"], x.get("plan_id"), json.dumps(x)) for x in outcomes])
-                # every finished step is a row: two 60-chit worlds wrote tens of MB a day
-                self.db.execute("DELETE FROM action_outcomes WHERE world_id=? AND tick<?", (wid, tick - outcome_ticks))
+        self.db.execute("INSERT OR REPLACE INTO snapshots (world_id,tick,data,world_uuid,epoch) VALUES (?,?,?,?,?)",
+                        (wid, tick, blob, identity[1], identity[2]))
+        self.db.execute("DELETE FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? AND tick NOT IN "
+                        "(SELECT tick FROM snapshots WHERE world_id=? AND world_uuid=? AND epoch=? ORDER BY tick DESC LIMIT ?)",
+                        (*identity, *identity, keep))
+        self.db.execute("INSERT OR REPLACE INTO meta VALUES (?,?)",
+                        ("active_snapshot:" + wid, json.dumps([identity[1], identity[2], tick])))
+        if events:
+            self._insert_events(identity, events)
+        if outcomes:
+            self.db.executemany("INSERT INTO action_outcomes VALUES (?,?,?,?)",
+                                [(wid, x["tick"], x.get("plan_id"), json.dumps(x)) for x in outcomes])
+            # every finished step is a row: two 60-chit worlds wrote tens of MB a day
+            self.db.execute("DELETE FROM action_outcomes WHERE world_id=? AND tick<?", (wid, tick - outcome_ticks))
 
     def load_world(self, world_id: str) -> Optional[Dict[str, Any]]:
         with self.lock:
@@ -274,14 +292,35 @@ class Store:
             self.db.commit()
 
     # save points (T28): every world at one moment, to rewind to after meddling
-    def save_point(self, name: str, tick: int, worlds: Dict[str, Any]) -> int:
+    def save_point(self, name: str, tick: int, worlds: Dict[str, Any], summary: Optional[Dict[str, Any]] = None) -> int:
         import time as _time
 
         with self.lock:
-            cur = self.db.execute("INSERT INTO savepoints (name, created, tick, data) VALUES (?,?,?,?)",
-                                  (name, _time.time(), tick, json.dumps(worlds, separators=(",", ":"))))
+            cur = self.db.execute("INSERT INTO savepoints (name, created, tick, data, summary) VALUES (?,?,?,?,?)",
+                                  (name, _time.time(), tick, json.dumps(worlds, separators=(",", ":")),
+                                   json.dumps(summary) if summary is not None else None))
             self.db.commit()
             return int(cur.lastrowid)
+
+    def save_summaries(self, summarise) -> List[Dict[str, Any]]:
+        """Save points, newest first, each with its summary (day, population, era). A save made before summaries
+        were kept gets one from its own data, once (`summarise(worlds) -> dict`)."""
+        with self.lock:
+            rows = self.db.execute("SELECT id, name, created, tick, summary FROM savepoints ORDER BY id DESC").fetchall()
+        out = []
+        for sid, name, created, tick, summary in rows:
+            if summary is None:
+                sp = self.load_save_point(sid)
+                try:
+                    made = summarise(sp["worlds"]) if sp else {}
+                except Exception:
+                    made = {}  # (an unreadable old save still lists, and can still be deleted)
+                summary = json.dumps(made)
+                with self.lock:
+                    self.db.execute("UPDATE savepoints SET summary=? WHERE id=?", (summary, sid))
+                    self.db.commit()
+            out.append({"id": sid, "name": name, "created": created, "tick": tick, **json.loads(summary)})
+        return out
 
     def save_points(self) -> List[Dict[str, Any]]:
         with self.lock:

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import json
 import shutil
 import logging
 import os
+import sqlite3
+import threading
 import time
 import uuid
+import zlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -65,6 +69,18 @@ def source_commit() -> str:
         except Exception:
             _COMMIT = "unknown"
     return _COMMIT
+
+
+def save_summary(worlds: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """What the Saves list says about a save, from its snapshots alone: the day, how many chits, and the era."""
+    rows = {}
+    for wid, d in worlds.items():
+        i = max(0, min(len(ERAS) - 1, int(d.get("era_index") or 0)))
+        rows[wid] = {"name": str(d.get("name") or wid)[:60], "day": int(d.get("tick") or 0) // TICKS_PER_DAY + 1,
+                     "population": len(d.get("agents") or []), "era": ERAS[i][0], "era_index": i}
+    furthest = max(rows.values(), key=lambda r: r["era_index"], default={"era": ""})
+    return {"day": max((r["day"] for r in rows.values()), default=1),
+            "population": sum(r["population"] for r in rows.values()), "era": furthest["era"], "worlds": rows}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -130,6 +146,9 @@ class Runtime:
         self._bcast: Optional[asyncio.Task] = None
         self.tps = 0.0
         self.waiting_on_brain = False
+        self.skip: Optional[Dict[str, Any]] = None  # ⏩ skipping ahead (start_skip); None in normal play
+        self.last_skip: Optional[Dict[str, Any]] = None  # how the last skip ended, for the observer
+        self._skip_lock = threading.Lock()  # (Stop can come from a request thread while the loop ends it too)
         self.load_or_create()
         # A brand-new world gets a durable tick-0 checkpoint before it starts moving. Restored worlds are already
         # durable at the tick stored in SQLite. If this first write fails the Runtime still comes up, but paused.
@@ -260,6 +279,7 @@ class Runtime:
         self.save_errors = {}
         self.invalid_reason = ""
         self.paused = False
+        self.skip = self.last_skip = None
         self.forks = {}  # a new match: the old one's what-ifs go with it
         stories = self.data_dir / "stories"
         if stories.exists():  # the Weeks panel and story pages served old games' pages with the same numbers
@@ -278,7 +298,7 @@ class Runtime:
         self.gen += 1
         self.recorder.new_run()
         for k, v in (("contract", contract), ("run_id", self.run_id), ("contact", "1" if new_contact else "0"),
-                     ("sandbox_modified", "0"), ("sandbox_reasons", "[]")):
+                     ("sandbox_modified", "0"), ("sandbox_reasons", "[]"), ("skips", "[]")):
             self.store.set_meta(k, v)
         if mode:
             self.mode = normalize_mode(mode)
@@ -354,7 +374,9 @@ class Runtime:
                 "experiment_ended": json.loads(self.store.get_meta("experiment_ended") or "null"),
                 "durable_tick": {wid: getattr(w, "_durable_tick", -1) for wid, w in self.worlds.items()},
                 "sandbox_modified": self.store.get_meta("sandbox_modified") == "1",
-                "sandbox_reasons": json.loads(self.store.get_meta("sandbox_reasons") or "[]")}
+                "sandbox_reasons": json.loads(self.store.get_meta("sandbox_reasons") or "[]"),
+                # ⏩ stretches a player skipped through at full speed: mostly instinct-driven (see start_skip)
+                "skips": json.loads(self.store.get_meta("skips") or "[]")}
 
     def write_manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:
         m = self.manifest(chits)
@@ -442,12 +464,15 @@ class Runtime:
             dt = now - last
             last = now
             rate = 0 if self.paused else SPEEDS.get(self.speed, 2)
+            skipping = self.skip is not None and not self.paused
+            if skipping:
+                rate = max(SPEEDS.values())  # ⏩ a skip is the top speed without waiting for the models or the clock
             self.mind.speed_scale = max(1.0, rate / 2)  # a plan's age limit stretches with the game's speed
             # "waiting" only when pacing really holds the world back: at 1x it already runs at the pace cap
-            self.waiting_on_brain = self.pace_to_brain and rate > 2 and self._brain_backlog()
+            self.waiting_on_brain = not skipping and self.pace_to_brain and rate > 2 and self._brain_backlog()
             if self.waiting_on_brain:
                 rate = min(rate, 2)  # let the models catch up instead of letting instinct take over
-            acc = min(acc + dt * rate, 60)
+            acc = 60.0 if skipping else min(acc + dt * rate, 60)
             steps = 0
             t0 = time.perf_counter()
             while acc >= 1.0 and not self._resetting and not self.paused and time.perf_counter() - t0 < 0.05:
@@ -457,6 +482,11 @@ class Runtime:
                 self._maybe_record()
                 acc -= 1.0
                 steps += 1
+                if skipping:
+                    self._skip_check()  # (does nothing if a storage error has ended the skip during this step)
+                    if self.skip is None:  # it ended (or a failed checkpoint ended it): back to the speed it had
+                        acc = 0.0
+                        break
             count += steps
             if now - t_rate > 1.0:
                 self.tps = count / (now - t_rate)
@@ -464,7 +494,110 @@ class Runtime:
                 t_rate = now
             if steps == 0 and not self.paused:
                 acc = min(acc, 2.0)
-            await asyncio.sleep(0.005 if steps else 0.02)
+            await asyncio.sleep(0 if skipping and self.skip is not None else 0.005 if steps else 0.02)
+
+    # -------------------------------------------------------------- ⏩ skip ahead
+    SKIP_UNTIL = ("discovery", "moment", "days")
+    SKIP_MAX_DAYS = 30  # the most days one skip asks for, and where a skip that finds nothing gives up
+
+    def start_skip(self, until: str, days: Optional[int] = None) -> Dict[str, Any]:
+        """Run the worlds forward as fast as this machine allows until the next discovery, the next big moment
+        (an event of importance 5) or `days` days have passed, then go back to the speed (or the pause) it had.
+        Nothing else changes: the loop steps the same worlds through the same Mind, so a chit whose model has not
+        answered is covered by the instinct filler exactly as at top speed with "wait for models" off. Skipped time
+        is therefore mostly instinct-driven, which is why an experiment refuses it (PermissionError). Raises
+        ValueError for a bad request and RuntimeError when the game can't run now."""
+        if self.contract == "experiment":
+            raise PermissionError("not allowed in an experiment run")
+        if until not in self.SKIP_UNTIL:
+            raise ValueError(f"until must be one of {', '.join(self.SKIP_UNTIL)}")
+        if until == "days" and (type(days) is not int or not 1 <= days <= self.SKIP_MAX_DAYS):
+            raise ValueError(f"days must be 1..{self.SKIP_MAX_DAYS}")
+        if self.save_errors or self.invalid_reason:
+            raise RuntimeError("cannot skip ahead while a storage error is unresolved")
+        if self.skip is not None:
+            raise RuntimeError("already skipping ahead: stop it first")
+        if not self.worlds or self._resetting:
+            raise RuntimeError("no world is running")
+        n = days if until == "days" else self.SKIP_MAX_DAYS
+        tick = max(w.tick for w in self.worlds.values())
+        self.skip = {"until": until, "days": n, "from_tick": tick, "to_tick": tick + n * TICKS_PER_DAY,
+                     "t0": time.perf_counter(), "was_paused": self.paused,
+                     "firsts": {wid: set(w.first) for wid, w in self.worlds.items()},
+                     "seq0": {wid: w.seq for wid, w in self.worlds.items()},
+                     "seq": {wid: w.seq for wid, w in self.worlds.items()}}
+        self.paused = False
+        return self.skip_state()
+
+    def stop_skip(self) -> None:
+        if self.skip is not None:
+            self._end_skip("stopped")
+
+    def skip_state(self) -> Optional[Dict[str, Any]]:
+        sk = self.skip
+        if sk is None:
+            return None
+        tick = max((w.tick for w in self.worlds.values()), default=sk["from_tick"])
+        return {"until": sk["until"], "days": sk["days"], "from_day": sk["from_tick"] // TICKS_PER_DAY + 1,
+                "day": tick // TICKS_PER_DAY + 1, "seconds": int(time.perf_counter() - sk["t0"])}
+
+    def _skip_check(self) -> None:
+        """After a step of a skip: has what the player asked for happened? (Never called in normal play.)"""
+        sk = self.skip
+        if sk is None:
+            return
+        found = ""
+        for wid, w in self.worlds.items():
+            since = sk["seq"].get(wid, w.seq)
+            if sk["until"] == "discovery" and len(w.first) > len(sk["firsts"].get(wid, ())):
+                key = next(k for k in w.first if k not in sk["firsts"].get(wid, ()))
+                found = found or self._first_text(w, key, sk["seq0"].get(wid, 0))
+            elif sk["until"] == "moment" and w.seq > since:
+                for e in reversed(w.events):
+                    if e.seq <= since:
+                        break
+                    if e.importance >= 5:
+                        found = e.text
+            sk["seq"][wid] = w.seq
+        if found:
+            self._end_skip("found", found)
+        elif max(w.tick for w in self.worlds.values()) >= sk["to_tick"]:
+            self._end_skip("days" if sk["until"] == "days" else "limit")
+
+    @staticmethod
+    def _first_text(w: World, key: str, since: int) -> str:
+        """The event that tells a discovery made during a skip, or a plain line when it has none."""
+        for e in reversed(w.events):
+            if e.seq <= since:
+                break
+            if key in (e.data.get("knowledge"), e.data.get("key")):
+                return e.text
+        return f"{w.first[key].get('name') or 'Someone'} found {key.split(':', 1)[-1].replace('_', ' ')}"
+
+    def _end_skip(self, reason: str, text: str = "") -> None:
+        """Leave the skip. The game goes back to the pause it had; after a storage error it stays frozen."""
+        with self._skip_lock:
+            sk, self.skip = self.skip, None
+        if sk is None:
+            return
+        tick = max((w.tick for w in self.worlds.values()), default=sk["from_tick"])
+        # (a failed checkpoint has already frozen the game: that stays)
+        self.paused = sk["was_paused"] or (reason == "storage" and self.paused)
+        self.last_skip = {"until": sk["until"], "reason": reason, "text": text, "ended": time.time(),
+                          "from_day": sk["from_tick"] // TICKS_PER_DAY + 1, "day": tick // TICKS_PER_DAY + 1,
+                          "ticks": tick - sk["from_tick"], "seconds": round(time.perf_counter() - sk["t0"], 1)}
+        try:  # the run's record keeps which stretches were skipped (the store may be the thing that failed)
+            skips = json.loads(self.store.get_meta("skips") or "[]")
+            skips.append({"from_tick": sk["from_tick"], "to_tick": tick, "until": sk["until"], "reason": reason})
+            self.store.set_meta("skips", json.dumps(skips[-200:]))
+        except Exception as e:
+            log.warning("could not record the skip: %s", e)
+
+    def _skip_storage_error(self, e: Exception) -> None:
+        """Something could not be written (a keyframe, a chronicle page, the diagnostics log). Normal play carries on
+        past these; a skip stops at once, so hours of game are never run on storage that is failing."""
+        if self.skip is not None and isinstance(e, (OSError, sqlite3.Error)):
+            self._end_skip("storage", f"{type(e).__name__}: {str(e)[:300]}")
 
     # -------------------------------------------------------------- chronicle (T12)
     def names(self, w: World) -> Dict[str, str]:
@@ -579,6 +712,7 @@ class Runtime:
                     self.write_saga(w, day // 7)
             except Exception as e:
                 log.warning("chronicle failed: %s", e)
+                self._skip_storage_error(e)
         if w.tick % 10 == 0 and w.id == next(iter(self.worlds)):
             self.recorder.watch()
         evs = self._pending_events.get(w.id)
@@ -602,6 +736,7 @@ class Runtime:
                         f.write(diag.text(diag.report(self)))
                 except Exception as e:
                     log.warning("diagnostics log failed: %s", e)
+                    self._skip_storage_error(e)
 
     def _checkpoint_failed(self, w: World, exc: Exception) -> None:
         """A world in memory is not authoritative once its state could not be committed. Freeze every world so the
@@ -609,6 +744,8 @@ class Runtime:
         msg = f"{type(exc).__name__}: {str(exc)[:300]}"
         self.save_errors[w.id] = msg
         self.paused = True
+        if self.skip is not None:
+            self._end_skip("storage", msg)  # a skip stops at once: nothing more may run on an unsaved world
         if self.contract == "experiment" and not self.invalid_reason:
             self.invalid_reason = f"durability failure in World {w.id} at tick {w.tick}: {msg}"
             try:  # the SQLite write may have failed while the run folder is still writable
@@ -650,7 +787,8 @@ class Runtime:
                 "speeds": list(SPEEDS), "contract": self.contract, "mode": self.mode, "contact": self.contact,
                 "sandbox_modified": self.store.get_meta("sandbox_modified") == "1",
                 "durable_tick": {wid: getattr(w, "_durable_tick", -1) for wid, w in self.worlds.items()},
-                "save_errors": dict(self.save_errors), "invalid_reason": self.invalid_reason}
+                "save_errors": dict(self.save_errors), "invalid_reason": self.invalid_reason,
+                "skip": self.skip_state(), "last_skip": self.last_skip}
 
     def brain_summary(self) -> Dict[str, Any]:
         out = {}
@@ -872,6 +1010,7 @@ class Runtime:
                 self.store.thin_keyframes(w.id, w.tick - self.HOT_DAYS * 240)
         except Exception as e:  # replays are a nicety: never let them stop the world
             log.warning("keyframe failed: %s", e)
+            self._skip_storage_error(e)
 
     def _deliver_boats(self) -> None:
         ids = list(self.worlds)
@@ -973,24 +1112,204 @@ class Runtime:
     def save_point(self, name: str) -> Dict[str, Any]:
         name = (name or "").strip()[:60] or time.strftime("save %H:%M")
         tick = max((w.tick for w in self.worlds.values()), default=0)
-        sid = self.store.save_point(name, tick, {wid: w.to_dict() for wid, w in self.worlds.items()})
+        worlds = {wid: w.to_dict() for wid, w in self.worlds.items()}
+        sid = self.store.save_point(name, tick, worlds, save_summary(worlds))
         return {"id": sid, "name": name, "tick": tick}
 
     def restore_point(self, sid: int) -> bool:
+        """Every world goes back to a save point, as a unit: all of them, or (on any failure) none of them. The run is
+        marked as a sandbox and each world starts a new timeline. PermissionError in an experiment."""
         sp = self.store.load_save_point(sid)
         if not sp:
             return False
-        self.mark_sandbox(f"restored save point {sp['name']}")  # PermissionError in an experiment
-        for wid, d in sp["worlds"].items():
-            self._flush_events(self.worlds[wid]) if wid in self.worlds else None
-            w = World.from_dict(d)
-            self._adopt(w)
-            w.fork_epoch(f"restored save point {sp['name']}")
+        if self.contract == "experiment":
+            raise PermissionError("not allowed in an experiment run")
+        reason = f"restored save point {sp['name']}"
+        # 1. Build every replacement first. A save that does not load has changed nothing.
+        staged = [World.from_dict(d) for d in sp["worlds"].values()]
+        # 2. Make every world that is about to be replaced durable. A failed checkpoint pauses the game (DURABILITY.md)
+        #    and raises here, with every current world still in place.
+        for w in staged:
+            if w.id in self.worlds:
+                self._flush_events(self.worlds[w.id])
+        # 3. One transaction: each restored world's carried events (under the timeline they happened in), its first
+        #    checkpoint in its new timeline and its active pointer, and the sandbox mark. If it fails, storage still
+        #    points at the checkpoints of step 2 and the worlds in memory are those same worlds.
+        entries = []
+        for w in staged:
+            identity, carried, mark = (w.id, w.uuid, w.epoch), list(w.events), w.seq
+            w.fork_epoch(reason)
+            entries.append({"identity": identity, "carried": carried, "world": w.to_dict(),
+                            "events": [e for e in w.events if e.seq > mark]})
+        reasons = json.loads(self.store.get_meta("sandbox_reasons") or "[]") + [reason]
+        self.store.save_worlds(entries, {"sandbox_modified": "1", "sandbox_reasons": json.dumps(reasons[-50:])})
+        # 4. Committed: only now do the restored worlds replace the running ones.
+        self.stop_skip()  # (a skip was looking for news in the worlds that have just been replaced)
+        for w in staged:
+            w._stored_seq, w._durable_tick = w.seq, w.tick
             self._attach(w)
+            self.save_errors.pop(w.id, None)
         self.gen += 1
-        self.save_all()
+        try:
+            self.write_manifest()
+        except Exception as e:  # (the mark is already committed in the store; the file copy follows at the next write)
+            log.error("could not write the manifest after a restore: %s", e)
         self._broadcast_snapshots()
         return True
+
+    # -------------------------------------------------------------- 💾 saves in the main UI, and save files
+    SAVE_FORMAT, SAVE_VERSION = "little-chits-save", 1
+    SAVE_FILE_MAX = 64 * 1024 * 1024  # an uploaded save file, as sent
+    SAVE_JSON_MAX = 256 * 1024 * 1024  # and what it may unpack to
+
+    def _play_only(self, what: str) -> None:
+        if self.contract == "experiment":
+            raise PermissionError(f"{what} not allowed in an experiment run")
+
+    def saves(self) -> List[Dict[str, Any]]:
+        """Every save point, newest first, with its day, population and era."""
+        return self.store.save_summaries(save_summary)
+
+    def load_save(self, sid: int) -> bool:
+        """Load a save from the main UI. This is god mode's save-point restore and nothing else (restore_point: the
+        run is marked as a sandbox and every world starts a new timeline), after checking the save fits this game.
+        Raises PermissionError (experiment) or ValueError (the save holds other worlds than this game has)."""
+        self._play_only("loading a save is")
+        row = next((s for s in self.saves() if s["id"] == sid), None)
+        if row is None:
+            return False
+        want = set(row.get("worlds") or self.worlds)
+        if want != set(self.worlds):
+            n, m = len(want), len(self.worlds)
+            raise ValueError(f"This save holds {n} world{'s' if n != 1 else ''} and this game has {m}. "
+                             f"Start a new game with {n} world{'s' if n != 1 else ''}, then load it.")
+        ok = self.restore_point(sid)
+        if ok and row.get("imported"):  # (the world now running was made somewhere else: say so on the run's record)
+            self.mark_sandbox(f"save point {row['name']} came from an imported file")
+        return ok
+
+    def export_save(self, sid: int) -> Optional[Tuple[str, bytes]]:
+        """One save as one file: gzipped JSON with a format name and version. Returns (file name, bytes)."""
+        self._play_only("exporting a save is")
+        sp = self.store.load_save_point(sid)
+        if not sp:
+            return None
+        doc = {"format": self.SAVE_FORMAT, "version": self.SAVE_VERSION, "name": sp["name"], "tick": sp["tick"],
+               "exported": time.strftime("%Y-%m-%dT%H:%M:%S"), "build": source_commit(), "worlds": sp["worlds"]}
+        slug = "".join(ch if ch.isascii() and ch.isalnum() else "-" for ch in sp["name"]).strip("-")[:40] or "save"
+        return f"little-chits-{slug}.lcsave", gzip.compress(json.dumps(doc, separators=(",", ":")).encode(), 6)
+
+    SAVE_TRIAL_TICKS = 24  # an imported world must run this long on a throwaway copy before it is kept
+
+    @staticmethod
+    def _snapshot_problem(w: World) -> str:
+        """What is wrong with the shape of a world read from a save file, or "". World.from_dict copies what the file
+        says: a per-tile list of the wrong length, or a chit or building off the map, loads and then crashes the first
+        step that looks at that tile."""
+        n = w.w * w.h
+
+        def number(v) -> bool:
+            return type(v) in (int, float) and v == v and abs(v) != float("inf")
+
+        def tile(x, y) -> bool:
+            return type(x) is int and type(y) is int and w.inb(x, y)
+
+        for name, arr in (("resource amounts", w.res_amt), ("paths", w.traffic)):
+            if len(arr) != n or not all(map(number, arr)):
+                return f"its {name} do not cover the {w.w} by {w.h} map"
+        if not all(type(i) is int and 0 <= i < n for i in [*w.roads, *w.tunnels]):
+            return "a road or tunnel is off the map"
+        if not all(tile(a.x, a.y) for a in [*w.agents.values(), *w.dead.values()]):
+            return "a chit is off the map"
+        if not all(type(v) is int and v > 0 for s in w.structures.values() for v in (s.w, s.h)) \
+                or not all(tile(s.x, s.y) and tile(s.x + s.w - 1, s.y + s.h - 1) for s in w.structures.values()):
+            return "a building is off the map"
+        if not all(tile(t.x, t.y) for t in w.tablets.values()):
+            return "a tablet is off the map"
+        for key in w.ground:
+            x, _, y = str(key).partition(",")
+            if not (x.isdigit() and y.isdigit() and w.inb(int(x), int(y))):
+                return "a pile on the ground is off the map"
+        if not all(isinstance(a, dict) and tile(a.get("x"), a.get("y")) for a in w.animals.values()):
+            return "an animal is off the map"
+        return ""
+
+    @staticmethod
+    def _match_problem(worlds: Dict[str, Dict[str, Any]]) -> str:
+        """Why the snapshots of a save file can't be one game, or "". Every world of a match is built from the same
+        seed and differs only in its culture (MODES); a save point takes them all at one moment. Two unrelated
+        islands in one file would be loaded and then played, scored and compared as twins."""
+        ids = sorted(worlds)
+        cultures = tuple(worlds[wid].get("culture") for wid in ids)
+        if cultures not in {tuple(m["culture"][wid] for wid in m["worlds"]) for m in MODES.values()}:
+            return "no game mode has worlds with these cultures (" + ", ".join(str(c)[:20] for c in cultures) + ")"
+        for key, what, default in (("seed", "seeds", None), ("size", "sizes", None),
+                                   ("terrain_version", "terrain versions", 1), ("rng_scheme", "random-number schemes", 1),
+                                   ("schema", "snapshot versions", 1)):
+            if len({json.dumps(worlds[wid].get(key, default)) for wid in ids}) > 1:
+                return f"they have different {what}"
+        ticks = [worlds[wid]["tick"] for wid in ids]
+        if max(ticks) - min(ticks) > TICKS_PER_DAY:  # (twins step together; a crash can leave them a checkpoint apart)
+            return "they are more than a day apart"
+        return ""
+
+    def import_save(self, raw: bytes) -> Dict[str, Any]:
+        """A save file becomes a new save point (nothing is loaded, and nothing is written but that row). The file is
+        untrusted: its size, format name and version are checked, it is only ever parsed as JSON, and every world in
+        it must load in this build before it is kept. Raises ValueError with a plain reason."""
+        self._play_only("importing a save is")
+        if len(raw) > self.SAVE_FILE_MAX:
+            raise ValueError(f"This file is too big (the limit is {self.SAVE_FILE_MAX // 2 ** 20} MB).")
+        if raw[:2] == b"\x1f\x8b":
+            try:
+                unpack = zlib.decompressobj(16 + zlib.MAX_WBITS)
+                text = unpack.decompress(raw, self.SAVE_JSON_MAX + 1)
+            except zlib.error:
+                raise ValueError("This file is damaged: it could not be unpacked.")
+            if len(text) > self.SAVE_JSON_MAX or unpack.unconsumed_tail:
+                raise ValueError("This file unpacks to more than a save can hold.")
+        else:
+            text = raw
+        try:
+            doc = json.loads(text)
+        except (ValueError, RecursionError):
+            raise ValueError("This file is not a Little Chits save.")
+        if not isinstance(doc, dict) or doc.get("format") != self.SAVE_FORMAT:
+            raise ValueError("This file is not a Little Chits save.")
+        version = doc.get("version")
+        if type(version) is not int or version != self.SAVE_VERSION:
+            raise ValueError(f"This save file is version {str(version)[:20]}; this build reads version {self.SAVE_VERSION}.")
+        worlds = doc.get("worlds")
+        if not isinstance(worlds, dict) or sorted(worlds) not in (["A"], ["A", "B"]):
+            raise ValueError("This save file holds no worlds this game knows.")
+        for wid, d in worlds.items():
+            size, tick = (d.get("size"), d.get("tick")) if isinstance(d, dict) else (None, None)
+            if type(size) is not int or not MIN_SIZE <= size <= MAX_SIZE or type(tick) is not int or tick < 0 \
+                    or d.get("id") != wid or not isinstance(d.get("agents"), list) or len(d["agents"]) > 5000:
+                raise ValueError(f"World {wid} in this save file is not a world this build can read.")
+            try:  # (a copy: the trial below steps it, and what is kept must be the file's own snapshot)
+                trial = World.from_dict(json.loads(json.dumps(d)))  # refuses a snapshot schema newer than this build
+            except Exception as e:
+                raise ValueError(f"World {wid} in this save file can't be read by this build "
+                                 f"({type(e).__name__}: {str(e)[:120]}).")
+            wrong = self._snapshot_problem(trial)
+            if wrong:
+                raise ValueError(f"World {wid} in this save file is damaged: {wrong}.")
+            try:  # it loads and it is whole: can it run? (on instinct, no model is asked; the copy is thrown away)
+                hook = Mind(None).hook
+                for _ in range(self.SAVE_TRIAL_TICKS):
+                    trial.step(hook)
+            except Exception as e:
+                raise ValueError(f"World {wid} in this save file loads but can't run in this build "
+                                 f"({type(e).__name__}: {str(e)[:120]}).")
+        wrong = self._match_problem(worlds)
+        if wrong:
+            raise ValueError(f"The worlds in this save file are not one game: {wrong}.")
+        name = "".join(ch for ch in str(doc.get("name") or "") if ch.isprintable()).strip()[:60] or "imported save"
+        tick = max(d["tick"] for d in worlds.values())
+        summary = {**save_summary(worlds), "imported": True}
+        sid = self.store.save_point(name, tick, worlds, summary)
+        return {"id": sid, "name": name, "tick": tick, **summary}
 
     @staticmethod
     def _signs_once(w: World):

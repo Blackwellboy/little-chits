@@ -5,6 +5,7 @@ import { parseMomentParams, parseRecordParams, stageSize, type MomentParams } fr
 import { BrainsModal } from "./ui/BrainsModal";
 import { GodBanner, GodModal } from "./ui/GodModal";
 import { RecordingsModal } from "./ui/RecordingsModal";
+import { SavesModal } from "./ui/SavesModal";
 import { Welcome } from "./ui/Welcome";
 import { NewWorldModal } from "./ui/NewWorldModal";
 import { Inspector } from "./ui/Inspector";
@@ -125,6 +126,7 @@ export default function App() {
       <NewWorldModal />
       <GodModal />
       <GodBanner />
+      <SavesModal />
       <RecordingsModal />
       <Welcome />
       {!metas.length && (
