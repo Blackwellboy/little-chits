@@ -42,29 +42,27 @@ def run(w, a, step, limit=400):
     return a.last_result
 
 
-def test_nothing_is_reused_from_farther_than_its_effect_reaches():
-    for d, r in BLD.EFFECT_RADIUS.items():
-        assert A.REUSE_WITHIN[d] <= r, (d, A.REUSE_WITHIN[d], r)
-    # and the builder looks at least as far as the build reuses, or it proposes what the build then refuses
+def test_the_builder_never_proposes_what_the_build_refuses_as_one_close_by():
+    # the builder looks for a town hall, palisade, university or theatre within HALL_REACH (or the palisade's own
+    # radius) of the hall; the build reused one from 30 tiles, so between the two every plan was refused, every tick
     assert A.REUSE_WITHIN["town_hall"] <= SE.HALL_REACH
     assert A.REUSE_WITHIN["palisade"] <= BLD.PALISADE_RADIUS
     assert A.REUSE_WITHIN["university"] <= SE.HALL_REACH and A.REUSE_WITHIN["theatre"] <= SE.HALL_REACH
-    assert A.REUSE_WITHIN["granary"] <= BLD.GRANARY_RADIUS and A.REUSE_WITHIN["well"] <= BLD.WELL_RADIUS
+    for d in BLD.REUSE_CAPPED:
+        assert A.REUSE_WITHIN[d] <= BLD.EFFECT_RADIUS[d], d
+    assert BLD.EFFECT_RADIUS["town_hall"] == SE.HALL_REACH
 
 
-def test_a_granary_for_a_pile_just_past_anothers_reach_is_not_refused():
-    w, a = _world()
-    g = _place(w, a, "granary", a.x - 7, a.y)
-    # a stockpile exactly 11 tiles from the granary: past its reach (10), inside the old reuse (12)
-    spot = next((p for dy in (0, 1, -1, 2, -2, 3, -3) for p in [w.find_site("stockpile", g.x + g.w + 10, g.y + dy, 0)]
-                 if p and g.dist(p[0], p[1]) == 11), None)
-    assert spot, "no free tile 11 from the granary"
-    pile = w.place_site("stockpile", spot[0], spot[1], a)
-    w.complete_structure(pile, a)
-    pile.storage["bread"] = 30
-    assert g.dist(pile.x, pile.y) == 11
-    assert not BLD.keeps_fresh(w, pile)  # so this pile rots...
-    assert A._use_existing(w, a, "granary", {}, pile.x, pile.y) is None  # ...and a granary beside it is not refused
+# reused from farther than its effect reaches: between the two, what the building is for goes unserved and a second one
+# is refused. Capping them all cost a 60-day A/B 2-3 discoveries and a quarter of the stored food (villages raised more
+# of each), so each waits for a builder that asks whether the pile, field or home is served. Take one off this list in
+# the change that gives it that builder.
+DEAD_ZONES = {"well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour"}
+
+
+def test_the_dead_zones_still_open_are_exactly_the_listed_ones():
+    still = {d for d, r in BLD.EFFECT_RADIUS.items() if A.REUSE_WITHIN.get(d, 0) > r}
+    assert still == DEAD_ZONES, sorted(still ^ DEAD_ZONES)
 
 
 def test_a_great_library_is_a_library_for_reading_study_and_writing():

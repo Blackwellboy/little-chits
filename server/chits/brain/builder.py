@@ -233,7 +233,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
             and _none_near(world, a.x, a.y, "sand_pit", BLD.PIT_REACH):
         # (it just found no sand within reach: dig a pit by the nearest water)
         add(2.0, _build(world, a, "sand_pit", max(1, pop // 20), "There's no sand left near home. A pit by the water would give some every day."))
-    if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", BLD.REUSE_WITHIN["well"]):
+    if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):
         add(2.0, _build(world, a, "well", max(1, pop // 10), "Our fields are thirsty. A well would water them."))
     if a.knows_design("granary"):
         pile = _food_pile(world, a)
