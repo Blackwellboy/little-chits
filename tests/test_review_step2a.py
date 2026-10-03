@@ -109,10 +109,21 @@ def test_a_believer_raises_a_shrine_for_its_faith():
     opts = BR.building_options(w, a, random.Random(1))
     shrine = [p for _, p in opts if p["steps"][-1].get("what") == "shrine"]
     assert shrine, [p["goal"] for _, p in opts]
-    # a shrine of its own faith already standing: no second one
-    s = _place(w, a, "shrine", a.x + 3, a.y)
-    s.belief = "b1"
+    # another faith's shrine beside it is no reason not to: the option stays and the build does not call it "one close by"
+    other = _place(w, a, "shrine", a.x + 3, a.y)
+    other.belief = "b2"
+    assert [p for _, p in BR.building_options(w, a, random.Random(1)) if p["steps"][-1].get("what") == "shrine"]
+    assert A._use_existing(w, a, "shrine", {}) is None
+    # a shrine of its own faith already standing: no second one, and the build would use that one
+    other.belief = "b1"
     assert not [p for _, p in BR.building_options(w, a, random.Random(1)) if p["steps"][-1].get("what") == "shrine"]
+    assert A._use_existing(w, a, "shrine", {}) == A.DONE
+
+
+def test_the_prompt_version_moved_with_the_great_library_scene_text():
+    from chits.brain import prompt as P
+
+    assert P.PROMPT_VERSION >= "2026-10-04.2"
 
 
 def test_the_civic_lists_name_only_real_designs():

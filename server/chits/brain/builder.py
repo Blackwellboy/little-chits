@@ -255,10 +255,12 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
     # a believer with no shrine of its faith about raises one: nothing on the planner side ever built a shrine (live,
     # 89 chits knew the design and 48 could afford it; review 2026-10-04)
-    if a.belief and a.knows_design("shrine") and _none_near(world, a.x, a.y, "shrine", REUSE_WITHIN["shrine"]) \
-            and not any(s.design == "shrine" and s.functional and s.belief == a.belief
+    # (another faith's shrine close by is no reason not to: the reuse check and the cap are per faith, Codex #76)
+    if a.belief and a.knows_design("shrine") \
+            and not any(s.design == "shrine" and not s.ruined and s.belief in ("", a.belief)
                         for s in world.structures_near(a.x, a.y, 30)):
-        add(1.0, _build(world, a, "shrine", max(1, pop // 15), "Our faith should have a sacred place of its own."))
+        add(1.0, _build(world, a, "shrine", _count_all(world, "shrine") + 1,
+                        "Our faith should have a sacred place of its own."))
     # towns: a hall for a big village, a square beside it, and streets along its worn trails
     opts += town_options(world, a)
     opts += town_life_options(world, a)
