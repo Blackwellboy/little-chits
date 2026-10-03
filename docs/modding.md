@@ -108,6 +108,8 @@ The server says why a pack is refused, for example
   (`data/runs/<run>/manifest.json`), in `/api/health`, and in a replay bundle.
 - Making a world with a pack draws no random numbers. The island and the starting chits are the same with or
   without it. After that the two games go their own ways, because different things can be made.
+- The stores treat pack food as food: it goes in the room a stockpile keeps for food, and a chit that stores
+  everything keeps two in hand.
 - **Without a pack nothing changes.** The simulation and the saves are what they were before packs existed.
 - **Experiment runs refuse packs.** An experiment must differ from the base game only in its intended flags,
   and a pack is not part of any sealed protocol yet. Start the experiment with **No pack**. The Experiment Lab

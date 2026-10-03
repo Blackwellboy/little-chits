@@ -68,13 +68,14 @@ def store_cap(st) -> int:
     return STORE_CAP.get(st.design, STOCKPILE_CAP)
 
 
-def stockpile_room(st, item: Optional[str] = None) -> int:
-    """How many more of `item` (or of any material, if None) this stockpile will take."""
+def stockpile_room(st, item: Optional[str] = None, catalog=None) -> int:
+    """How many more of `item` (or of any material, if None) this stockpile will take. `catalog`: the world's, so
+    that a content pack's food counts as food here too."""
     cap = store_cap(st)
     space = cap - sum(st.storage.values())
-    if item is not None and item in FOODS:
+    if item is not None and is_food(item, catalog):
         return max(0, space)
-    goods = sum(n for k, n in st.storage.items() if k not in FOODS)
+    goods = sum(n for k, n in st.storage.items() if not is_food(k, catalog))
     return max(0, min(space, int(cap * GOODS_SHARE) - goods))
 SIGN_SYMBOLS = ("food", "wood", "stone", "clay", "ore", "fish", "danger", "home", "build", "meet")
 SIGN_ALIASES = {"berries": "food", "berry": "food", "warning": "danger", "gather": "meet", "copper": "ore",
@@ -85,6 +86,15 @@ SCARCE_RADIUS = 72  # tiles a chit will walk for a scarce material its mind aske
 CAMP_SLEEP, CAMP_FAR = 12, 30  # a chit this far from home sleeps at an outpost camp this close
 
 FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "fish", "berries", "grain")
+
+
+def is_food(key: str, catalog=None) -> bool:
+    """Food as the stores see it: the base foods, and a content pack's items that feed (sim/packs.py). Without a
+    pack this is exactly `key in FOODS`. (Invented dishes are left as they were: stored as goods.)"""
+    if key in FOODS:
+        return True
+    packed = catalog.pack_items.get(key) if catalog is not None and catalog.pack_items else None
+    return packed is not None and packed.food > 0 and key not in ITEMS
 
 
 def food_items(a: Agent) -> List[str]:
@@ -257,7 +267,7 @@ def _reflexes(world, a: Agent) -> None:
 
 def _stockpile_with_room(world, a: Agent):
     for p in world.structures_near(a.x, a.y, 25, "stockpile"):
-        if p.functional and stockpile_room(p) > 10 and a.reflex_rest.get("unreach:" + p.id, 0) <= world.tick:
+        if p.functional and stockpile_room(p, None, world.catalog) > 10 and a.reflex_rest.get("unreach:" + p.id, 0) <= world.tick:
             return p
     return None
 
@@ -1027,7 +1037,7 @@ def _spare_load(world, a: Agent, keep) -> int:
         it = world.item(k)
         if it is None or it.tool or it.carry_bonus or k in keep:
             continue
-        w += it.weight * max(0, n - (2 if k in FOODS else 0))
+        w += it.weight * max(0, n - (2 if is_food(k, world.catalog) else 0))
     return w
 
 
@@ -1158,7 +1168,7 @@ def plan_bill(world, a: Agent, kinds: Optional[Set[str]] = None, target=None, pr
                 continue
             # the goods need somewhere to go: kiln shifts into full stores left chits holding 22 charcoal, and some
             # starved beside the grain with no hand free to take it
-            n = min(n, sum(stockpile_room(p, r.key) for p in piles) // r.qty)
+            n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
             if n < 1:
                 full.append(world.item_name(r.key))
                 continue
@@ -1376,7 +1386,7 @@ def _do_work(world, a: Agent, step, s) -> str:
     if back and s.get("dest") != "":
         if s.get("dest") is None:
             key = r.key if r.key in back else next(iter(back))
-            piles = [p for p in (_station_piles(world, a, st) if st is not None else []) if stockpile_room(p, key) > 0]
+            piles = [p for p in (_station_piles(world, a, st) if st is not None else []) if stockpile_room(p, key, world.catalog) > 0]
             dest = min(piles, key=lambda p: p.dist(a.x, a.y)) if piles else _stockpile_with_room(world, a)
             s["dest"] = dest.id if dest is not None else ""
             _retarget(a, s)
@@ -2048,7 +2058,7 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
             s["note"] = f"There was an empty farm close by ({empty.id}); I sowed it instead of making another"
             return _redirect(world, a, s)
         return None  # every farm nearby is sown: a new one is fine
-    if key == "stockpile" and any(stockpile_room(x) > 20 for x in near if x.functional):
+    if key == "stockpile" and any(stockpile_room(x, None, world.catalog) > 20 for x in near if x.functional):
         s["note"] = "There's a stockpile with room close by already"
         return DONE
     if key in ("shrine", "kiln", "workshop", "furnace", "library") or key in BLD.REUSE_WITHIN:
@@ -2279,7 +2289,7 @@ def _do_help(world, a: Agent, step, s) -> str:
 def _do_store(world, a: Agent, step, s) -> str:
     st = None
     if not step.get("target") and not s.get("pile"):
-        st = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and stockpile_room(x) > 0), None)
+        st = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and stockpile_room(x, None, world.catalog) > 0), None)
         if st:
             s["pile"] = st.id
     st = st or world.structures.get(s.get("pile") or "") or \
@@ -2306,7 +2316,7 @@ def _do_store(world, a: Agent, step, s) -> str:
         for k, n in a.inventory.items():
             if world.item(k).tool or world.item(k).carry_bonus:
                 continue
-            keep = 2 if k in FOODS else 0
+            keep = 2 if is_food(k, world.catalog) else 0  # (a bite stays in hand)
             if n > keep:
                 items[k] = n - keep
     else:
@@ -2316,16 +2326,17 @@ def _do_store(world, a: Agent, step, s) -> str:
         items[k] = min(a.inventory[k], _qty(step, a.inventory[k], 1, 99))
     space = store_cap(st) - sum(st.storage.values())
     # a stockpile keeps room for food: materials may fill at most GOODS_SHARE of it
-    goods_room = stockpile_room(st)
+    goods_room = stockpile_room(st, None, world.catalog)
     stored = []
-    for k, n in sorted(items.items(), key=lambda kv: kv[0] not in FOODS):  # food first
-        n = min(n, space if k in FOODS else min(space, goods_room))
+    food = {k: is_food(k, world.catalog) for k in items}
+    for k, n in sorted(items.items(), key=lambda kv: not food[kv[0]]):  # food first
+        n = min(n, space if food[k] else min(space, goods_room))
         if n <= 0:
             continue
         a.remove(k, n)
         st.storage[k] = st.storage.get(k, 0) + n
         space -= n
-        if k not in FOODS:
+        if not food[k]:
             goods_room -= n
         stored.append(f"{n} {world.item_name(k)}")
     world.dirty_struct.add(st.id)
@@ -2335,7 +2346,7 @@ def _do_store(world, a: Agent, step, s) -> str:
         tried = s.setdefault("tried", [])
         tried.append(st.id)
         other = next((x for x in world.structures_near(a.x, a.y, 30, "stockpile") if x.functional and x.id not in tried
-                      and stockpile_room(x) > 0 and world.same_land(a, x)), None) if items else None
+                      and stockpile_room(x, None, world.catalog) > 0 and world.same_land(a, x)), None) if items else None
         if other is not None and len(tried) < 3:
             s["pile"] = other.id
             step.pop("target", None)

@@ -260,6 +260,51 @@ def test_pack_knowledge_is_taught_named_and_listed_like_any_other():
     assert "already taken" in out
 
 
+def stockpile_by(w, a):
+    x, y = w.find_site("stockpile", a.x, a.y, 12, reach=(a.x, a.y))
+    st = w.place_site("stockpile", x, y, a)
+    w.complete_structure(st, a)
+    return st
+
+
+def test_pack_food_is_food_to_the_stores():
+    """Codex, PR #73: honey could be eaten, but the stores counted it as a material. `store all` left none in hand,
+    and a stockpile with its material share full refused honey although the room kept for food was empty."""
+    w = pack_world()
+    a = next(iter(w.agents.values()))
+    a.hunger = a.energy = a.warmth = a.health = 95.0
+    pile = stockpile_by(w, a)
+    cat = w.catalog
+    assert actions.is_food("honey", cat) and actions.is_food("mead", cat) and actions.is_food("berries", cat)
+    assert not actions.is_food("skep", cat) and not actions.is_food("wood", cat)  # (a pack item that doesn't feed)
+    assert not actions.is_food("honey") and not actions.is_food("honey", Catalog())  # no pack: not a thing at all
+
+    # the material share (70%) is full, the food share is empty
+    goods_cap = int(actions.store_cap(pile) * actions.GOODS_SHARE)
+    pile.storage = {"wood": goods_cap}
+    assert actions.stockpile_room(pile, "wood", cat) == 0 == actions.stockpile_room(pile, "skep", cat)
+    food_room = actions.store_cap(pile) - goods_cap
+    assert actions.stockpile_room(pile, "honey", cat) == food_room == actions.stockpile_room(pile, "berries", cat)
+
+    a.inventory.clear()
+    a.inventory.update({"honey": 7, "berries": 6, "skep": 2})
+    do(w, a, {"do": "store", "what": "all", "target": pile.id})
+    assert a.inventory.get("honey") == 2 and a.inventory.get("berries") == 2, a.inventory  # a bite stays in hand
+    assert pile.storage.get("honey") == 5 and pile.storage.get("berries") == 4
+    assert a.inventory.get("skep") == 2 and "skep" not in pile.storage  # materials: no room, kept
+    # stored honey sits in the food share: it takes nothing from the room for materials
+    pile.storage = {"honey": 50}
+    assert actions.stockpile_room(pile, None, cat) == goods_cap
+    assert actions.stockpile_room(pile, "wood", cat) == goods_cap
+    assert actions._spare_load(w, a, ()) == 2 * w.item("skep").weight  # the kept bites are not a load to put down
+
+
+def test_without_a_pack_the_stores_sort_things_exactly_as_before():
+    w = World("A", "A", 11, "direct", 64, 4)
+    for k in list(ITEMS) + ["honey", "inv_stew"]:
+        assert actions.is_food(k, w.catalog) == (k in actions.FOODS) == actions.is_food(k)
+
+
 def test_a_pack_is_saved_with_its_world_and_read_back():
     w = pack_world()
     d = json.loads(json.dumps(w.to_dict(), default=str))
@@ -324,7 +369,8 @@ def test_without_a_pack_the_simulation_is_what_it_was_before_packs(monkeypatch):
     monkeypatch.setattr(Catalog, "physics", lambda self: list(RECIPES.values()))
     monkeypatch.setattr(Catalog, "pack_key", lambda self, raw: None)
     monkeypatch.setattr(Catalog, "value", lambda self, key: items.base_value(key))
-    before = _run(World("A", "A", 21, "direct", 64, 10), ticks)
+    monkeypatch.setattr(actions, "is_food", lambda key, catalog=None: key in actions.FOODS)
+    before =_run(World("A", "A", 21, "direct", 64, 10), ticks)
 
     assert hashlib.sha256(shipped.encode()).hexdigest() == hashlib.sha256(before.encode()).hexdigest()
     assert shipped == before and '"pack"' not in shipped
