@@ -14,12 +14,34 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..brain import prompt as P
+from ..brain.instinct import Instinct
 from ..brain.llm import BrainConfig, LLMBrain
 from ..brain.parse import ParseError, parse_plan
 from ..sim.world import World
 
 
-async def check_brain(cfg: BrainConfig, samples: int = 3, seed: int = 1234) -> Dict[str, Any]:
+ONE_TOKEN = {"max_tokens": 1, "json_reply": False, "extra": {"logprobs": True, "top_logprobs": 10}}  # as the mind asks
+
+
+def decision_request(world, a, style: str = "full"):
+    """One decision as a brain of this prompt style is asked for it: (messages, chat arguments, option letters).
+    "choose" and "cascade" pick a drafted plan by one letter; the others write a plan (no letters)."""
+    if style in ("choose", "cascade"):
+        opts = Instinct().options(world, a)
+        own = style == "cascade"
+        return P.choice_messages(world, a, opts, own_idea=own), dict(ONE_TOKEN), P.LETTERS[:len(opts) + own]
+    return P.messages(world, a, style="compact" if style == "compact" else "full"), {}, ""
+
+
+def choice_letter(res: Dict[str, Any], letters: str) -> str:
+    """The option a one-token reply picked (the likeliest valid letter, else the reply itself), or ""."""
+    scores = {t.strip().upper(): lp for t, lp in (res.get("top_logprobs") or {}).items()
+              if len(t.strip()) == 1 and t.strip().upper() in letters}
+    letter = max(scores, key=scores.get) if scores else (res.get("text") or "").strip().upper()
+    return letter if len(letter) == 1 and letter in letters else ""
+
+
+async def check_brain(cfg: BrainConfig, samples: int = 3, seed: int = 1234, style: str = "full") -> Dict[str, Any]:
     world = World("A", "Doctor", seed, "direct", 96, 6)
     chits = list(world.agents.values())[:samples]
     brain = LLMBrain(cfg)
@@ -27,13 +49,20 @@ async def check_brain(cfg: BrainConfig, samples: int = 3, seed: int = 1234) -> D
     example: Optional[Dict[str, Any]] = None
     try:
         for a in chits:
+            msgs, kw, letters = decision_request(world, a, style)
             try:
-                res = await brain.chat(P.messages(world, a))
+                res = await brain.chat(msgs, **kw)
             except Exception as e:
                 err = err or f"{type(e).__name__}: {e}"[:300]
                 continue
             got += 1
             lat.append(res["latency_ms"])
+            if letters:
+                if choice_letter(res, letters):
+                    valid += 1
+                else:
+                    err = err or "unreadable reply: not one of the option letters"
+                continue
             try:
                 plan = parse_plan(res["text"])
                 valid += 1
@@ -48,6 +77,7 @@ async def check_brain(cfg: BrainConfig, samples: int = 3, seed: int = 1234) -> D
     return {
         "ok": ok, "model": brain.stats.resolved_model or cfg.model or "", "samples": len(chits), "valid": valid,
         "valid_rate": valid / len(chits) if chits else 0.0, "latency_ms": latency, "tok_s": brain.stats.tok_per_s,
+        "latency_p50_ms": sorted(lat)[len(lat) // 2] if lat else 0.0,
         "est_chits_1x": int(cfg.max_concurrency * 15000 / max(1, latency)) if ok else 0,
         "error": "" if ok else (err or "no replies"), "example": example,
     }

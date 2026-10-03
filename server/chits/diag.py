@@ -154,13 +154,21 @@ def _quant(xs: List[float], q: float) -> float:
 PLAN_EVERY_S = 15.0  # at 1× a chit wants a fresh plan about this often (the same yardstick as `make doctor`)
 
 
+def keeps_up_with(concurrency: int, latency_ms: float) -> int:
+    """How many chits a model keeps up with at 1×: it answers `concurrency` requests at once, each taking
+    `latency_ms`, and a chit wants a plan every PLAN_EVERY_S. (0: not measured.)"""
+    if latency_ms <= 0:
+        return 0
+    return int(max(1, concurrency) * PLAN_EVERY_S * 1000 / latency_ms)
+
+
 def speed_rating(concurrency: int, latency_ms: float, chits: int, waits: bool = False) -> Dict[str, Any]:
     """Can a model keep up with the chits it drives? It answers `concurrency` requests at once, each taking
     `latency_ms`, so it can serve about concurrency × 15 s / latency chits at 1×. Below that, chits fill in with
     instinct while they wait (or, in an experiment run, just wait: waits=True)."""
     if chits <= 0 or latency_ms <= 0:
         return {"level": "unknown", "capacity": 0, "chits": chits, "text": "Not measured yet."}
-    cap = int(max(1, concurrency) * PLAN_EVERY_S * 1000 / latency_ms)
+    cap = keeps_up_with(concurrency, latency_ms)
     secs = latency_ms / 1000
     if cap >= chits:
         return {"level": "good", "capacity": cap, "chits": chits,
