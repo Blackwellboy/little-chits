@@ -1,5 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
+import { thoughtLine } from "./thoughts";
 import { api, errorText } from "../net/socket";
 import { useUI } from "../state/store";
 import { Capacity } from "./sizing";
@@ -9,6 +10,11 @@ type Speed = { level: "good" | "ok" | "slow" | "unknown"; capacity: number; chit
 type BrainRow = { config: any; stats: any; label: string; healthy: boolean; speed?: Speed; capacity?: Capacity };
 
 const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, temperature: 0.7, max_tokens: 600 };  // (JSON mode and the thinking switch: found by the first Test)
+
+function Thought({ l }: { l: any }) {
+  const t = thoughtLine(l);
+  return <p>{t.quote && <>“{t.quote}” → </>}{t.goal && <><i>{t.goal}</i>: </>}{t.rest}</p>;
+}
 
 function ago(t: number): string {
   const s = Math.max(0, Date.now() / 1000 - t);
@@ -233,7 +239,7 @@ export function BrainsModal() {
               {status.log.slice().reverse().slice(0, 12).map((l: any, i: number) => (
                 <li key={i} className={l.ok ? "" : "bad"}>
                   <b>{l.agent}</b> <small className="muted">{l.brain} · {l.wall_ms} ms</small>
-                  {l.ok ? <p>“{l.thought}” → <i>{l.goal}</i>: {l.steps.map((s: any) => s.do + (s.what ? ` ${Array.isArray(s.what) ? s.what.join("+") : s.what}` : s.with ? ` ${s.with.join("+")}` : "")).join(" → ")}</p>
+                  {l.ok ? <Thought l={l} />
                     : <p className="err">{l.error}{l.raw ? ` — “${l.raw.slice(0, 120)}”` : ""}</p>}
                 </li>
               ))}

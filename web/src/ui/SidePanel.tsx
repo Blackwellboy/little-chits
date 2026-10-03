@@ -434,8 +434,17 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
   // the entry opens below the whole table (thousands of pixels down in an old world): bring it to the reader, or a
   // click on a row looks like nothing happened
   const openRef = useRef<HTMLDivElement>(null);
+  // ...and closing it puts the reader back at the row they clicked, not at the foot of the table (Codex, #77)
+  const cameFrom = useRef<{ el: Element; top: number } | null>(null);
+  const toggle = (key: string, from: HTMLElement) => {
+    if (openKey === key) { setOpenKey(null); return; }
+    const el = from.closest(".panel");
+    if (el && !openKey) cameFrom.current = { el, top: el.scrollTop };
+    setOpenKey(key);
+  };
   useEffect(() => {
-    if (openKey) openRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (openKey) openRef.current?.scrollIntoView({ block: "start" });
+    else if (cameFrom.current) { cameFrom.current.el.scrollTop = cameFrom.current.top; cameFrom.current = null; }
   }, [openKey]);
   if (!rows) return <p className="muted">Loading…</p>;
   const shown = rows.filter((r) => r.discovered);
@@ -453,7 +462,7 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
         <tbody>
           {shown.map((r) => (
             <tr key={r.key}>
-              <td><b className="spread-open" title="What is it for, and how did they come to know it?" onClick={() => setOpenKey(openKey === r.key ? null : r.key)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
+              <td><b className="spread-open" title="What is it for, and how did they come to know it?" onClick={(e) => toggle(r.key, e.currentTarget)}>{r.icon} {r.name}</b><small className="muted"> {r.kind === "design" ? "build" : "make"}</small></td>
               {metas.map((m) => {
                 const w = r.worlds[m.id];
                 const pct = w.population ? (w.knowers / w.population) * 100 : 0;
