@@ -10,7 +10,6 @@ const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model:
 
 function thoughtText(l: any): string {
   if (!l.ok) return "";
-  const head = l.goal ?? l.chose ?? "";
   if (l.steps) {
     const chain = l.steps.map((s: any) =>
       s.do + (s.what ? " " + (Array.isArray(s.what) ? s.what.join("+") : s.what) : s.with ? " " + s.with.join("+") : "")).join(" → ");
