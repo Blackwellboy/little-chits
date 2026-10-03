@@ -87,6 +87,7 @@ class Runtime:
     def __init__(self, data_dir: Optional[Path] = None):
         self.data_dir = Path(data_dir or os.environ.get("CHITS_DATA_DIR", "data")).resolve()
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        theme.load(self.data_dir)  # (before any world is made or named)
         self.store = Store(self.data_dir / "chits.sqlite")
         brains_path = Path(os.environ.get("CHITS_BRAINS", self.data_dir / "brains.json")).resolve()
         self.brains_path = brains_path

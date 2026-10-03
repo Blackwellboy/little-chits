@@ -1,7 +1,10 @@
 # Norse theme (Fjordfolk)
 
-`CHITS_THEME=norse` turns it on (case and surrounding spaces don't matter; any other value, or none, is the default
-theme). It changes how the game is presented, never what happens in it.
+The **Look** button in the game's top bar switches it on and off while the world runs (`POST /api/theme
+{"theme": "norse" | "default"}`). Every observer redraws, chits born from then on get the theme's names, and chits
+already named keep theirs. The choice is kept beside the saves (`theme.json` in the data directory) and wins over
+`CHITS_THEME`. Without one, `CHITS_THEME=norse` turns it on (case and surrounding spaces don't matter; any other
+value, or none, is the default theme). It changes how the game is presented, never what happens in it.
 
 ## What changes
 
