@@ -391,7 +391,8 @@ class Runtime:
         for f in found[:2]:
             port = f["base_url"].rsplit(":", 1)[-1].split("/")[0]
             cfg = {"id": f"auto{port}", "label": f"{f['models'][0]} :{port}", "base_url": f["base_url"],
-                   "model": f["models"][0], "max_concurrency": f["suggested"]["max_concurrency"], "enabled": True}
+                   "model": f["models"][0], "max_concurrency": f["suggested"]["max_concurrency"], "enabled": True,
+                   "detect": True}  # (its first Test settles JSON mode and the thinking switch: brain/checkup.py)
             self.mind.upsert(cfg)
             added.append(cfg)
         self.autodetected = added
