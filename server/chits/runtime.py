@@ -1210,6 +1210,25 @@ class Runtime:
             return "an animal is off the map"
         return ""
 
+    @staticmethod
+    def _match_problem(worlds: Dict[str, Dict[str, Any]]) -> str:
+        """Why the snapshots of a save file can't be one game, or "". Every world of a match is built from the same
+        seed and differs only in its culture (MODES); a save point takes them all at one moment. Two unrelated
+        islands in one file would be loaded and then played, scored and compared as twins."""
+        ids = sorted(worlds)
+        cultures = tuple(worlds[wid].get("culture") for wid in ids)
+        if cultures not in {tuple(m["culture"][wid] for wid in m["worlds"]) for m in MODES.values()}:
+            return "no game mode has worlds with these cultures (" + ", ".join(str(c)[:20] for c in cultures) + ")"
+        for key, what, default in (("seed", "seeds", None), ("size", "sizes", None),
+                                   ("terrain_version", "terrain versions", 1), ("rng_scheme", "random-number schemes", 1),
+                                   ("schema", "snapshot versions", 1)):
+            if len({json.dumps(worlds[wid].get(key, default)) for wid in ids}) > 1:
+                return f"they have different {what}"
+        ticks = [worlds[wid]["tick"] for wid in ids]
+        if max(ticks) - min(ticks) > TICKS_PER_DAY:  # (twins step together; a crash can leave them a checkpoint apart)
+            return "they are more than a day apart"
+        return ""
+
     def import_save(self, raw: bytes) -> Dict[str, Any]:
         """A save file becomes a new save point (nothing is loaded, and nothing is written but that row). The file is
         untrusted: its size, format name and version are checked, it is only ever parsed as JSON, and every world in
@@ -1259,6 +1278,9 @@ class Runtime:
             except Exception as e:
                 raise ValueError(f"World {wid} in this save file loads but can't run in this build "
                                  f"({type(e).__name__}: {str(e)[:120]}).")
+        wrong = self._match_problem(worlds)
+        if wrong:
+            raise ValueError(f"The worlds in this save file are not one game: {wrong}.")
         name = "".join(ch for ch in str(doc.get("name") or "") if ch.isprintable()).strip()[:60] or "imported save"
         tick = max(d["tick"] for d in worlds.values())
         summary = {**save_summary(worlds), "imported": True}

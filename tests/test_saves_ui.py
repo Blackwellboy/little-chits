@@ -8,6 +8,8 @@ import os
 
 import pytest
 
+from chits.sim.world import World
+
 
 @pytest.fixture
 def env(monkeypatch, tmp_path):
@@ -199,8 +201,6 @@ def test_an_imported_world_must_be_whole_and_able_to_run_before_it_is_kept(env, 
         assert {wid: (w.tick, w.seq) for wid, w in r.worlds.items()} == before
 
         # a world that loads and is whole but cannot take a step is refused too
-        from chits.sim.world import World
-
         steps = []
 
         def stuck(self, hook):
@@ -211,6 +211,47 @@ def test_an_imported_world_must_be_whole_and_able_to_run_before_it_is_kept(env, 
             m.setattr(World, "step", stuck)
             got = c.post("/api/saves/import", content=json.dumps(good).encode())
         assert got.status_code == 400 and "loads but can't run" in got.json()["detail"] and steps == ["A"]
+
+
+def test_the_worlds_of_an_imported_save_must_be_one_game(env):
+    """Codex on PR #72: two snapshots that are each valid but come from different islands were kept under the ids A
+    and B, and loading them would have run unrelated worlds as one versus match."""
+    with client() as c:
+        r = rt()
+        r.step_worlds(10)
+        made = c.post("/api/saves", json={"name": "twins"}).json()
+        good = json.loads(gzip.decompress(c.get(f"/api/saves/{made['id']}/export").content))
+        other = World("B", "B", 777, "direct", 64, 6).to_dict()  # a valid island, but not this game's
+        other["tick"] = good["worlds"]["A"]["tick"]
+        bigger = World("B", "B", good["worlds"]["A"]["seed"], "direct", 96, 6).to_dict()
+
+        def pair(b=None, a=None):
+            doc = json.loads(json.dumps(good))
+            doc["worlds"]["B"].update(b or {})
+            doc["worlds"]["A"].update(a or {})
+            return json.dumps(doc).encode()
+
+        def with_b(d):
+            doc = json.loads(json.dumps(good))
+            doc["worlds"]["B"] = d
+            return json.dumps(doc).encode()
+
+        bad = {
+            "another seed": (with_b(other), "different seeds"),
+            "another size": (with_b(bigger), "different sizes"),
+            "another terrain version": (pair(b={"terrain_version": 1}), "different terrain versions"),
+            "another random-number scheme": (pair(b={"rng_scheme": 1}), "different random-number schemes"),
+            "a week apart": (pair(b={"tick": good["worlds"]["B"]["tick"] + 7 * 240}), "more than a day apart"),
+            "A without speech": (pair(a={"culture": "stigmergy"}), "no game mode has worlds with these cultures"),
+        }
+        for what, (body, reason) in bad.items():
+            got = c.post("/api/saves/import", content=body)
+            assert got.status_code == 400 and "not one game" in got.json()["detail"] and reason in got.json()["detail"], \
+                (what, got.text)
+        assert [s["id"] for s in c.get("/api/saves").json()["saves"]] == [made["id"]]
+        # the pairs a real game makes are kept: the twins as saved, and the culture game (A talks, B leaves marks)
+        assert c.post("/api/saves/import", content=pair()).status_code == 200
+        assert c.post("/api/saves/import", content=pair(b={"culture": "stigmergy"})).status_code == 200
 
 
 def test_a_save_with_other_worlds_than_this_game_is_not_loaded(env):
