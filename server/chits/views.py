@@ -311,6 +311,32 @@ def day_chronicle(w: World, events: List[Dict[str, Any]], day: int) -> Dict[str,
             "counts": counts, "stats": hist}
 
 
+def milestones(w: World, road: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """The road to the next age (projects.road) as a checklist for the observer: each step says what to do (discover
+    a recipe, make enough of a known material, build a building) and whether it is done. A "make" step is a made
+    material the village knows but has too little of for a building on the road, counted the way the road counts it."""
+    if not road:
+        return None
+    from .sim import projects
+
+    _, recipes = projects._known(w)
+    steps: List[Dict[str, Any]] = []
+    for s in road["steps"]:
+        if s["kind"] == "recipe":
+            steps.append({"action": "discover", "key": f"recipe:{s['key']}", "name": s["name"], "done": s["done"],
+                          "detail": ""})
+            continue
+        if not s["done"]:
+            for m, n in DESIGNS[s["key"]].materials:
+                have = projects.stock(w, m, s["key"]) if m in RECIPES and m in recipes else n
+                if have < n:
+                    steps.append({"action": "make", "key": f"recipe:{m}", "name": item_name(m), "done": False,
+                                  "detail": f"{have} of {n} for the {s['name']}"})
+        idea = s["needs"].split("; ")[0] if s["needs"].startswith("nobody") else ""
+        steps.append({"action": "build", "key": f"design:{s['key']}", "name": s["name"], "done": s["done"], "detail": idea})
+    return {"age": road["age"], "steps": steps, "done": sum(1 for s in steps if s["done"]), "total": len(steps)}
+
+
 def progress(w: World, events: List[Dict[str, Any]]) -> Dict[str, Any]:
     """🧭 Is this world getting anywhere? Its place on the road to space, what everyone is busy with right now,
     what they are working towards, and how the last two days' achievements came about."""
@@ -346,8 +372,10 @@ def progress(w: World, events: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     star = famous(w)
     civ = getattr(w, "civic", None) or {}
+    road = projects.road(w)
     return {
-        "project": projects.view(w), "road": projects.road(w), "food_days": _food_days(w), "at_risk": _at_risk(w),
+        "project": projects.view(w), "road": road, "milestones": milestones(w, road),
+        "food_days": _food_days(w), "at_risk": _at_risk(w),
         "research": {"insight": round(civ.get("insight", 0.0), 1), "next_idea": research.threshold(w) if civ else 0,
                      "hints": [{"text": h["text"], "day": h["tick"] // 240 + 1, "by": h.get("by_name", ""),
                                 "found": bool(h.get("found"))} for h in reversed(civ.get("hints", [])[-4:])]},

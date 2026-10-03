@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo, useState } from "react";
 import { api, authedUrl } from "../net/socket";
+import { nextStep, stepLabel, type Checklist } from "../state/milestones";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
 import { entryLines, type Entry } from "./encyclopedia";
@@ -74,6 +75,7 @@ type RoadStep = { kind: string; key: string; name: string; done: boolean; needs:
 type ProgressData = {
   project?: { active: Project | null; done: { id: string; day: number; text: string }[] };
   road?: { age: string; steps: RoadStep[]; text: string } | null;
+  milestones?: Checklist | null;
   research?: { insight: number; next_idea: number; hints: { text: string; day: number; by: string; found: boolean }[] };
   famous?: { name: string; renown: number } | null;
   food_days?: number | null;
@@ -100,16 +102,7 @@ function Progress({ world, name }: { world: string; name: string }) {
         {p.next
           ? <small>Next: <b>{p.next.name}</b>, when someone works out how to make a <b>{p.next.needs}</b>.</small>
           : <small>🚀 They reached space!</small>}
-        {p.road && p.road.steps.length > 0 && (
-          <div className="prog-road" title="Everything still between this village and its next age, in order; ✗ marks what's missing">
-            <small className="muted">Road to the {p.road.age}: </small>
-            {p.road.steps.map((s, i) => (
-              <small key={s.kind + s.key} className={s.done ? "on" : "off"}>
-                {i > 0 && " · "}{s.name} {s.done ? "✓" : "✗"}{s.needs && <span className="muted"> ({s.needs})</span>}
-              </small>
-            ))}
-          </div>
-        )}
+        {p.milestones && p.milestones.steps.length > 0 && <RoadChecklist c={p.milestones} />}
       </div>
       <div className="prog-ladder">
         {p.ladder.map((r) => (
@@ -144,6 +137,23 @@ function Progress({ world, name }: { world: string; name: string }) {
         </div>
       ))}
       {!p.recent.length && <p className="small muted">Nothing new learned or built in the last two days yet.</p>}
+    </div>
+  );
+}
+
+/** ☑ The road to the next age as a checklist: every step in order, done or not, and the one the village is on. */
+function RoadChecklist({ c }: { c: Checklist }) {
+  const next = nextStep(c);
+  return (
+    <div className="prog-check" title="Everything between this village and its next age, in order">
+      <small className="muted">Road to the {c.age}: {c.done} of {c.total} steps done</small>
+      <ol>
+        {c.steps.map((s, i) => (
+          <li key={s.action + s.key} className={s.done ? "on" : i === next ? "next" : ""}>
+            <span className="box">{s.done ? "☑" : "☐"}</span> {stepLabel(s)}{i === next && <small className="muted"> · next</small>}
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

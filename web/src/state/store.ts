@@ -3,6 +3,7 @@ import type { BrainSummary, Control, WorldEvent, WorldMeta } from "../types";
 import { Socket, socketUrl, type ConnStatus } from "../net/socket";
 import { WorldData } from "./world";
 import { pickTheme, setTheme, type ThemeId } from "../theme";
+import { addToasts, type Toast } from "./milestones";
 
 export type Tab = "progress" | "why" | "chronicle" | "people" | "knowledge" | "stats" | null;
 
@@ -19,7 +20,7 @@ type UI = {
   newWorldOpen: boolean;
   nightMode: "normal" | "soft" | "off";
   tick: number; // bumps ~8/s to refresh clock-driven UI
-  toasts: (WorldEvent & { world: string; key: string })[];
+  toasts: Toast[];
   focus: { world: string; x: number; y: number; t: number } | null;
   director: boolean; // 🎬 the camera cuts to the drama by itself
   godOpen: boolean;
@@ -100,13 +101,9 @@ socket.onMessage((m) => {
       const w = worlds[m.world];
       if (!w) return;
       w.frame(m);
-      const big = (m.events as WorldEvent[]).filter((e) => e.importance >= 4);
-      if (big.length) {
-        const now = Date.now();
-        const toasts = [...ui.toasts, ...big.map((e) => ({ ...e, world: m.world, key: `${m.world}-${e.seq}` }))]
-          .filter((t: any) => (t._t ||= now) > now - 9000).slice(-4);
-        ui.set({ toasts });
-      }
+      // big moments and milestones (a new age, a town, a project done, a first discovery) get a toast
+      const toasts = addToasts(ui.toasts, m.events as WorldEvent[], m.world, Date.now());
+      if (toasts !== ui.toasts) ui.set({ toasts });
       if (++frameCount % 2 === 0) ui.set({ tick: ui.tick + 1 });
       break;
     }

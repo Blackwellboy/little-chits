@@ -197,6 +197,8 @@ table.know { width: 100%; border-collapse: collapse; font-size: 12px; }
 .toast.k-birth { border-color: rgba(255,140,180,0.4); }
 .toast.k-error { border-color: rgba(255,120,120,0.55); background: rgba(30,10,12,0.9); }
 .toast.k-error p { color: #ffd0d0; }
+.toast.milestone { border-color: rgba(255,209,102,0.75); box-shadow: 0 0 0 1px rgba(255,209,102,0.25), 0 8px 26px rgba(0,0,0,0.45); }
+.toast.milestone small { color: #ffd166; }
 
 .minimap { position: absolute; right: 12px; bottom: 12px; width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--line); box-shadow: 0 8px 24px rgba(0,0,0,0.45); image-rendering: pixelated; cursor: crosshair; z-index: 5; background: #000; }
 
@@ -435,6 +437,11 @@ button.danger { color: var(--bad); }
 .prog-list { margin: 0; padding-left: 16px; font-size: 12.5px; line-height: 1.5; }
 .prog-road { margin-top: 4px; line-height: 1.5; }
 .prog-road .on { color: var(--good); }
+.prog-check { margin-top: 6px; }
+.prog-check ol { list-style: none; margin: 4px 0 0; padding: 0; font-size: 12.5px; line-height: 1.55; }
+.prog-check li.on { color: var(--good); }
+.prog-check li.next { font-weight: 600; }
+.prog-check .box { display: inline-block; width: 16px; }
 .prog-project { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .prog-project h4 { margin: 0 0 4px; }
 .prog-project .prog-list { margin-top: 6px; }
