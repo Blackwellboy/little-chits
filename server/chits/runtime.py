@@ -1040,6 +1040,20 @@ class Runtime:
         for w in self.worlds.values():
             self.push(q, {"type": "snapshot", **views.snapshot(w)})
 
+    def end_experiment(self) -> None:
+        """Turn an experiment run into ordinary play: models and settings can change again, and instinct covers a slow
+        model. One way only (an experiment starts from a new game). A save left in experiment mode refused every brain
+        swap with no way back from the observer (issue #64)."""
+        if self.contract != "experiment":
+            return
+        self.contract = "play"
+        self.mind.strict = False
+        self.pace_to_brain = _pace_default()
+        self.store.set_meta("contract", "play")
+        for w in self.worlds.values():
+            w.emit("contract", "The experiment ended here: from now on this world is played, not measured", 4)
+        self._broadcast_snapshots()
+
     def hello(self) -> Dict[str, Any]:
         return {"type": "hello", "worlds": [views.world_meta(w) for w in self.worlds.values()],
                 "control": self.control_state(), "brains": self.brain_summary(), "theme": theme.active()}

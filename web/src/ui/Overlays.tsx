@@ -4,7 +4,7 @@ import { useUI, worlds } from "../state/store";
 import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
 
-const ICON: Record<string, string> = { discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
+const ICON: Record<string, string> = { error: "⚠", discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
 
 export function Toasts() {
   const toasts = useUI((s) => s.toasts);
@@ -22,7 +22,7 @@ export function Toasts() {
           if (t.actor && worlds[t.world]?.agents.has(t.actor)) set({ selected: { world: t.world, id: t.actor } });
         }}>
           <span className="ico">{ICON[t.kind] ?? "✦"}</span>
-          <div><small>{t.world === "A" ? "World A" : "World B"} · day {Math.floor(t.tick / 240) + 1}</small><p>{t.text}</p></div>
+          <div><small>{t.kind === "error" ? "That didn't work" : `${t.world === "A" ? "World A" : "World B"} · day ${Math.floor(t.tick / 240) + 1}`}</small><p>{t.text}</p></div>
         </div>
       ))}
     </div>

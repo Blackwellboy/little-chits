@@ -1,12 +1,17 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
-import { api } from "../net/socket";
+import { api, errorText } from "../net/socket";
 import { useUI } from "../state/store";
 
 type Speed = { level: "good" | "ok" | "slow" | "unknown"; capacity: number; chits: number; text: string };
 type BrainRow = { config: any; stats: any; label: string; healthy: boolean; speed?: Speed };
 
 const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, disable_thinking: true, json_mode: true, temperature: 0.7, max_tokens: 600 };
+
+function ago(t: number): string {
+  const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
+}
 
 export function BrainsModal() {
   const { brainsOpen, set, worlds: metas } = useUI(useShallow((s) => ({ brainsOpen: s.brainsOpen, set: s.set, worlds: s.worlds })));
@@ -52,18 +57,26 @@ export function BrainsModal() {
   };
   const save = async () => {
     const body = { ...form, max_concurrency: +form.max_concurrency, temperature: +form.temperature, max_tokens: +form.max_tokens };
-    const r = await api("/api/brains", body);
+    let r: any;
+    try { r = await api("/api/brains", body); } catch (e) { setMsg(`✗ Not saved: ${errorText(e)}`); return; }
     setForm(null); setModels([]); setMsg(`Saved “${r.brain.label || r.brain.id}”.`);
     reload();
   };
-  const assign = async (world: string, brain: string) => { await api(`/api/worlds/${world}/brain`, { brain }); reload(); };
+  const assign = async (world: string, brain: string) => {
+    try { await api(`/api/worlds/${world}/brain`, { brain }); }
+    catch (e) { setMsg(`✗ World ${world} kept its brain: ${errorText(e)}`); }  // (a 409 used to vanish, issue #63)
+    reload();
+  };
   const test = async (id: string) => {
     setTesting(id);
     const r = await api(`/api/brains/${id}/test`, {});
     setTesting("");
     setMsg(r.ok ? `✓ ${r.model} replied in ${r.latency_ms} ms: ${r.reply}` : `✗ ${r.error}`);
   };
-  const remove = async (id: string) => { await api(`/api/brains/${id}`, undefined, "DELETE"); reload(); };
+  const remove = async (id: string) => {
+    try { await api(`/api/brains/${id}`, undefined, "DELETE"); } catch (e) { setMsg(`✗ Not removed: ${errorText(e)}`); }
+    reload();
+  };
 
   const brains: BrainRow[] = status?.brains ?? [];
   const ready = brains.filter((b) => b.config.enabled);
@@ -115,7 +128,7 @@ export function BrainsModal() {
                 {b.speed && b.speed.level !== "unknown" && (
                   <small className={`speed speed-${b.speed.level}`}>{b.speed.text}</small>
                 )}
-                {b.stats.last_error && <small className="err">{b.stats.last_error}</small>}
+                {b.stats.last_error && <small className="err">{b.stats.last_error}{b.stats.last_error_at ? ` (${ago(b.stats.last_error_at)})` : ""}</small>}
               </div>
               <div className="actions">
                 <button onClick={() => test(b.config.id)} disabled={testing === b.config.id}>{testing === b.config.id ? "…" : "Test"}</button>

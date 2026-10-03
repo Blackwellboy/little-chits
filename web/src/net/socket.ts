@@ -116,6 +116,18 @@ export function authedUrl(path: string): string {
   return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}`;
 }
 
+/** The server's own words for a failed request: api() throws "<status> <body>", and the body is FastAPI's
+ *  {"detail": "..."} (issue #63: a 409 only ever reached the browser console). */
+export function errorText(e: unknown): string {
+  const m = String((e as Error)?.message ?? e).match(/^(\d{3}) ([\s\S]*)$/);
+  if (!m) return String((e as Error)?.message ?? e);
+  try {
+    const d = JSON.parse(m[2]).detail;
+    if (d) return typeof d === "string" ? d : JSON.stringify(d);
+  } catch { /* not JSON */ }
+  return `${m[1]} ${m[2].slice(0, 200)}`;
+}
+
 export async function api<T = any>(path: string, body?: any, method?: string): Promise<T> {
   const t = accessToken();
   const headers: Record<string, string> = {};

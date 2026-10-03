@@ -661,6 +661,16 @@ def set_theme(b: ThemeBody):
     return {"ok": True, "theme": t}
 
 
+@app.post("/api/experiment/end")
+def end_experiment():
+    """🧪 → play: end an experiment run and keep playing the same worlds (issue #64)."""
+    r = R()
+    if r.contract != "experiment":
+        raise HTTPException(409, "this game isn't an experiment run")
+    r.end_experiment()
+    return r.control_state()
+
+
 @app.post("/api/control")
 def control(c: Control):
     r = R()

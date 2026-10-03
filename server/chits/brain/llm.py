@@ -85,8 +85,10 @@ class BrainStats:
     tokens_in: int = 0
     tok_per_s: float = 0.0
     last_error: str = ""
+    last_error_at: float = 0.0  # (when it happened)
     last_ok: float = 0.0
     consecutive_fail: int = 0
+    ok_streak: int = 0  # replies in a row since the last failure: RECOVERED_AFTER of them clear last_error (issue #62)
     repaired: int = 0  # replies that only parsed after repairing the JSON
     retries: int = 0   # replies that needed a second "JSON only, please" request
     skipped: int = 0   # queued requests not sent because the server went down while they waited
@@ -95,6 +97,27 @@ class BrainStats:
     def record_latency(self, ms: float) -> None:
         a = 0.2 if self.ok > 1 else 1.0
         self.latency_ms_avg = self.latency_ms_avg * (1 - a) + ms * a
+
+
+RECOVERED_AFTER = 10  # good replies in a row after which a brain's last error is history, not news (issue #62)
+FEATURE_RETRIES = 3  # optional request features (JSON mode, thinking switch, logprobs) a server may reject in turn
+
+
+def http_error_text(r) -> str:
+    """A model server's error as it said it: the status and its own message. (httpx's text named only the status
+    and linked a general page about it: the server's actual complaint was lost, issues #61 and #65.)"""
+    body = (r.text or "").strip()
+    try:
+        j = r.json()
+        err = j.get("error", j) if isinstance(j, dict) else j
+        body = (err.get("message") or err.get("detail") or body) if isinstance(err, dict) else str(err)
+    except ValueError:
+        pass
+    return f"HTTP {r.status_code}: {' '.join(str(body).split())[:200] or r.reason_phrase}"
+
+
+class ModelServerError(RuntimeError):
+    """A model server answered with an error status (the message is the server's own)."""
 
 
 class ModelCoolingDown(RuntimeError):
@@ -188,7 +211,8 @@ class LLMBrain:
     async def list_models(self) -> List[str]:
         url = self.cfg.base_url.rstrip("/") + "/models"
         r = await self.client().get(url, headers=self.headers(), timeout=8.0)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            raise ModelServerError(http_error_text(r))
         data = r.json()
         items = data.get("data") if isinstance(data, dict) else data
         out = []
@@ -276,25 +300,30 @@ class LLMBrain:
                     body.pop("top_logprobs", None)
                 url = self.cfg.base_url.rstrip("/") + "/chat/completions"
                 r = await self.client().post(url, headers=self.headers(), content=json.dumps(body))
-                if r.status_code == 400 and (self._json_ok or self._thinking_kw_ok or "logprobs" in body):
-                    # some servers reject response_format or chat_template_kwargs: drop them and retry once
+                # some servers reject an optional feature (JSON mode, the thinking switch, logprobs): drop what the
+                # server names, or all of them, and try again. One at a time, and on 422 too: LM Studio refused
+                # json_object mode, and a brain sat at 95 requests with none answered (issue #61)
+                for _ in range(FEATURE_RETRIES):
+                    optional = [k for k in ("response_format", "chat_template_kwargs", "logprobs") if k in body]
+                    if r.status_code not in (400, 422) or not optional:
+                        break
                     txt = r.text.lower()
-                    if "logprobs" in txt:
-                        self._logprobs_ok = False
-                        body.pop("logprobs", None)
-                        body.pop("top_logprobs", None)
-                    if "response_format" in txt or "json" in txt:
-                        self._json_ok = False
-                    if "chat_template" in txt or "kwargs" in txt or "extra" in txt:
-                        self._thinking_kw_ok = False
-                    if not ("response_format" in txt or "json" in txt or "chat_template" in txt or "kwargs" in txt):
-                        self._json_ok = False
-                        self._thinking_kw_ok = False
-                    body.pop("response_format", None)
-                    if not self._thinking_kw_ok:
-                        body.pop("chat_template_kwargs", None)
+                    named = [k for k, words in (("response_format", ("response_format", "json")),
+                                                ("chat_template_kwargs", ("chat_template", "kwargs", "extra")),
+                                                ("logprobs", ("logprobs",)))
+                             if k in body and any(w in txt for w in words)]
+                    for k in named or optional:
+                        if k == "response_format":
+                            self._json_ok = False
+                        elif k == "chat_template_kwargs":
+                            self._thinking_kw_ok = False
+                        else:
+                            self._logprobs_ok = False
+                            body.pop("top_logprobs", None)
+                        body.pop(k, None)
                     r = await self.client().post(url, headers=self.headers(), content=json.dumps(body))
-                r.raise_for_status()
+                if r.status_code >= 400:
+                    raise ModelServerError(http_error_text(r))
                 data = r.json()
                 choice = (data.get("choices") or [{}])[0]
                 msg = choice.get("message") or {}
@@ -318,6 +347,9 @@ class LLMBrain:
                     self.stats.tok_per_s = tps if self.stats.tok_per_s == 0 else self.stats.tok_per_s * 0.8 + tps * 0.2
                 self.stats.consecutive_fail = 0
                 self.stats.last_ok = time.time()
+                self.stats.ok_streak += 1
+                if self.stats.ok_streak >= RECOVERED_AFTER:
+                    self.stats.last_error = ""
                 first = ((choice.get("logprobs") or {}).get("content") or [{}])[0] or {}
                 top = {t.get("token", ""): t.get("logprob", -99.0) for t in (first.get("top_logprobs") or [])}
                 reply = {"text": text, "latency_ms": ms, "tokens_in": usage.get("prompt_tokens"), "tokens_out": tout,
@@ -328,7 +360,9 @@ class LLMBrain:
             except Exception as e:
                 self.stats.failed += 1
                 self.stats.consecutive_fail += 1
-                self.stats.last_error = f"{type(e).__name__}: {str(e)[:200]}"
+                self.stats.ok_streak = 0
+                self.stats.last_error = str(e)[:200] if isinstance(e, ModelServerError) else f"{type(e).__name__}: {str(e)[:200]}"
+                self.stats.last_error_at = time.time()
                 if tape is not None and tape.mode == "record":
                     tape.record_error(key, self.cfg.id, self.stats.last_error, messages)
                 if self.stats.consecutive_fail >= 3 and getattr(self, "cooldown", True):
