@@ -1803,7 +1803,7 @@ class World:
         return POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP
 
     def pop_cap(self) -> int:
-        base = self.island_cap()
+        base = POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP  # (the island's own; see island_cap)
         return min(base, self.cap) if getattr(self, "cap", None) else base
 
     def births_open(self) -> bool:
