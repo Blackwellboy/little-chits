@@ -2206,6 +2206,30 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
     return None
 
 
+def _serving(step, key: str, within: int):
+    """With buildings.NEED_SITING: a test of a site's top-left corner, whether a `key` standing there reaches at least
+    "_least" of those the builder sited it for ("_serve": [x, y, w, h, how many]); None when the step names none. The
+    nearest clear ground to the place it was sited at could reach fewer: a school between two children went up past
+    one of them, reached the other only, and as a site going up kept a second from being planned (Codex, #95)."""
+    serve, least = step.get("_serve"), step.get("_least")
+    if not (BLD.NEED_SITING and within and isinstance(serve, list) and isinstance(least, int)):
+        return None
+    try:
+        rects = [(int(x), int(y), int(w), int(h), int(n)) for x, y, w, h, n in serve]
+    except (TypeError, ValueError):
+        return None
+    fw, fh = DESIGNS[key].size
+
+    def reaches(x: int, y: int) -> bool:
+        got = 0
+        for rx, ry, rw, rh, n in rects:
+            if max(rx - (x + fw - 1), x - (rx + rw - 1), 0, ry - (y + fh - 1), y - (ry + rh - 1)) <= within:
+                got += n
+        return got >= least
+
+    return reaches
+
+
 def _redirect(world, a: Agent, s) -> str:
     """Run the step this build turned into (refuel a fire, sow a farm) to its end."""
     sub = s["redirect"]
@@ -2244,10 +2268,12 @@ def _do_build(world, a: Agent, step, s) -> str:
     # "_within": instinct sited it to serve something at that place (a field, a store, a home): any farther off it
     # would not reach it, and the same plan would be made again tomorrow
     within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
+    serves = _serving(step, key, within)
     # join an existing unfinished site of the same kind there rather than duplicating it (one going up farther off than
     # the place it is for would not serve it either: a well 8 tiles from dry fields was joined, and watered none, Codex #95)
     for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
-        if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st):
+        if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
+                and (serves is None or serves(st.x, st.y)):
             s["site"] = st.id
             s["joined"] = True
             return _do_help(world, a, step, s)
@@ -2282,9 +2308,11 @@ def _do_build(world, a: Agent, step, s) -> str:
         radii = tuple(r for r in radii if r < within) + (within,)
     pos = None
     for radius in radii:
-        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y), widen=not within)
+        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y), widen=not within, serves=serves)
     if not pos:
         a.reflex_rest["nobuild:" + key] = world.tick + TICKS_PER_DAY  # a crowded village: don't retry every plan
+        if serves is not None:
+            return f"there's no clear ground within {within} tiles of there from which it would reach those it is for"
         if within:
             return f"there's no clear ground within {within} tiles of there"
         return "there's no clear ground within 28 tiles: go somewhere open, or add \"near\":\"x,y\""

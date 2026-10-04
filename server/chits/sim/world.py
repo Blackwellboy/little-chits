@@ -1294,10 +1294,12 @@ class World:
                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
 
     def find_site(self, design: str, x: int, y: int, radius: int = 7,
-                  reach: Optional[Tuple[int, int]] = None, widen: bool = True) -> Optional[Tuple[int, int]]:
+                  reach: Optional[Tuple[int, int]] = None, widen: bool = True,
+                  serves: Optional[Callable[[int, int], bool]] = None) -> Optional[Tuple[int, int]]:
         """The best free spot near (x, y). With `reach`, only spots on the same connected land as that tile: a site
         across a river was chosen 8 tiles away and 140 on foot, and chits failed to reach it 1,684 times. With
-        `widen` off, no farther than `radius` (a building sited to serve something there: a harbour for its fish)."""
+        `widen` off, no farther than `radius` (a building sited to serve something there: a harbour for its fish);
+        with `serves`, only a spot whose top-left corner passes it (one from which it reaches those it is for)."""
         d = DESIGNS[design]
         w, h = d.size
         margin = 0 if design in ("road", "boat") else 1
@@ -1318,6 +1320,8 @@ class World:
                 if design == "mine" and not self.near_rock(nx, ny, w, h):
                     continue
                 if comp and self.inb(nx, ny) and comp[ny * self.w + nx] != home:
+                    continue
+                if serves is not None and not serves(nx, ny):
                     continue
                 if self.footprint_free(nx, ny, w, h, margin):
                     dist = abs(dx) + abs(dy)

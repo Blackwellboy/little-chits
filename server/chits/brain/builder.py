@@ -240,42 +240,73 @@ def _living(world, who: str) -> Dict[Tuple[int, int], int]:
     return got
 
 
+NEED_SPOTS = 400  # places weighed at most per question. Past 20 x 20 corners a coarse grid stands in, which can miss
+# a place that reaches everyone only at the very edge of its reach (as from three clusters exactly 20 from the middle);
+# a cell or a home that reaches enough is still found.
+
+
 def need_spot(world, design: str, cx: int, cy: int, look: int, first: Optional[Tuple[int, int]] = None):
-    """Where one more of `design` is needed within `look` of (cx, cy): the place from which it would reach the most
-    people that none standing reaches (`first`, when that place would do: a town's buildings go up by its hall). None
-    when fewer than its minimum would be reached from anywhere. The place itself is out of every standing one's reach,
-    so the build does not answer "one close by already"."""
+    """Where one more of `design` is needed within `look` of (cx, cy), and whom it is for: (place, [(x, y, 1, 1, n)]).
+    The place from which it would reach the most people that none standing reaches (`first`, when that place would do:
+    a town's buildings go up by its hall); (None, []) when fewer than its minimum would be reached from anywhere. The
+    place is out of every standing one's reach, so the build does not answer "one close by already"."""
     radius, who, least = NEED[design]
     standing = _standing(world, design)
     lone = [(xy, n) for xy, n in _living(world, who).items()
             if max(abs(xy[0] - cx), abs(xy[1] - cy)) <= look and not _reached(standing, xy[0], xy[1], radius)]
     if sum(n for _, n in lone) < least:
-        return None
+        return None, []
+    serve = [(x, y, 1, 1, n) for (x, y), n in lone]
+
+    def reached(x: int, y: int) -> List[Tuple[int, int]]:
+        return [p for p, _ in lone if max(abs(p[0] - x), abs(p[1] - y)) <= radius]
 
     def reach(x: int, y: int) -> int:
-        return sum(n for (px, py), n in lone if max(abs(px - x), abs(py - y)) <= radius)
+        return sum(n for p, n in lone if max(abs(p[0] - x), abs(p[1] - y)) <= radius)
 
     if first is not None and not _reached(standing, first[0], first[1], radius) and reach(*first) >= least:
-        return first
-    # the places themselves, and halfway between any two near enough for one building to reach both (two children 12
-    # tiles apart are both within 8 of the middle, and of neither's place: Codex, #95)
-    spots = [(1, xy) for xy, _ in lone]
-    spots += [(0, ((p[0] + q[0]) // 2, (p[1] + q[1]) // 2)) for i, (p, _) in enumerate(lone) for q, _ in lone[i + 1:]
-              if radius < max(abs(p[0] - q[0]), abs(p[1] - q[1])) <= 2 * radius]
-    best = max(((reach(*xy), own, -xy[0], -xy[1]) for own, xy in spots
-                if own or not _reached(standing, xy[0], xy[1], radius)), default=(0, 0, 0, 0))
-    return (-best[2], -best[3]) if best[0] >= least else None
+        return first, serve
+    # Reach is a square, so the places from which one building reaches a given few are a rectangle, and its lower
+    # corner is (some x - r, some y - r): weighing those corners finds the best place there is (two children 12 apart,
+    # three clusters 20 from a middle that only it reaches; Codex, #95). The building goes in the middle of that
+    # rectangle, where there is the most room for its site. The homes themselves come first on a tie.
+    xs = sorted({p[0] - radius for p, _ in lone})
+    ys = sorted({p[1] - radius for p, _ in lone})
+    if len(xs) * len(ys) > NEED_SPOTS:
+        x0, x1 = min(p[0] for p, _ in lone) - radius, max(p[0] for p, _ in lone) + radius
+        y0, y1 = min(p[1] for p, _ in lone) - radius, max(p[1] for p, _ in lone) + radius
+        step = max(2, radius // 3)
+        while ((x1 - x0) // step + 1) * ((y1 - y0) // step + 1) > NEED_SPOTS:
+            step += 1
+        xs, ys = list(range(x0, x1 + 1, step)), list(range(y0, y1 + 1, step))
+    weighed = [(reach(*p), 1, -p[0], -p[1]) for p, _ in lone]
+    weighed += [(reach(x, y), 0, -x, -y) for x in xs for y in ys]
+    for n, home, x, y in sorted(weighed, reverse=True):
+        if n < least:
+            break
+        if home:
+            return (-x, -y), serve
+        few = reached(-x, -y)
+        mid = ((min(p[0] for p in few) + max(p[0] for p in few)) // 2, (min(p[1] for p in few) + max(p[1] for p in few)) // 2)
+        if world.inb(*mid) and not _reached(standing, mid[0], mid[1], radius):
+            return mid, serve
+    return None, []
 
 
 def _dry_fields(world, a: Agent):
-    """The farm near here from which one well would water the most farms no well waters: (farm, how many)."""
+    """The farm near here from which one well would water the most farms no well waters: (farm, how many, the dry
+    farms)."""
     wells = _standing(world, "well")
     dry = [f for f in _farms(world, a, WELL_LOOK) if not any(BLD.gap(f, w) <= BLD.WELL_RADIUS for w in wells)]
     if len(dry) < WELL_MIN_FARMS:
-        return None, 0
+        return None, 0, dry
     n, _, f = max(((sum(1 for o in dry if BLD.gap(f, o) <= BLD.WELL_RADIUS), -i, f) for i, f in enumerate(dry)),
                   key=lambda t: t[:2])
-    return (f, n) if n >= WELL_MIN_FARMS else (None, n)
+    return (f, n, dry) if n >= WELL_MIN_FARMS else (None, n, dry)
+
+
+def _rect(st, n: int = 1) -> Tuple[int, int, int, int, int]:
+    return st.x, st.y, st.w, st.h, n
 
 
 def _food_pile(world, a: Agent):
@@ -328,8 +359,11 @@ def _may_build(world, a: Agent, design: str, cap: int) -> bool:
     return a.reflex_rest.get("nobuild:" + design, 0) <= world.tick and _count(world, design) < cap
 
 
-def _build(world, a: Agent, design: str, cap: int, thought: str, near=None, within: Optional[int] = None) -> Optional[Plan]:
-    """`within`: it is for something at `near`, and must stand this close to reach it (the build looks no farther)."""
+def _build(world, a: Agent, design: str, cap: int, thought: str, near=None, within: Optional[int] = None,
+           serve=None) -> Optional[Plan]:
+    """`within`: it is for something at `near`, and must stand this close to reach it (the build looks no farther).
+    `serve`: ([(x, y, w, h, n)], least) whom it is for, and how many of them it must reach from where it stands (the
+    build takes only a site that does: the nearest clear ground to `near` could reach fewer)."""
     from .instinct import _need_steps
 
     if not _may_build(world, a, design, cap):
@@ -338,6 +372,8 @@ def _build(world, a: Agent, design: str, cap: int, thought: str, near=None, with
     step = {"do": "build", "what": design, "_cap": cap}
     if within is not None:
         step["_within"] = within
+    if serve is not None and within is not None:
+        step["_serve"], step["_least"] = [list(r) for r in serve[0]], serve[1]
     if sum(mats.values()) > a.capacity():
         # more than anyone can carry (a town hall is 38 things, a chit carries 12): fetching it all first failed
         # before the site was ever started. Start the site; its builders bring the rest from the stores a load at a
@@ -384,16 +420,18 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):
             add(2.0, _build(world, a, "well", max(1, pop // 10), "Our fields are thirsty. A well would water them."))
     elif a.knows_design("well") and _may_build(world, a, "well", max(1, pop // 10)):
-        field, _ = _dry_fields(world, a)
+        field, _, dry = _dry_fields(world, a)
         if field is not None:
             add(2.0, _build(world, a, "well", max(1, pop // 10), "Our fields are thirsty. A well would water them.",
-                            near=(field.x, field.y), within=BLD.WELL_RADIUS))
+                            near=(field.x, field.y), within=BLD.WELL_RADIUS,
+                            serve=([_rect(f) for f in dry], WELL_MIN_FARMS)))
     if a.knows_design("granary"):
         pile = _food_pile(world, a)
         if pile is not None:
             add(2.5 if world.season in ("summer", "autumn") else 1.5,
                 _build(world, a, "granary", max(1, pop // 12), "The stored food is going bad. A granary would keep it.",
-                       near=(pile.x, pile.y), within=BLD.GRANARY_RADIUS if BLD.NEED_SITING else None))
+                       near=(pile.x, pile.y), within=BLD.GRANARY_RADIUS if BLD.NEED_SITING else None,
+                       serve=([_rect(pile)], 1) if BLD.NEED_SITING else None))
     if a.knows_design("mill") and len(_farms(world, a, 20)) >= 2 and _none_near(world, a.x, a.y, "mill", 20):
         add(1.5, _build(world, a, "mill", max(1, pop // 15), "All this grain... a millstone could grind it finer."))
     if a.knows_design("smithy") and any(a.knows_recipe(t) for t, _ in METAL_TOOLS) \
@@ -410,16 +448,16 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop:
             add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
     if BLD.NEED_SITING and a.knows_design("school") and _may_build(world, a, "school", max(1, pop // 15)):
-        spot = need_spot(world, "school", a.x, a.y, SCHOOL_LOOK, first=by_hall)
+        spot, serve = need_spot(world, "school", a.x, a.y, SCHOOL_LOOK, first=by_hall)
         if spot is not None:
             add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know.",
-                            near=spot, within=BLD.SCHOOL_RADIUS))
+                            near=spot, within=BLD.SCHOOL_RADIUS, serve=(serve, SCHOOL_MIN_CHILDREN)))
     if BLD.NEED_SITING and a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop \
             and _may_build(world, a, "bell_tower", max(1, pop // 30)):
-        spot = need_spot(world, "bell_tower", a.x, a.y, BELL_LOOK, first=by_hall)
+        spot, serve = need_spot(world, "bell_tower", a.x, a.y, BELL_LOOK, first=by_hall)
         if spot is not None:
             add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning.",
-                            near=spot, within=BLD.BELL_RADIUS))
+                            near=spot, within=BLD.BELL_RADIUS, serve=(serve, BELL_MIN_PEOPLE)))
     # a believer with no shrine of its faith about raises one: nothing on the planner side ever built a shrine (live,
     # 89 chits knew the design and 48 could afford it; review 2026-10-04)
     # (another faith's shrine close by is no reason not to: the reuse check and the cap are per faith, Codex #76)
@@ -444,7 +482,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         stand = _uncut_stand(world, a)
         if stand is not None:
             add(1.5, _build(world, a, "sawmill", max(1, pop // 25), "An engine could drive a saw. Every log would go twice as far.",
-                            near=stand, within=BLD.SAW_RADIUS))
+                            near=stand, within=BLD.SAW_RADIUS, serve=([(stand[0], stand[1], 1, 1, 1)], 1)))
     if a.knows_design("printing_press") and _none_near(world, a.x, a.y, "printing_press", 30) \
             and any(x.functional for x in world.structures_near(a.x, a.y, 30, "library")):
         add(1.5, _build(world, a, "printing_press", max(1, pop // 40),
@@ -506,9 +544,9 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         # by the hall while those living round it have no square; then where the most grown-ups live out of reach of one
         by = (hall.x + hall.w // 2, hall.y + hall.h + 2)
         if BLD.NEED_SITING:
-            spot = need_spot(world, "plaza", hall.x, hall.y, SE.HALL_REACH, first=by)
+            spot, serve = need_spot(world, "plaza", hall.x, hall.y, SE.HALL_REACH, first=by)
             plan = _build(world, a, "plaza", cap, "The town needs a square by its hall.", near=spot,
-                          within=BLD.PLAZA_RADIUS) if spot is not None else None
+                          within=BLD.PLAZA_RADIUS, serve=(serve, PLAZA_MIN_PEOPLE)) if spot is not None else None
         else:
             plan = _build(world, a, "plaza", cap, "The town needs a square by its hall.",
                           near=by) if _none_near(world, hall.x, hall.y, "plaza", 15) else None
@@ -581,8 +619,9 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         if not town or not a.knows_design(d) or not _may_build(world, a, d, cap):
             continue
         if d in NEED and BLD.NEED_SITING:  # by the hall while those living round it have none in reach, then where the most do without
-            spot = need_spot(world, d, centre[0], centre[1], SE.HALL_REACH, first=centre)
-            plan = _build(world, a, d, cap, thought, near=spot, within=NEED[d][0]) if spot is not None else None
+            spot, serve = need_spot(world, d, centre[0], centre[1], SE.HALL_REACH, first=centre)
+            plan = _build(world, a, d, cap, thought, near=spot, within=NEED[d][0],
+                          serve=(serve, NEED[d][2])) if spot is not None else None
         else:  # (a bakery's oven and a tailor's loom are walked to: one in the town)
             plan = _build(world, a, d, cap, thought) if _none_near(world, hall.x, hall.y, d, SE.HALL_REACH) else None
         if plan:
@@ -682,7 +721,8 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     if fish is not None:
         # (sited for its fish: a harbour farther off catches none of them, yet counted as the town's one)
         plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
-                      near=fish, **({"within": BLD.HARBOUR_RADIUS} if BLD.NEED_SITING else {}))
+                      near=fish, **({"within": BLD.HARBOUR_RADIUS, "serve": ([(fish[0], fish[1], 1, 1, 1)], 1)}
+                                    if BLD.NEED_SITING else {}))
         if plan:
             out.append((1.3, plan))
     return out

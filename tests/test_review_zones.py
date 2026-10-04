@@ -234,6 +234,40 @@ def test_a_school_goes_between_two_children_too_far_apart_for_either_place_to_re
     assert site is not None and all(site.dist(k.x, k.y) <= BLD.SCHOOL_RADIUS for k in kids), said
 
 
+def test_a_school_is_not_raised_where_it_would_reach_too_few_of_those_it_was_sited_for():
+    # sited between two children, the only clear ground within 8 of that place was past one of them: the school reached
+    # one child, and as a site going up it kept a second from being planned (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "school")
+    mx, my = a.x, a.y
+    a.y = my + 12
+    kids = _children(w, a, 2, mx - 6, my)
+    kids[1].x = mx + 6
+    for y in range(my - 9, my + 10):
+        for x in range(mx - 9, mx + 10):
+            if not (x in (mx + 8, mx + 9) and y >= my):  # (clear only past the second child, and a way out to it)
+                w.tiles[y * w.w + x] = T.ROCK
+    w.rebuild_block()
+    assert w.find_site("school", mx, my, BLD.SCHOOL_RADIUS, reach=(a.x, a.y), widen=False)[0] >= mx + 8
+    step = wants(w, a, "school")
+    assert step and near_of(step) == (mx, my) and step["_least"] == BI.SCHOOL_MIN_CHILDREN, step
+    site, said = begin(w, a, step)
+    assert site is None and "from which it would reach" in said, (site and (site.x, site.y), said)
+    assert not any(s.design == "school" for s in w.structures.values())
+
+
+def test_with_more_places_than_corners_to_weigh_a_coarse_grid_still_finds_a_school_spot():
+    w, a = meadow(n=60)
+    kids = _children(w, a, 24, a.x, a.y)
+    for i, k in enumerate(kids):  # (24 places, each its own x and y: 576 corners, past NEED_SPOTS)
+        k.x, k.y = a.x - 11 + i, a.y - 11 + i
+    assert len({k.x for k in kids}) ** 2 > BI.NEED_SPOTS
+    spot, serve = BI.need_spot(w, "school", a.x, a.y, BI.SCHOOL_LOOK)
+    assert spot is not None and sum(n for x, y, _, _, n in serve) == 24
+    assert sum(1 for k in kids if max(abs(k.x - spot[0]), abs(k.y - spot[1])) <= BLD.SCHOOL_RADIUS) >= 2 * 8
+    assert BI.need_spot(w, "school", a.x, a.y, BI.SCHOOL_LOOK) == (spot, serve)  # (the same answer every time)
+
+
 def test_no_school_for_children_one_reaches_or_for_one_child():
     w, a = meadow(n=60)
     able(a, w, "school")
@@ -278,6 +312,22 @@ def test_a_bell_is_built_for_homes_out_of_earshot_and_not_for_homes_that_hear_on
     assert step and far.dist(*near_of(step)) <= 25
     site, said = begin(w2, b, step)
     assert site is not None and site is not far and site.dist(*near_of(step)) <= BLD.BELL_RADIUS, said
+
+
+def test_a_bell_goes_where_only_the_middle_reaches_three_clusters():
+    # four at each of three homes, 20 from a middle only it reaches all of: neither a home nor halfway between two
+    # reached more than eight, and no bell was proposed (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "bell_tower")
+    r = BLD.BELL_RADIUS
+    huts = [at(w, a, "hut", a.x + dx, a.y + dy) for dx, dy in ((-r, r), (r, r), (0, -r))]
+    people = list(w.agents.values())
+    for i, o in enumerate(people):
+        o.home = huts[i // 4].id if i < 12 else None
+    step = wants(w, a, "bell_tower")
+    assert step and near_of(step) == (a.x, a.y), step
+    site, said = begin(w, a, step)
+    assert site is not None and all(site.dist(h.x, h.y) <= r for h in huts), said
 
 
 def test_no_bell_for_a_handful_out_of_earshot():
