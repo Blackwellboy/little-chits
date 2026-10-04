@@ -32,7 +32,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**138** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**139** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
@@ -40,24 +40,24 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `app.py` | 1 | 167 |
 | `brain/builder.py` | 10 | 64, 71, 81, 101, 102, 143, 195, 206, 212, 255 |
 | `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
-| `brain/instinct.py` | 21 | 568, 578, 603, 670, 692, 710, 724, 725, 733, 741, 752, 819, 820, 856, 903, 920, 1028, 1034, 1065 |
+| `brain/instinct.py` | 21 | 569, 579, 608, 675, 697, 716, 730, 731, 739, 747, 758, 825, 826, 862, 909, 926, 1034, 1040, 1071 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 8 | 366, 381, 382, 456, 687, 705 |
+| `brain/prompt.py` | 8 | 394, 409, 410, 484, 715, 733 |
 | `brain/surplus.py` | 1 | 137 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 482, 564 |
 | `runtime.py` | 1 | 1052 |
-| `sim/actions.py` | 29 | 614, 801, 1065, 1159, 1279, 1313, 1314, 1336, 1355, 1602, 1958, 2155, 2178, 2206, 2208, 2210, 2212, 2221, 2234, 2293, 2323, 2695, 2697, 2852, 2856, 3239 |
+| `sim/actions.py` | 30 | 632, 831, 1096, 1190, 1310, 1344, 1345, 1367, 1386, 1633, 1989, 2188, 2211, 2239, 2241, 2243, 2245, 2254, 2267, 2326, 2356, 2730, 2732, 2887, 2891, 3277, 3295 |
 | `sim/agent.py` | 1 | 373 |
 | `sim/buildings.py` | 19 | 169, 170, 186, 199, 205, 206, 208, 260, 261, 270, 272, 277, 279, 281, 352, 366, 379, 504, 1023 |
 | `sim/hall.py` | 1 | 30 |
 | `sim/projects.py` | 15 | 245, 416, 523, 536, 646, 670, 679, 683, 685, 940, 985, 995, 999, 1006, 1057 |
 | `sim/wants.py` | 1 | 89 |
-| `sim/world.py` | 8 | 176, 889, 1299, 1331, 1348, 1473, 1661, 1665 |
+| `sim/world.py` | 8 | 177, 890, 1300, 1332, 1349, 1474, 1662, 1666 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
-| `views.py` | 9 | 16, 38, 57, 134, 158, 283, 291, 342 |
+| `views.py` | 9 | 16, 38, 57, 134, 158, 284, 292, 343 |
 
 (Line numbers are those of the commit that added this note; `grep -n 'DESIGNS\[' -r server/chits` gives today's.)
 

@@ -59,6 +59,9 @@ def main(argv):
         actions.STARVING_FETCH = False
     if hasattr(actions, "PLENTY"):  # the readings of the village's stock (F33) change a one-village world too: off
         actions.PLENTY = bool(make_first)  # with MAKE_FIRST, for the comparison with the tree before either
+    from chits.sim import items
+    if hasattr(items, "ITEM_USES"):
+        items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()
