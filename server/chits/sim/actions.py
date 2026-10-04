@@ -746,9 +746,16 @@ def _do_eat(world, a: Agent, step, s) -> str:
                 pick = f
                 break
     else:
-        st = _stockpile_with(world, a, foods_of(world), 30)
+        # the store it set out for, while it still holds food: picked again every tick, the nearest as the crow flies
+        # changed as it walked, and between two stores whose walks lead past each other (one behind a ridge) a chit
+        # turned back and forth on two tiles until it starved (74 in one 60-day run, tools/harness seed 2)
+        st = world.structures.get(s.get("store") or "") if STARVING_FETCH else None
+        if st is None or not st.functional or not any(st.storage.get(f, 0) > 0 for f in foods_of(world))                 or a.reflex_rest.get("unreach:" + st.id, 0) > world.tick:
+            st = _stockpile_with(world, a, foods_of(world), 30)
         if not st:
             return _forage(world, a, s)
+        if STARVING_FETCH:
+            s["store"] = st.id
         mv = _goto_structure(world, a, s, st)
         if mv == "moving" and _long_way(a, s, st.x, st.y):
             mv = "blocked"  # a store a long way round: forage closer instead
