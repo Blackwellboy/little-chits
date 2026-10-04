@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.3"
+PROMPT_VERSION = "2026-10-04.4"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -55,7 +55,7 @@ def _level(v: float, words: Tuple[str, str, str, str], cuts: Tuple[int, int, int
 def verb_guide(world) -> str:
     lines = [
         '{"do":"gather","what":"wood|stone|fiber|berries|clay|sand|ore|iron ore|fish|seeds","qty":5}  (copper ore and iron ore need a pick, fish needs a spear)',
-        '{"do":"eat"} or {"do":"eat","what":"berries"}',
+        '{"do":"eat"} or {"do":"eat","what":"berries"}  (cooked or baked food also lifts your spirits)',
         '{"do":"sleep"}  (best at home at night)',
         '{"do":"craft","what":"<item you know how to make>","qty":1}',
         '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop, forge, factory, mill, loom or fire: it turns stored materials into goods; add "what" to choose which)',
@@ -96,8 +96,8 @@ def verb_guide(world) -> str:
         '{"do":"study"}  (research at a library that holds tablets; enough study gives the village\'s scholars an idea for something new to make)',
         '{"do":"inspect","target":"<structure id | chit name | carried item>"}  (study it to try to learn how it was made)',
         '{"do":"explore","dir":"N|S|E|W|NE|NW|SE|SW"}  {"do":"go","to":"x,y | name | id"}',
-        '{"do":"refuel","target":"<campfire id>"}  (feed wood to a fire)  {"do":"plant"}  {"do":"harvest"}  (farms)',
-        '{"do":"repair","target":"<id>"}  {"do":"drop","what":"<item>","qty":1}  {"do":"pickup","what":"<item>"}  {"do":"rest"}',
+        '{"do":"refuel","target":"<campfire id>"}  (feed wood to a fire, or charcoal, which burns far longer)  {"do":"plant"}  {"do":"harvest"}  (farms)',
+        '{"do":"repair","target":"<id>"}  (mend a worn building with one piece of what it is built of: wood, stone, plant fiber, clay, cord or brick)  {"do":"drop","what":"<item>","qty":1}  {"do":"pickup","what":"<item>"}  {"do":"rest"}',
         '{"do":"repair","what":"<worn metal tool>"}  (re-haft it at a workshop with one wood: as good as new)  '
         '{"do":"smelt","what":"<metal tool>"}  (melt it back into its metal at a furnace)',
     ]
@@ -135,14 +135,23 @@ gather what a step needs before the step that needs it. Steps:
 You are {a.name}. Your nature: {a.personality()}."""
 
 
+# what a thing does just by being carried, where no tool class says it (sim/actions.py: harvest, gather)
+HELD_USES = {
+    "plough": "doubles the grain of a harvest while you carry it",
+    "sharp_stone": "cuts 2 plant fiber at a stroke while you carry it",
+}
+
+
 def item_use(it) -> str:
     """What a tool or carried thing does for its holder, in a few words (the models were never told)."""
+    if it.key in HELD_USES:
+        return HELD_USES[it.key]
     return {
         "axe": f"x{it.tool_power:g} wood per swing",
         "pick": f"needed for copper ore, x{it.tool_power:g} stone",
-        "spear": "catch fish, hunt deer",
-        "light": "light and warmth at night",
-        "weapon": "hunt and defend",
+        "spear": "catch fish, hunt deer, drive off a wolf; it wears out with use",
+        "light": "no wolf bites you at night while you carry it, and the cold bites a little less",
+        "weapon": "hunt and drive off wolves; it wears out with use",
     }.get(it.tool or "", f"+{it.carry_bonus} carrying" if it.carry_bonus else "a tool")
 
 
@@ -358,7 +367,7 @@ def scene(world, a: Agent) -> str:
     full = " — your hands are FULL: store or drop something before gathering more" if a.free_space() <= 0 else ""
     lines.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}.{full}")
     tools = [f"{world.item_name(k)} ({item_use(world.item(k))})" for k in a.inventory
-             if world.item(k).tool or world.item(k).carry_bonus]
+             if world.item(k).tool or world.item(k).carry_bonus or k in HELD_USES]
     if tools:
         lines.append(f"Tools in hand: {', '.join(tools)}.")
     home = world.structures.get(a.home or "")

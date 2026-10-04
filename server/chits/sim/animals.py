@@ -154,6 +154,11 @@ def attacks(world) -> None:
             if max(abs(c.x - w["x"]), abs(c.y - w["y"])) > 1 or world.in_home(c) \
                     or BLD.walled(world, c.x, c.y) is not None:  # (a wolf just outside the wall bit those inside, Codex #47)
                 continue
+            if c.best_tool("light"):
+                # a lantern or light bulb in hand is a street lamp its holder carries: the wolf won't close on the
+                # light (it bites whoever stands in the dark beside them)
+                c.bump("light_kept_wolf")
+                continue
             if _defend(world, w, c, night):
                 break
             c.health = max(10.01, c.health - 6) if c.health > 10.01 else c.health
@@ -166,6 +171,18 @@ def attacks(world) -> None:
 
 
 WEAPON_ODDS = {"spear": 0.6, "weapon": 0.85}  # the chance a chit holding one drives a wolf off (armed friends add to it)
+DEFENCE_PER_POWER = 0.05  # ...and what each point of the weapon's power above 1 adds (hunting already counted power)
+DEFENCE_MAX = 0.95  # no weapon makes it certain
+
+
+def defence_odds(world, o) -> float:
+    """The chance this armed chit drives a wolf off: by the kind of weapon, a little better for a stronger one."""
+    tool = o.best_tool("weapon") or o.best_tool("spear")
+    it = world.item(tool)
+    if it is None or it.tool not in WEAPON_ODDS:  # (a thing this world's catalogue does not know: unarmed)
+        return 0.0
+    base = WEAPON_ODDS[it.tool]
+    return max(base, min(DEFENCE_MAX, base + DEFENCE_PER_POWER * (it.tool_power - 1.0)))
 
 
 def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
@@ -178,7 +195,7 @@ def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
         return False
     odds = 1.0
     for o in armed:
-        odds *= 1.0 - WEAPON_ODDS["weapon" if o.best_tool("weapon") else "spear"]
+        odds *= 1.0 - defence_odds(world, o)
     if rng.random() >= 1.0 - odds:
         return False
     hero = min(armed, key=lambda o: max(abs(o.x - c.x), abs(o.y - c.y)))
@@ -191,8 +208,11 @@ def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
     if hero is not c:
         c.like(hero.id, 6)
     who = hero.name if hero is c else f"{hero.name}, standing by {c.name},"
-    world.emit("wolf_driven_off", f"{who} drove off a wolf with a {world.item_name(hero.best_tool('weapon') or hero.best_tool('spear'))}!",
-               3, hero.id, hero.x, hero.y)
+    arm = hero.best_tool('weapon') or hero.best_tool('spear')
+    world.emit("wolf_driven_off", f"{who} drove off a wolf with a {world.item_name(arm)}!", 3, hero.id, hero.x, hero.y)
+    from .actions import wear_arms
+
+    wear_arms(world, hero, arm)  # (a spear wore only when it fished)
     return True
 
 

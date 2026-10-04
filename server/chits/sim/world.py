@@ -1681,6 +1681,7 @@ class World:
         return (a.y * self.w + a.x) in self._zones()[0]
 
     HUT_WARM_TO = -0.3  # a hut keeps its sleepers warm on ordinary winter nights (-0.21), not in a winter storm
+    LIGHT_COLD = 0.8  # a lantern or light bulb carried takes a fifth off the cold: a small flame, not a fire to stand by
 
     def _needs(self, a: Agent, temp: float) -> None:
         t = self.tick
@@ -1693,13 +1694,15 @@ class World:
         else:
             a.energy -= 0.2
         sheltered = self.in_home(a)
-        warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO)) or a.best_tool("light")
+        warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO))
         cloak = 0.5 if self.inventions and self.invention_effect(a, "warmth") else 1.0
         if cloak == 1.0 and any(n > 0 and (it := self.item(k)) and "wearable" in it.props and "warm" in it.props
                                 for k, n in a.inventory.items()):
             cloak = 0.5  # a warm thing to wear (T31)
         if temp < 0.42 and not warm_src:
-            a.warmth -= (0.42 - temp) * 1.6 * (0.7 if sheltered else 1.0) * cloak
+            # (a carried light counted as standing by a fire: with a lantern in the bag no winter could chill)
+            lamp = self.LIGHT_COLD if a.best_tool("light") else 1.0
+            a.warmth -= (0.42 - temp) * 1.6 * (0.7 if sheltered else 1.0) * cloak * lamp
         else:
             a.warmth += 0.8
         if self.weather != "clear":

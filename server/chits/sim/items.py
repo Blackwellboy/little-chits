@@ -183,7 +183,8 @@ STARTING_RECIPES: Tuple[str, ...] = ()
 
 
 # uses that live in the actions rather than in a recipe or a design (tests/test_item_uses.py checks that every item
-# has at least one use, so nothing can be discovered that the chits can't do anything with)
+# has at least one use, so nothing can be discovered that the chits can't do anything with; and, F35, that each use
+# named here is proved by a test that runs the code doing it)
 ACTION_USES: Dict[str, str] = {
     "clay_tablet": "write knowledge on it (at a library it lasts)",
     "paper": "write knowledge on it",
@@ -192,7 +193,30 @@ ACTION_USES: Dict[str, str] = {
     "clothes": "wear them: a warm thing to wear halves the cold",
     "grain": "eat it, or bake bread at a fire",
     "plough": "carry it while harvesting a farm to double the base grain yield",
+    "wood": "feed a campfire with it, or mend what is built of it",
+    "charcoal": "feed a campfire with it: it burns far longer than wood",
+    "stone": "mend what is built of it",
+    "fiber": "mend what is built of it (a hut's thatch)",
+    "clay": "mend what is built of it (a kiln)",
+    "cord": "mend what is built with it (re-lash a stockpile, a bridge, a pen)",
+    "brick": "mend what is built of it",
+    "sharp_stone": "carry it while gathering plant fiber: it cuts two at a stroke",
 }
+# ...of which these are a second use of something gathered or made for something else: no reason for a station to make
+# it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
+SIDE_USES: Tuple[str, ...] = ("wood", "charcoal", "stone", "fiber", "clay", "cord", "brick", "sharp_stone")
+
+FUEL_VALUE: Dict[str, int] = {"wood": 35, "charcoal": 60}  # what one piece adds to a campfire's fuel (of 100)
+# what a building may be mended with, when it is one of the building's own materials: plain building stuff, never the
+# metal, glass, tablets or machines in it (the first material of a design always mends it, as before)
+MEND_WITH: Tuple[str, ...] = ("wood", "stone", "fiber", "clay", "cord", "brick")
+SHARP_FIBER = 2  # plant fiber cut per stroke with a sharp stone in hand (1 by hand)
+
+
+def hand_tool(it: "Optional[Item]") -> bool:
+    """A thing kept in hand and used as it is: any tool class, and a tool with none (the plough, which works by being
+    carried at harvest: stored with the rest of a load it never doubled anything)."""
+    return it is not None and bool(it.tool or "tool" in it.props)
 
 
 def match_recipe(bag: Dict[str, int], station: Optional[str]) -> Optional[Recipe]:
@@ -235,7 +259,7 @@ DESIGNS: Dict[str, Design] = {
     d.key: d
     for d in [
         _d("campfire", "campfire", {"wood": 3, "stone": 2}, 10, (), station="fire",
-           blurb="warmth and light at night; cook food here; burns wood as fuel", decay=0.0),
+           blurb="warmth and light at night; cook food here; burns wood as fuel (or charcoal, which lasts longer)", decay=0.0),
         _d("hut", "hut", {"wood": 8, "fiber": 4}, 30, (), size=(2, 2),
            blurb="a home: sleep here to recover faster and stay warm; families need one"),
         _d("stockpile", "stockpile", {"wood": 6, "cord": 1}, 14, (("recipe", "cord"),),
