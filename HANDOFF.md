@@ -75,7 +75,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 
 | Feature | Discoveries, usual / fresh | Starvation | Blocker |
 |---|---|---|---|
-| Hoarding (F33) | 74.1 > 76.3 / 74.4 > 73.8; era +0.4 / +0.2 | seed 24: 0 > 6 | Six chits walked to a store 18-29 tiles off at hunger 0 |
+| Hoarding (F33) | 74.1 > 76.3 / 74.4 > 73.8; era +0.4 / +0.2 | seed 24: 0 > 6; seed 42: 2 > 4 | Six chits walked to a store 18-29 tiles off at hunger 0 (seed 24); seed 42 not yet autopsied |
 | Items (F35) | 74.1 > 72.8 / 74.4 > 71.4 | +1 on two seeds | Slightly negative |
 | Zones | 74.1 > 70.3 / 74.4 > 67.0 | seed 2: 74 | Caused by the eat-step flip; #96 fixed it. Re-run |
 
