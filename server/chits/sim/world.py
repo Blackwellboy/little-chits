@@ -454,8 +454,10 @@ class World:
         """How small a world must be to draw a wanderer. A world its game holds below its island's own limit (World.cap)
         draws them while it is under three quarters of that limit: live, a world of 90 held at 20 fell to 10 and went on
         falling, its few young scattered over four villages and too far apart to pair, though births were open again."""
-        cap = getattr(self, "cap", None)
-        return min(cap, max(self.WANDER_BELOW, (cap * 3) // 4)) if cap else self.WANDER_BELOW
+        if not getattr(self, "cap", None):
+            return self.WANDER_BELOW
+        cap = self.pop_cap()  # (never the raw value: a limit above the island's own is the island's, Codex #82)
+        return min(cap, max(self.WANDER_BELOW, (cap * 3) // 4))
 
     def welcome_wanderer(self) -> Optional[Agent]:
         """A young adult from the wilds finds a dwindling village and stays. Play games only (the runtime decides):

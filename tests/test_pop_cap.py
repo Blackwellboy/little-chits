@@ -201,3 +201,6 @@ def test_a_held_world_well_under_its_limit_draws_wanderers():
     tiny = World("A", "A", 3, "direct", 64, 6)
     tiny.cap = 6
     assert tiny.wander_below() == 6 and tiny.welcome_wanderer() is None  # never over its own limit
+    over = World("A", "A", 3, "direct", 64, 10)
+    over.cap = 5000  # above the island's own limit (60): three quarters of the island's, never of 5000
+    assert over.wander_below() == 45
