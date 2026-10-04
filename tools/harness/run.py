@@ -96,6 +96,11 @@ def main(argv=None) -> None:
         sys.exit(f"{server} is not a server dir (no chits/ in it)")
     sys.path[:0] = [str(server), str(HERE)]
     os.chdir(server)
+    import chits
+
+    where = Path(getattr(chits, "__file__", None) or next(iter(chits.__path__), "")).resolve()
+    if server not in where.parents:  # (a chits installed in the venv would otherwise stand in for the tree under test)
+        sys.exit(f"chits was imported from {where}, not from {server}")
     row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag)
     if args.autopsy:
         text = p.autopsy_text()

@@ -50,7 +50,8 @@ be an older tree. It prints:
 - the stuck chits.
 
 Rows go to `harness-out/LABEL.jsonl`, and each run's autopsy to `harness-out/LABEL/SEED-TAG.txt` (`--out` moves
-them). A base tree run against itself should print `identical: every seed`. If it does not, the run is not
+them). A seed where either side fails is listed under `FAILED` with the reason, and kept out of every table and
+mean. The run then exits 1. A base tree run against itself should print `identical: every seed`. If it does not, the run is not
 deterministic and no A/B on it means anything.
 
 Judge a change on 12-24 seeds and 60 days. Three seeds over 30 days have flattered changes that later failed.

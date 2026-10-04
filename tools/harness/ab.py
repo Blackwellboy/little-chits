@@ -6,7 +6,8 @@ with its autopsy file), stuck chits, and which mechanisms never fired on each si
                                [--jobs 8] [--culture direct] [--size 128] [--out harness-out]
 
 BASE and NEW are checkouts (or their ``server`` dirs). Both sides run this harness, so an older tree is measured the
-same way. Rows go to OUT/LABEL.jsonl; every run's ``--autopsy`` text to OUT/LABEL/SEED-TAG.txt.
+same way. Rows go to OUT/LABEL.jsonl; every run's ``--autopsy`` text to OUT/LABEL/SEED-TAG.txt. A seed where either
+side fails is named, with why, and left out of every table and mean; the run then exits 1.
 """
 
 from __future__ import annotations
@@ -39,8 +40,8 @@ def one(server: Path, seed: int, tag: str, args, logs: Path) -> dict:
     out.write_text(r.stdout + (("\n--- stderr\n" + r.stderr) if r.stderr.strip() else ""))
     last = r.stdout.strip().splitlines()[-1:] or [""]
     if r.returncode or not last[0].startswith("{"):
-        print(f"seed {seed} {tag} failed (exit {r.returncode}): see {out}", file=sys.stderr)
-        return {"tag": tag, "seed": seed, "failed": True}
+        why = (r.stderr.strip().splitlines() or r.stdout.strip().splitlines() or ["no output"])[-1][:200]
+        return {"tag": tag, "seed": seed, "failed": f"exit {r.returncode}: {why}", "autopsy": str(out)}
     row = json.loads(last[0])
     row["autopsy"] = str(out)
     return row
@@ -63,12 +64,29 @@ def table(by: dict) -> list:
     return L
 
 
-def report(rows: list) -> str:
+def failed_seeds(rows: list) -> list:
+    """Seeds where either side failed (or never ran): a pair is compared whole or not at all."""
     by = defaultdict(dict)
     for r in rows:
         by[r["seed"]][r["tag"]] = r
-    L = table(by)
-    L.append(f"rows {sum(1 for r in rows if not r.get('failed'))} of {2 * len(by)}")
+    return sorted(s for s in by if any(t not in by[s] or by[s][t].get("failed") for t in SIDES))
+
+
+def report(rows: list) -> str:
+    bad = failed_seeds(rows)
+    failures = [r for r in rows if r.get("failed")]
+    rows = [r for r in rows if r["seed"] not in bad]  # (a failed side has no numbers: averaging it in as 0 misleads)
+    by = defaultdict(dict)
+    for r in rows:
+        by[r["seed"]][r["tag"]] = r
+    L = []
+    if bad:
+        L.append(f"FAILED: {len(bad)} seed pair(s) left out of every table and mean: {' '.join(map(str, bad))}")
+        for r in sorted(failures, key=lambda r: (r["seed"], r["tag"])):
+            L.append(f"  seed {r['seed']} {r['tag']}: {r['failed']}  {r.get('autopsy', '')}")
+        L.append("")
+    L += table(by)
+    L.append(f"rows {len(rows)} of {2 * len(by)} (seed pairs compared: {len(by)})")
     strip = lambda r: {k: v for k, v in r.items() if k not in ("tag", "autopsy")}
     same = [s for s in sorted(by) if all(t in by[s] for t in SIDES) and strip(by[s]["base"]) == strip(by[s]["new"])]
     L.append("identical: every seed" if len(same) == len(by) else
@@ -125,6 +143,8 @@ def main(argv=None) -> None:
         rows = list(ex.map(lambda j: one(*j, args, logs), jobs))
     (out / f"{args.label}.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
     print(report(rows))
+    if failed_seeds(rows):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

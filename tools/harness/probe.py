@@ -80,6 +80,10 @@ MECHANISMS: Dict[str, tuple] = {
 
 
 def _food_in(world, s) -> int:
+    """Food a chit could take from this store: none from one that isn't functional (unfinished, or decayed to a
+    ruin), as the simulator's _stockpile_with() takes nothing from those."""
+    if not s.functional:
+        return 0
     return sum(n for k, n in s.storage.items() if n > 0 and (it := world.item(k)) is not None and it.food > 0)
 
 

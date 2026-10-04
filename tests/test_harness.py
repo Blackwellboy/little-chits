@@ -1,6 +1,7 @@
 """The self-reporting test harness (tools/harness): its preventable-death autopsy, stuck detector and fired counters,
 on small worlds over a few hundred ticks."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -84,6 +85,17 @@ def test_food_further_than_thirty_tiles_away_is_not_flagged():
     assert len(p.starved) == 1 and p.report()["preventable"] == 0
 
 
+def test_food_in_a_ruined_store_is_not_flagged():
+    w, (a, _) = village()
+    p = P.Probe(w, Brain(("rest", [{"do": "rest"}])))
+    st = store_for(w, a, food=8)
+    st.durability = 0  # decayed to a ruin: chits take nothing from it (actions._stockpile_with)
+    assert not st.functional
+    starve(w, p, a)
+    assert len(p.starved) == 1 and p.report()["preventable"] == 0
+    assert p.starved[0]["buffer"][-1]["store"] is None
+
+
 def test_only_starvation_is_autopsied():
     w, (a, _) = village()
     p = P.Probe(w, Brain(("rest", [{"do": "rest"}])))
@@ -125,6 +137,50 @@ def test_a_later_step_failing_is_not_a_failing_first_step():
     run(w, p, 80)
     assert a.stats.get("failures", 0) > P.STUCK_AFTER + 1
     assert p.report()["stuck"] == 0 and p.report()["fail_streaks"] == {}
+
+
+def _row(seed, tag, starved):
+    return {"seed": seed, "tag": tag, "starved": starved, "preventable": 0, "stuck": 0, "stuck_episodes": 0,
+            "fired": {"craft": 1}, "autopsy": f"{seed}-{tag}.txt"}
+
+
+def test_an_ab_seed_with_a_failed_side_is_named_and_kept_out_of_the_means():
+    import ab
+
+    rows = [_row(1, "base", 2), _row(1, "new", 4), _row(2, "base", 0),
+            {"seed": 2, "tag": "new", "failed": "exit 1: ImportError: no chits", "autopsy": "2-new.txt"}]
+    assert ab.failed_seeds(rows) == [2]
+    out = ab.report(rows)
+    assert "FAILED" in out and "ImportError: no chits" in out
+    mean = next(line for line in out.splitlines() if line.startswith("mean"))
+    assert mean.split()[5] == "2.0>4.0"  # starved: seed 1 alone, not (2+0)/2 > (4+0)/2
+    assert "rows 2 of 2" in out
+
+
+def test_ab_exits_non_zero_when_a_side_fails(tmp_path):
+    import subprocess
+
+    broken = tmp_path / "broken" / "server"
+    (broken / "chits").mkdir(parents=True)  # a tree that cannot run
+    (broken / "chits" / "__init__.py").write_text("raise ImportError('no chits')\n")
+    good = Path(__file__).resolve().parents[1]
+    r = subprocess.run([sys.executable, str(good / "tools" / "harness" / "ab.py"), str(good), str(broken.parent),
+                        "--seeds", "1", "--days", "0", "--size", "48", "--out", str(tmp_path / "out")],
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "FAILED" in r.stdout and "seed 1 new: exit 1: ImportError: no chits" in r.stdout
+
+
+def test_run_refuses_a_chits_from_outside_the_tree_under_test(tmp_path):
+    import subprocess
+
+    (tmp_path / "server" / "chits").mkdir(parents=True)  # no __init__.py: another chits on the path would win
+    run_py = Path(__file__).resolve().parents[1] / "tools" / "harness" / "run.py"
+    r = subprocess.run([sys.executable, str(run_py), "1", "--days", "0", "--size", "48",
+                        "--server", str(tmp_path / "server")],
+                       capture_output=True, text=True, timeout=300,
+                       env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "server")))
+    assert r.returncode != 0 and "not from" in r.stderr, r.stdout + r.stderr
 
 
 def test_the_counters_count_a_craft_and_a_build():
