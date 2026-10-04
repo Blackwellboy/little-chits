@@ -115,3 +115,28 @@ def test_a_step_that_fails_pauses_the_game_and_says_why(env, monkeypatch):
                 break
             time.sleep(0.05)
         assert not r.loop_error and max(w.tick for w in r.worlds.values()) > tick
+
+
+def test_a_failed_step_ends_an_experiment_as_invalid_and_a_new_game_starts_clean(env, monkeypatch):
+    # one world may have stepped before the other failed: the run can't go on as a valid comparison
+    monkeypatch.setenv("CHITS_SPEED", "1")
+    with _client() as c:
+        c.post("/api/reset", json={"mode": "versus", "contract": "experiment"})
+        r = _rt()
+        assert r.contract == "experiment"
+        real = r.step_worlds
+
+        def boom():
+            raise RuntimeError("world B could not step")
+
+        monkeypatch.setattr(r, "step_worlds", boom)
+        for _ in range(100):
+            if r.loop_error:
+                break
+            time.sleep(0.05)
+        assert r.paused and "world B could not step" in r.invalid_reason
+        monkeypatch.setattr(r, "step_worlds", real)
+        assert c.post("/api/control", json={"paused": False}).status_code == 409  # not resumable as valid
+        # a new game is a clean slate: the old failure is not shown over it
+        assert c.post("/api/reset", json={"mode": "versus", "contract": "play"}).status_code == 200
+        assert r.loop_error == "" and r.invalid_reason == "" and r.control_state()["loop_error"] == ""

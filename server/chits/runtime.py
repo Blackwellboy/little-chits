@@ -348,6 +348,7 @@ class Runtime:
         self.store.wipe()
         self.save_errors = {}
         self.invalid_reason = ""
+        self.loop_error = ""  # (the failed match is gone)
         self.paused = False
         self.skip = self.last_skip = None
         self.forks = {}  # a new match: the old one's what-ifs go with it
@@ -589,6 +590,14 @@ class Runtime:
                     # still, unpaused, for as long as nobody looked at the tick (live, 2026-10-04)
                     log.exception("a world's step failed; the game is paused")
                     self.loop_error = f"{type(e).__name__}: {e}"
+                    if self.contract == "experiment" and not self.invalid_reason:
+                        # one world may have stepped before another failed: the worlds are no longer in step, so
+                        # the run can't be resumed as a valid comparison (Codex, #83)
+                        self.invalid_reason = f"a world's step failed: {self.loop_error}"
+                        try:
+                            self.write_manifest()
+                        except Exception as manifest_error:
+                            log.error("could not write invalid experiment manifest: %s", manifest_error)
                     if self.skip is not None:
                         self.stop_skip()
                     self.paused = True
