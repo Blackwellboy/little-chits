@@ -51,3 +51,23 @@ def test_a_chit_that_is_only_hungry_fetches_on():
     a.hunger = actions.STARVING + 5
     actions.reflexes(w, a)
     assert a.plan[0]["do"] == "gather"
+
+
+def test_a_hungry_chit_sheltering_from_the_weather_goes_for_food_at_the_same_hunger_as_any_other():
+    # seed 42, 60 days: two chits sheltered and warmed up from hunger 30 down to 8 before food came first, and
+    # starved walking to a store; any other step gives way to food below 16
+    from chits.sim import actions as A
+    from chits.sim.world import World
+    w = World("A", "A", 3, "direct", 64, 2)
+    a = next(iter(w.agents.values()))
+    a.inventory.clear()
+    a.inventory["berries"] = 2
+    for kind in ("shelter", "warm_up", "sleep", "store"):
+        a.plan = [{"do": kind, "_reflex": True}]
+        a.hunger = 12.0
+        A._reflexes(w, a)
+        assert a.plan[0]["do"] == "eat", (kind, a.plan)
+    a.plan = [{"do": "shelter", "_reflex": True}]
+    a.hunger = 20.0  # not yet hungry enough: the weather comes first
+    A._reflexes(w, a)
+    assert a.plan[0]["do"] == "shelter", a.plan
