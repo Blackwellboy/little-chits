@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..sim.actions import stockpile_room
 from ..sim.agent import TICKS_PER_DAY, Agent
 from ..sim.items import HOME_STORES, item_name
+from . import surplus as SUR
 
 Plan = Dict[str, Any]
 NEAR = 15  # tiles: a pile this close is worth a look
@@ -65,6 +66,8 @@ def tidy_plan(world, a: Agent) -> Optional[Plan]:
             continue
         goods = sorted(((n, k) for k, n in _goods(pile).items() if n >= TIDY_MIN), reverse=True)
         for n, k in goods:
+            if SUR.over(world, a, k, (hx, hy)):
+                continue  # the stores hold plenty of it (issue #7: loose seed carried in was the stores' biggest source)
             dest = next((p for p in piles if stockpile_room(p, k) >= 10), None)
             if dest is None:
                 continue  # nowhere to put it: it would only be dropped again

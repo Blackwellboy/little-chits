@@ -15,6 +15,7 @@ from ..sim import research, wants
 from ..sim.agent import Agent
 from ..sim.actions import STATION_NEAR, STATION_REACH
 from ..sim.items import DESIGNS, STATIONS, item_name
+from . import surplus as SUR
 
 Opt = Tuple[float, Dict[str, Any]]
 
@@ -187,6 +188,8 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not raw or pile is None:
         return None
     k = min(raw, key=lambda x: projects.stock(world, x, sc=sc))  # what the stores are shortest of
+    if SUR.over(world, a, k):
+        return None  # ...and they hold plenty even of that (issue #7)
     return {"goal": f"collect {item_name(k)} for the village's {what}", "thought": f"Whoever makes the {what} will need {item_name(k)}.",
             "steps": [{"do": "gather", "what": k, "qty": 4}, {"do": "store", "what": k}]}
 
