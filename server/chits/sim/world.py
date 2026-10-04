@@ -1994,7 +1994,10 @@ class World:
         w.culture_names = dict(d.get("culture_names") or {})
         w.catalog = Catalog()
         w.pack = None
-        w.cap = int(d["cap"]) if d.get("cap") else None
+        # (a save file is untrusted: a limit that is no whole number, or below the fewest a game allows, would stop a
+        # world's births for good; one above the island's own is harmless, pop_cap takes the smaller)
+        cap = d.get("cap")
+        w.cap = max(POP_CAP_MIN, cap) if isinstance(cap, int) and not isinstance(cap, bool) and cap > 0 else None
         if d.get("pack"):  # (its keys were checked against the base tables when the world was made)
             w.apply_pack(d["pack"], check_base=False)
         w.inventions = dict(d.get("inventions") or {})

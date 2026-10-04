@@ -161,6 +161,24 @@ def test_a_new_game_can_start_held(env, monkeypatch):
         assert all(w.cap == 12 for w in _rt().worlds.values())
 
 
+def test_an_experiment_never_takes_the_machines_limit(env, monkeypatch):
+    monkeypatch.setenv("CHITS_POP_CAP", "12")
+    with _client() as c:
+        assert all(w.cap == 12 for w in _rt().worlds.values())  # a play game does
+        c.post("/api/reset", json={"mode": "versus", "contract": "experiment"})
+        r = _rt()
+        assert r.contract == "experiment" and all(w.cap is None and w.pop_cap() == POP_CAP for w in r.worlds.values())
+
+
+def test_a_limit_read_from_a_save_file_is_checked():
+    base = World("A", "A", 3, "direct", 64, 4).to_dict()
+    for bad in (0, -5, "20", 2.5, True, None, [20]):
+        assert World.from_dict(json.loads(json.dumps(dict(base, cap=bad)))).cap is None, bad
+    assert World.from_dict(json.loads(json.dumps(dict(base, cap=1)))).cap == POP_CAP_MIN  # too small: the smallest
+    big = World.from_dict(json.loads(json.dumps(dict(base, cap=5000))))
+    assert big.pop_cap() == POP_CAP  # above the island's own: the island's
+
+
 def test_the_limit_needs_the_access_token_like_every_private_route(env, monkeypatch):
     monkeypatch.setenv("CHITS_TOKEN", "s3cret-for-this-test")
     with _client() as c:

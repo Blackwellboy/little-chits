@@ -260,7 +260,9 @@ class Runtime:
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
         w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack)
-        cap = _env_int("CHITS_POP_CAP", 0)  # a new game's limit on each world's people (0: the island's own)
+        # a new play game's limit on each world's people (0: the island's own). Never an experiment's: its worlds run
+        # by the island's own rules, whatever this machine's settings say (Codex, #79)
+        cap = _env_int("CHITS_POP_CAP", 0) if self.contract != "experiment" else 0
         if cap:
             w.cap = max(POP_CAP_MIN, min(w.island_cap(), cap))
         self._attach(w)
