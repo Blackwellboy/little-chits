@@ -61,6 +61,9 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #93 | Hoarding, F33: ceilings per good and sinks. **Switched off** (`actions.PLENTY = False`) |
 | #94 | A real use for every item, F35. **Switched off** (`items.ITEM_USES = False`) |
 | #96 | An eat step keeps to the store it set out for. It flipped between two stores on either side of a ridge: 74 starved on one seed |
+| #97 | This section brought up to date |
+| #99 | The Look (Viking) button says why it can't switch during an experiment, instead of silently doing nothing |
+| #100 | A hungry chit acts on the time it has left to reach food, not a fixed hunger number (`actions.HUNGER_MARGIN`): starvations 6 > 1, preventable 2 > 0 over 48 seeds. Follow-up: issue #101 |
 
 #86 was closed because it made a test opt-in, which AGENTS.md forbids.
 
@@ -68,7 +71,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 
 | Item | What | What it still needs |
 |---|---|---|
-| PR #95 (`dev/zones`) | Building dead zones and town rank, **switched off** (`buildings.NEED_SITING`, `buildings.TOWN_GATE`), plus the Knowledge return position | Codex's second P2 (apply `_within` before joining an unfinished site), merge main, merge |
+| PR #95, merged (`dev/zones`) | Building dead zones and town rank, **switched off** (`buildings.NEED_SITING`, `buildings.TOWN_GATE`), plus the Knowledge return position | Codex's second P2 (apply `_within` before joining an unfinished site), merge main, merge |
 | `dev/rng-streams` (local only, `~/projects/lc-rng` on the main PC) | A separate random stream per system, to cut A/B noise | Stopped partway. Restart it |
 
 **Switching the features on.** Each switched-off feature needs a 24-seed harness A/B with its switch on, against the main of the day, and has to clear the bar below. Then a one-line PR turns it on. A/B results so far, all against main before the latest fixes:
@@ -91,8 +94,9 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 |---|---|---|
 | JevK5 9B (`alibiserikbay/JevK5-GGUF`, Q8_0) | 48.7 | 0.25 |
 | Gemma 4 12B Q4_K_M | 32.3 | 0.41 |
+| Llama 3.2 3B Q8_0 (against JevK5 9B: 81 vs 59, 44 vs 55, 37 vs 64) | 54.0 (JevK5 9B: 59.3) | 0.26 |
 
-Population was similar. JevK5 9B makes about twice the decisions. Winnow 12B and JevK5 4B were benched too.
+Population was similar. JevK5 9B makes about twice the decisions. Winnow 12B and JevK5 4B were benched too. SmolLM2 1.7B and Llama 3.2 1B give valid letters but choose at about chance (18% agreement with Ornith 35B, where chance is 17%), so they are not usable. Agreement on the bench does not predict in-game results: only versus runs on 3+ seeds decide.
 
 **How to judge a change:**
 
