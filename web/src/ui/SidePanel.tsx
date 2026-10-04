@@ -518,7 +518,9 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
               <div key={x.key} className="inv-row">
                 <b className="spread-open" title="What is it for?" onClick={() => setInvOpen(invOpen === m.id + x.key ? null : m.id + x.key)}>💡 {x.name}</b> <small className="muted">for {x.purpose}</small>
                 <small className="muted"> · {x.by_name}, day {x.day} · {x.knowers} know it</small>
+                {x.from && <small className="muted"> · brought over the sea from {x.from}</small>}
                 {x.purpose_text && <div className="small muted">“{x.purpose_text}”</div>}
+                {x.does?.length > 0 && <div className="small muted">{x.does.join("; ")}</div>}
                 {invOpen === m.id + x.key && <EntryCard world={m.id} name={m.name} k={`recipe:${x.key}`} />}
               </div>
             )) : <small className="muted">nothing invented yet</small>}

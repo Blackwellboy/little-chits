@@ -8,6 +8,7 @@ from typing import Dict, List
 
 from .buildings import HOMES  # hut, brick house, longhouse, two-storey house
 LINK = 8  # structures within this many tiles belong to the same cluster
+_CELL = 16  # the grid detect() buckets buildings in: more than LINK plus the widest building (a test holds it to that)
 
 # ranks: a village with a town hall and 20 people is a town; a town of 40 with five kinds of civic building around its
 # hall and paved streets is a city. Without a hall a settlement is a hamlet or a village however big it grows.
@@ -89,13 +90,23 @@ def detect(world) -> List[Settlement]:
             i = parent[i]
         return i
 
+    # every pair was compared: 232 buildings cost a tenth of a second a look, and each village's project looks every
+    # ten ticks. Buildings are bucketed by where they stand, and one is only compared with those in its own cell and
+    # the eight around it: a building within LINK of a point starts at most LINK + its width away, less than a cell.
+    grid: Dict[tuple, List[int]] = {}
+    for j, b in enumerate(sts):
+        grid.setdefault((b.x // _CELL, b.y // _CELL), []).append(j)
     for i, a in enumerate(sts):
         ax, ay = a.center()
-        for b in sts[i + 1:]:
-            if b.dist(int(round(ax)), int(round(ay))) <= LINK:
-                ra, rb = find(a.id), find(b.id)
-                if ra != rb:
-                    parent[ra] = rb
+        px, py = int(round(ax)), int(round(ay))
+        cx, cy = px // _CELL, py // _CELL
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
+                for j in grid.get((gx, gy), ()):
+                    if j > i and sts[j].dist(px, py) <= LINK:
+                        ra, rb = find(a.id), find(sts[j].id)
+                        if ra != rb:
+                            parent[ra] = rb
     groups: Dict[str, List] = {}
     for s in sts:
         groups.setdefault(find(s.id), []).append(s)

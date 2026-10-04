@@ -49,8 +49,15 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
-    from chits.brain import builder
+    from chits.brain import instinct as instinct_rules
+    from chits.sim import actions
 
+    # later changes to what a one-village world does, switched off
+    if hasattr(instinct_rules, "HUNGER_REACH"):
+        instinct_rules.HUNGER_REACH = False
+    if hasattr(actions, "STARVING_FETCH"):
+        actions.STARVING_FETCH = False
+    from chits.brain import builder
     if hasattr(builder, "NEED_SITING"):  # (the builder's questions from before the dead zones were closed, F32)
         builder.NEED_SITING = False
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)

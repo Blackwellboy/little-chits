@@ -94,6 +94,41 @@ ITEMS: Dict[str, Item] = {
     ]
 }
 
+# What a thing can DO (F34), beside what it is like. An item's properties above describe it ("sharp", "stringy",
+# "burns very hot"); these say what that lets it do when it is a part of something made. They are worked out from the
+# descriptive properties by the one table below, so a content pack's items and a world's inventions (which keep their
+# parts' properties) have them too, and nothing is written twice. Inventions are judged by these (sim/invent.py).
+FUNCTIONS: Tuple[str, ...] = (
+    "cuts", "pierces", "binds", "holds", "holds-liquid", "burns", "burns-hot", "insulates", "rigid", "long", "rolls",
+    "heavy", "soft", "edible", "hard", "metal", "transparent")
+FUNCTION_OF: Dict[str, Tuple[str, ...]] = {
+    "sharp": ("cuts", "pierces"), "holds an edge": ("cuts", "hard", "rigid"), "toothed": ("cuts",), "cuts wood": ("cuts",),
+    "pointed": ("pierces",),
+    "stringy": ("binds",), "binding": ("binds",), "flexible": ("binds",),
+    "container": ("holds",), "holds food": ("holds", "holds-liquid"),
+    "flammable": ("burns",), "burns very hot": ("burns", "burns-hot"), "burns violently": ("burns", "burns-hot"),
+    "volatile": ("burns",),
+    "warm": ("insulates",), "woven": ("insulates",), "fluffy": ("insulates", "soft"), "wearable": ("insulates",),
+    "sturdy": ("rigid",), "hard": ("hard", "rigid"), "very hard": ("hard", "rigid"), "breaks rock": ("hard",),
+    "fired": ("rigid",), "metal": ("metal", "rigid"),
+    "long": ("long",), "reaches into water": ("long",),
+    "round": ("rolls",), "rolls": ("rolls",),
+    "heavy": ("heavy",), "soft": ("soft",), "edible": ("edible",),
+    "clear": ("transparent",), "glass": ("transparent",),
+}
+
+
+def functions(it: Optional[Item]) -> FrozenSet[str]:
+    """What this item can do as a part of something: its descriptive properties read through FUNCTION_OF."""
+    return frozenset(f for p in (it.props if it else ()) for f in FUNCTION_OF.get(p, ()))
+
+
+def described_as(function: str) -> List[str]:
+    """The descriptive properties that give a thing this function, in the table's order (for honest feedback: a chit
+    sees properties, never this table)."""
+    return [p for p, fs in FUNCTION_OF.items() if function in fs]
+
+
 STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "loom")
 # the ores (issue #4): one kind of deposit tile, whose metal is fixed by its place and the world's seed (World.ore_item)
 ORE_KINDS = ("ore", "iron_ore")
