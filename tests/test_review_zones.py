@@ -125,6 +125,21 @@ def test_a_well_is_built_for_fields_no_well_waters_and_stands_where_it_waters_th
     assert wants(w, a, "well") is None
 
 
+def test_a_well_sited_for_dry_fields_does_not_join_one_going_up_out_of_their_reach():
+    # the build joined any unfinished well within 12 of the place before it looked at "_within": a well going up 8
+    # tiles from two dry fields was finished instead, and watered neither (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "well")
+    f1, f2 = _fields(w, a)
+    half = at(w, a, "well", f1.x - 8, a.y, done=False)
+    assert BLD.gap(f1, half) == 8 and BLD.gap(f2, half) == 8
+    step = wants(w, a, "well")
+    assert step and step["_within"] == BLD.WELL_RADIUS and half.dist(*near_of(step)) <= 12
+    site, said = begin(w, a, step)
+    assert site is not None and site is not half, said
+    assert BLD.gap(site, f1) <= BLD.WELL_RADIUS and BLD.gap(site, f2) <= BLD.WELL_RADIUS
+
+
 def test_no_well_for_watered_fields_or_for_one_dry_field():
     w, a = meadow(n=60)
     able(a, w, "well")

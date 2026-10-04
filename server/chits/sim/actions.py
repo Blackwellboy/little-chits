@@ -2207,8 +2207,12 @@ def _do_build(world, a: Agent, step, s) -> str:
         hall = BLD.hall_near(world, a)
         if hall is not None:
             ox, oy = hall.x + hall.w // 2, hall.y + hall.h // 2
-    # join an existing unfinished site of the same kind there rather than duplicating it
-    for st in world.structures_near(ox, oy, 12, key):
+    # "_within": instinct sited it to serve something at that place (a field, a store, a home): any farther off it
+    # would not reach it, and the same plan would be made again tomorrow
+    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
+    # join an existing unfinished site of the same kind there rather than duplicating it (one going up farther off than
+    # the place it is for would not serve it either: a well 8 tiles from dry fields was joined, and watered none, Codex #95)
+    for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
         if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st):
             s["site"] = st.id
             s["joined"] = True
@@ -2238,10 +2242,7 @@ def _do_build(world, a: Agent, step, s) -> str:
             and not (crowded and home.founder != a.id) and not PI.builds_home_at(world, a, ox, oy):
         return (f"I already have a home ({DESIGNS[home.design].name} {home.id}): repair it if it's damaged, or help "
                 f"build someone else's instead of a second one")
-    # "_within": instinct sited it to serve something at that place (a field, a store, a home): any farther off it
-    # would not reach it, and the same plan would be made again tomorrow
-    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
-    # (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
+    # (with "_within", no farther off than it says) (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
     radii = (3,) if key == "road" else (8,) if key in ("boat", "lighthouse", "mine") else (8, 16, 28)
     if within:
         radii = tuple(r for r in radii if r < within) + (within,)
