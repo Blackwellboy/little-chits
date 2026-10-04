@@ -32,28 +32,29 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**137** occurrences in 20 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**138** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
 |---|---|---|
 | `app.py` | 1 | 167 |
-| `brain/builder.py` | 10 | 63, 70, 80, 100, 101, 142, 194, 205, 211, 254 |
-| `brain/civic.py` | 5 | 58, 67, 113, 173, 382 |
-| `brain/instinct.py` | 21 | 541, 551, 576, 635, 657, 675, 689, 690, 698, 706, 717, 781, 782, 818, 865, 882, 985, 991, 1022 |
+| `brain/builder.py` | 10 | 64, 71, 81, 101, 102, 143, 195, 206, 212, 255 |
+| `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
+| `brain/instinct.py` | 21 | 568, 578, 603, 670, 692, 710, 724, 725, 733, 741, 752, 819, 820, 856, 903, 920, 1028, 1034, 1065 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 8 | 366, 381, 382, 456, 657, 675 |
+| `brain/prompt.py` | 8 | 366, 381, 382, 456, 687, 705 |
+| `brain/surplus.py` | 1 | 137 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 482, 564 |
-| `runtime.py` | 1 | 1012 |
-| `sim/actions.py` | 29 | 602, 789, 1047, 1141, 1261, 1295, 1296, 1318, 1337, 1584, 1940, 2137, 2160, 2188, 2190, 2192, 2194, 2203, 2216, 2275, 2305, 2677, 2679, 2834, 2838, 3221 |
+| `runtime.py` | 1 | 1052 |
+| `sim/actions.py` | 29 | 614, 801, 1065, 1159, 1279, 1313, 1314, 1336, 1355, 1602, 1958, 2155, 2178, 2206, 2208, 2210, 2212, 2221, 2234, 2293, 2323, 2695, 2697, 2852, 2856, 3239 |
 | `sim/agent.py` | 1 | 373 |
 | `sim/buildings.py` | 19 | 169, 170, 186, 199, 205, 206, 208, 260, 261, 270, 272, 277, 279, 281, 352, 366, 379, 504, 1023 |
 | `sim/hall.py` | 1 | 30 |
 | `sim/projects.py` | 15 | 245, 416, 523, 536, 646, 670, 679, 683, 685, 940, 985, 995, 999, 1006, 1057 |
 | `sim/wants.py` | 1 | 89 |
-| `sim/world.py` | 8 | 176, 857, 1267, 1299, 1316, 1441, 1629, 1633 |
+| `sim/world.py` | 8 | 176, 889, 1299, 1331, 1348, 1473, 1661, 1665 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
 | `views.py` | 9 | 16, 38, 57, 134, 158, 283, 291, 342 |

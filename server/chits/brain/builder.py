@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from ..sim import actions as ACT
 from ..sim import buildings as BLD
 from ..sim.actions import GATHER_RULES, FOODS, REUSE_WITHIN, STATION_NEAR, village_stores
 from ..sim.agent import Agent, TICKS_PER_DAY
@@ -548,8 +549,12 @@ def _mill_and_bake(world, a: Agent) -> List[Tuple[float, Plan]]:
             return [(1.5, {"goal": "bake the flour", "thought": "Flour this fine... what would heat make of it?",
                            "steps": pre + [{"do": "experiment", "with": ["flour", "flour"], "at": "fire"}]})]
         return []
-    if fire is not None and grain >= 4 and a.free_space() > 4:
-        steps = fetch("grain", 4) + [{"do": "craft", "what": "flour", "qty": 4}, {"do": "craft", "what": "loaf", "qty": 2}]
+    stored_flour = flour >= 4 and ACT.PLENTY
+    if fire is not None and (grain >= 4 or stored_flour) and a.free_space() > 4:
+        # flour already ground (a mill shift working off spare grain, issue #7) is baked before more is ground: only
+        # flour made in the same plan was ever baked, so what a shift ground stayed flour, which feeds nobody
+        steps = (fetch("flour", 4) if stored_flour else fetch("grain", 4) + [{"do": "craft", "what": "flour", "qty": 4}]) \
+            + [{"do": "craft", "what": "loaf", "qty": 2}]
         if world.structures_near(a.x, a.y, 20, "stockpile"):
             steps.append({"do": "store", "what": "loaf"})
         return [(2.0, {"goal": "bake loaves", "thought": "Ground grain bakes into loaves that fill you for a day.",

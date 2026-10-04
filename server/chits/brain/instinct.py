@@ -26,6 +26,7 @@ from . import voyages as VOY
 from . import prospect as PR
 from . import pioneers as PIO
 from . import ground as GR
+from . import surplus as SUR  # how much of a good is enough, and what to do with more (issue #7)
 from . import civic
 from . import inventor as INVENTOR  # the one "invent" option of a chit that chooses (never for an instinct-only chit)
 
@@ -243,6 +244,10 @@ def _supply_steps(a: Agent, need: Dict[str, int], world=None, depth: int = 0, re
             if p.functional and _reachable(world, a, p):
                 for k, n in p.storage.items():
                     stock[k] = stock.get(k, 0) + n
+    elif reach is not None:
+        # a thing made by hand draws nothing from the stores, except what they hold at its ceiling (issue #7): iron
+        # for a site was made with freshly burned charcoal, two for each wood, and one village stored 1,490 of it
+        stock = SUR.plenty(reach, a)
     loose: Dict[str, int] = {}
     if world is not None:
         from .ground import ground_stock
@@ -337,6 +342,23 @@ def _craft_steps(a: Agent, key: str, qty: int = 1, depth: int = 0, world=None) -
     if not _rec(a, key) or not a.knows_recipe(key):
         return []
     return _supply_steps(a, {key: a.inventory.get(key, 0) + qty}, depth=depth, reach=world) or []
+
+
+def _fetch_steps(world, a: Agent, key: str, n: int, room: Optional[float] = None) -> List[Dict[str, Any]]:
+    """n of a good for a job, with a reading of what the village holds (issue #7): from the stores in the measure
+    they are full of it, the rest gathered (or made by hand, for a thing this chit knows how to make). Sites were
+    supplied with freshly cut wood and freshly burned charcoal while hundreds of each lay in the stores, and what the
+    site didn't take was stored too. `room`: the weight its hands will still hold when it gets to the stores (a take
+    of more than they hold fails, and the rest of the plan with it; gathering just stops at full hands)."""
+    fresh, stored = SUR.split(world, a, key, n) if world is not None else (n, 0)
+    if room is not None and stored:
+        stored = min(stored, int(max(0.0, room) // max(1, world.item(key).weight)))
+    steps: List[Dict[str, Any]] = [{"do": "take", "what": key, "qty": stored}] if stored else []
+    if fresh and key in RECIPES:
+        steps += _craft_steps(a, key, fresh, world=world)
+    elif fresh:
+        steps.append({"do": "gather", "what": key, "qty": fresh})
+    return steps
 
 
 WORK_NEAR = STATION_NEAR  # instinct offers a spare shift at a station this close, by choice
@@ -726,11 +748,11 @@ class Instinct:
             if mat in RECIPES:
                 if not a.knows_recipe(mat):
                     return None
-                pre = _craft_steps(a, mat, 1, world=world)
+                pre = _fetch_steps(world, a, mat, 1)  # (from the stores once they hold plenty, issue #7)
                 if not pre:
                     return None
             else:
-                pre = [{"do": "gather", "what": mat, "qty": 2}]
+                pre = _fetch_steps(world, a, mat, 2)
         name = DESIGNS[st.design].name
         ruined = st.durability <= 0
         return {"goal": f"{'restore the ruined' if ruined else 'mend the'} {name}",
@@ -753,13 +775,16 @@ class Instinct:
 
     def _help_site(self, a: Agent, site, goal: str, thought: str) -> Dict[str, Any]:
         steps = []
+        world, room = getattr(self, "_world", None), a.free_space()
         for k, n in list(site.needs.items())[:2]:
             have = a.inventory.get(k, 0)
             if have < n:
-                if k in RECIPES and a.knows_recipe(k):
-                    steps += _craft_steps(a, k, min(n - have, 3), world=getattr(self, "_world", None))
-                elif k in ("wood", "stone", "fiber", "clay", "sand", "seeds", "ore", "iron_ore"):
-                    steps.append({"do": "gather", "what": k, "qty": min(n - have, 8)})
+                # less of it fresh the fuller the stores are of it, and none at its ceiling (issue #7)
+                made = k in RECIPES and a.knows_recipe(k)
+                if made or k in ("wood", "stone", "fiber", "clay", "sand", "seeds", "ore", "iron_ore"):
+                    want = min(n - have, 3 if made else 8)
+                    steps += _fetch_steps(world, a, k, want, room)
+                    room -= want * (max(1, world.item(k).weight) if world is not None else 1)
         steps.append({"do": "help", "site": site.id})
         return {"goal": goal, "thought": thought, "steps": steps}
 
@@ -979,6 +1004,9 @@ class Instinct:
             # (5, not 6: chits deciding on the same tick can each start one, and the town shouldn't pass 6)
             if (d == "farm" and total * 3 >= max(6, pop)) or (d == "stockpile" and (total * 4 >= max(8, pop) or len(standing) >= 5)):
                 continue  # the whole town already has plenty
+            if d == "stockpile" and SUR.glut(world, a):
+                continue  # full of what the village has plenty of: another would fill with the same (issue #7). (A
+                # chit with full hands and nowhere to put them still builds one, _more_storage: that or drop the load)
             if d in ("kiln", "workshop", "furnace", "library") and len(standing) >= max(1, min(4, pop // 12)):
                 continue
             # a monument is a great shared work, not one per corner of town: a sprawling town (70 tiles across) kept
@@ -989,8 +1017,10 @@ class Instinct:
             cap = 5 if d == "stockpile" else max(1, min(4, pop // 12)) if d in ("kiln", "workshop", "furnace", "library") \
                 else max(1, pop // 30) if d == "monument" else 0
             if d == "farm":
-                # enough fields to feed everyone nearby: about one per four chits
-                if len(near) * 4 >= max(4, len(world.agents_near(a.x, a.y, radius))):
+                # enough fields to feed everyone nearby: about one per four chits (with more seed in the stores than
+                # the village sows, one per three: a new field is where spare seed goes, issue #7)
+                per = SUR.SURPLUS_FARM_PER if SUR.over(world, a, "seeds") else 4
+                if len(near) * per >= max(4, len(world.agents_near(a.x, a.y, radius))):
                     continue
             elif d == "stockpile":
                 if len(near) >= 3 or any(stockpile_room(p) > 20 for p in near):
@@ -1012,7 +1042,7 @@ class Instinct:
             if st.functional and st.planted and st.growth >= 1:
                 opts.append((3.5, {"goal": "harvest", "thought": "The grain is ready.", "steps": [{"do": "harvest"}, {"do": "store", "what": "grain"}]}))
             elif st.functional and not st.planted and world.season != "winter":
-                pre = [{"do": "gather", "what": "seeds", "qty": 2}] if not a.has("seeds", 2) else []
+                pre = _fetch_steps(world, a, "seeds", 2) if not a.has("seeds", 2) else []  # (stored seed first, issue #7)
                 opts.append((2.5, {"goal": "plant the farm", "thought": "The plot lies empty.", "steps": pre + [{"do": "plant", "target": st.id}]}))
         # bake/cook when possible
         if a.knows_recipe("bread") and a.has("grain", 2) and world.nearest_station(a.x, a.y, "fire", STATION_NEAR):
@@ -1044,6 +1074,7 @@ class Instinct:
                     "thought": (f"We'll need {what} to get further, and the stores have {ins}." if bill.path else
                                 f"There's {ins} in the stores and not enough {what}. A shift at the {sname} will fix that."),
                     "steps": [{"do": "work", "at": bill.kind, "target": bill.st.id}]}))
+        opts += SUR.sinks(world, a)  # a good over its ceiling: grain to flour at a mill, wood to charcoal at a kiln
         wanted = set()
         for d in DESIGNS.values():
             if a.knows_design(d.key) and not world.structures_near(a.x, a.y, 16, d.key):
@@ -1058,6 +1089,8 @@ class Instinct:
                 r = _rec(a, mat)
                 if r.station and not world.nearest_station(a.x, a.y, r.station, STATION_REACH):
                     continue
+                if SUR.over(world, a, mat):
+                    continue  # the stores hold plenty: 1,490 charcoal lay in one village, made four at a time
                 steps = _craft_steps(a, mat, 2 if mat != "clay_tablet" else 1, world=world)
                 if steps:
                     opts.append((1.2, {"goal": f"make {item_name(mat)}", "thought": f"{item_name(mat).capitalize()} will be needed.", "steps": steps}))
@@ -1083,16 +1116,20 @@ class Instinct:
             for k, n in p.storage.items():
                 stocked[k] = stocked.get(k, 0) + n
         # only collect what can actually be found nearby (an island may have no clay at all)
+        # ...and only what the village isn't full of: the urge falls as its stores fill, to nothing at the good's
+        # ceiling (issue #7: the stores right here could be short of what the village held hundreds of)
+        held = SUR.stock(world, a)
+        want = {m: SUR.urge(world, a, m, held=held) for m in ("wood", "stone", "fiber", "clay", "berries", "ore", "iron_ore", "sand")}
         lacking = [m for m in ("wood", "stone", "fiber", "clay", "berries") + (("ore", "iron_ore") if a.best_tool("pick") else ())
                    + (("sand",) if a.knows_recipe("brick") else ())
-                   if stocked.get(m, 0) < 25 and world.nearest_resource(a.x, a.y, m, 30) is not None]
+                   if stocked.get(m, 0) < 25 and want[m] > 0 and world.nearest_resource(a.x, a.y, m, 30) is not None]
         room = [p for p in piles if p.functional and stockpile_room(p) > 10]
         if lacking and (room or not piles) and a.free_space() > 6:
             mat = rng.choice(lacking)
             steps = [{"do": "gather", "what": mat, "qty": 6}]
             if room:
                 steps.append({"do": "store", "what": mat, "target": room[0].id})
-            opts.append((1.0 + a.traits["diligence"], {"goal": f"collect {item_name(mat)}", "thought": f"{item_name(mat).capitalize()} is always useful.", "steps": steps}))
+            opts.append(((1.0 + a.traits["diligence"]) * want[mat], {"goal": f"collect {item_name(mat)}", "thought": f"{item_name(mat).capitalize()} is always useful.", "steps": steps}))
         opts += BI.building_options(world, a, rng)  # wells, granaries, mills, smithies, towers, schools, bridges
         store_up = BI.store_upgrade_plan(world, a)
         if store_up:
