@@ -59,7 +59,7 @@ MECHANISMS: Dict[str, tuple] = {
     "tame": ("event", "tamed", None),
     "fish": ("stat", "fish", None),
     "plant": ("stat", "planted", None),
-    "harvest": ("event", "harvest", None),
+    "harvest": ("stat", "harvested", None),  # (the "harvest" event is only a chit's first harvest, Codex #90)
     "mine": ("stat", "mined", None),
     "prospect": ("stat", "prospected", None),
     "road": ("stat", "roads", None),

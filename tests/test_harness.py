@@ -197,3 +197,13 @@ def test_the_counters_count_a_craft_and_a_build():
     assert p.fired()["build"] == 1 and p.breakdown()["build"] == {"stockpile": 1}
     never = p.report()["never_fired"]
     assert "craft" not in never and "build" not in never and "invention" in never
+
+
+def test_every_harvest_is_counted_not_only_a_chits_first():
+    # the "harvest" event is emitted only for a chit's first harvest; the counter reads the tally (Codex, #90)
+    w, (a, b) = village()
+    p = P.Probe(w, Brain(("rest", [{"do": "rest"}]), ("rest", [{"do": "rest"}])))
+    a.bump("harvested")
+    a.bump("harvested")
+    a.bump("harvested")
+    assert p.fired()["harvest"] == 3
