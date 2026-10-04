@@ -231,6 +231,8 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
+FARM_RETRY = TICKS_PER_DAY // 4  # after one farm proves a long way round, a hungry chit's plan leaves farms alone this
+# long: one at a time it tried every farm of a cluster across the water, 9-14 times in a row (tools/harness, seed 42)
 STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False: as before, for the identity test)
 
 
@@ -451,6 +453,9 @@ def _stockpile_with(world, a: Agent, items, radius: int = 25):
 
 
 def _farm_ready(world, a: Agent):
+    if STARVING_FETCH and a.reflex_rest.get("unreach:farms", 0) > world.tick:
+        return None  # a farm just proved a long way round: the ones beside it likely are too (FARM_RETRY), for the
+        # hunger plan and the starvation reflex alike (Codex, #92)
     for st in world.structures_near(a.x, a.y, 30, "farm"):
         if st.functional and st.planted and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick:
             return st
@@ -3124,6 +3129,8 @@ def _do_harvest(world, a: Agent, step, s) -> str:
         return "couldn't reach the farm"
     if mv == "moving" and _long_way(a, s, st.x, st.y):
         a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY
+        if STARVING_FETCH:  # the farms beside it are likely the same long way: forage a while (see FARM_RETRY)
+            a.reflex_rest["unreach:farms"] = world.tick + FARM_RETRY
         return "that farm is a long way round on foot"
     if mv != "arrived":
         return RUNNING
