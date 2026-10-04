@@ -581,6 +581,10 @@ class Instinct:
             return None
         if any(s.get("do") == "gather" for s in steps):
             return None  # its hands are full: only with what it carries or what's in store
+        if a.free_space() <= 0 and any(s.get("do") in ("pickup", "take") for s in steps):
+            # no room at all: picking up or taking from a store fails at once and the plan comes back (a chit tried to
+            # pick up wood for a stockpile 56 times in a row, tools/harness seed 7; a take does the same, Codex #91)
+            return None
         h = world.structures.get(a.home or "")
         near = f"{h.x},{h.y}" if h is not None else f"{a.x},{a.y}"
         return {"goal": "build a stockpile", "thought": "Every stockpile is full. We need another.",

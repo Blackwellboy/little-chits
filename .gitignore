@@ -11,3 +11,4 @@ web/dist/
 plan/reports/
 *.tsbuildinfo
 .vite/
+harness-out/
