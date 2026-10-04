@@ -811,6 +811,8 @@ def control(c: Control):
     if c.paused is not None:
         r.stop_skip()
         r.paused = c.paused
+    if wants_resume:
+        r.loop_error = ""  # (a step that fails again pauses it again and says so)
     if c.pace_to_brain is not None:
         if r.contract == "experiment" and not c.pace_to_brain:
             raise HTTPException(409, "an experiment run always waits for its models")
