@@ -363,6 +363,13 @@ def _nearest_food(world, a: Agent, s: Dict[str, Any]):
     seen = s.get("food_near")
     if not seen or world.tick - seen[0] >= MARGIN_RECHECK:
         best = min(_food_options(world, a), key=lambda o: o[0], default=None)
+        # where the food reflex would really go: with a spear it fishes when nothing else is in reach, and instead of
+        # berries when fish are within 8. Without the fish the margin knew no food, and a spearman sheltered on to
+        # hunger 8 (Codex, #100). (Its berries fallback is the same lookup as the berries option.)
+        reach = 20 if best is None else 8 if best[1]["do"] == "gather" else 0
+        fish = reach and a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", reach)
+        if fish:
+            best = (_crow(a, *fish), {"do": "gather", "what": "fish"})
         seen = s["food_near"] = [world.tick, best and [best[0], best[1]["do"]]]
     return seen[1]
 

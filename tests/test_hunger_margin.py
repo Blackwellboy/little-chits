@@ -135,6 +135,22 @@ def test_a_starving_chit_picking_berries_eats_the_one_in_hand_and_picks_on():
     assert a.plan == [{"do": "eat", "_reflex": True}, fetch]
 
 
+def test_a_spear_carrier_with_only_fish_in_reach_counts_the_walk_to_the_fish():
+    # the food reflex fishes with a spear when nothing else is in reach, but the margin knew only the other foods: it
+    # saw no food at all, and an exhausted spearman sheltered on to hunger 8 (Codex, #100)
+    w, (a, _) = village()
+    fish = (a.x + 15, a.y)
+    w.nearest_resource = lambda x, y, kind, radius=24, avoid=None: (
+        fish if kind == "fish" and max(abs(fish[0] - x), abs(fish[1] - y)) <= radius else None)
+    w.piles_near = lambda *args, **kw: []
+    a.add("spear", 1)
+    assert a.best_tool("spear") and not A._food_options(w, a)
+    a.energy, a.hunger = 10.0, 15.0  # exhausted: 15 tiles is ~90 ticks on foot, and it has ~68
+    a.plan = [{"do": "shelter", "_reflex": True}]
+    A.reflexes(w, a)
+    assert a.plan[0] == {"do": "gather", "what": "fish", "qty": 3, "_reflex": True} and a.plan[1]["do"] == "shelter"
+
+
 def test_a_harvest_naming_a_far_farm_is_judged_by_that_farm_not_a_nearer_one():
     # the margin and the "already fetching food" exemption looked at the nearest ripe farm, while the step walked to
     # the far one it named (Codex, #100)
