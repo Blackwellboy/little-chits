@@ -207,3 +207,13 @@ def test_every_harvest_is_counted_not_only_a_chits_first():
     a.bump("harvested")
     a.bump("harvested")
     assert p.fired()["harvest"] == 3
+
+
+def test_a_wolf_a_watchtower_drove_off_is_not_counted_as_an_attack():
+    # buildings.drove_off emits a "wolf" event with driven_off=True: a deterrence, not an attack (Codex, #90)
+    w, (a, b) = village()
+    p = P.Probe(w, Brain(("rest", [{"do": "rest"}]), ("rest", [{"do": "rest"}])))
+    w.emit("wolf", "The lookout on the watchtower spotted a wolf and drove it off", 2, None, a.x, a.y, driven_off=True)
+    w.emit("wolf", "A wolf bit someone", 2, a.id, a.x, a.y)
+    fired = p.fired()
+    assert fired["wolf attack"] == 1 and fired["watchtower kept a wolf off"] == 1

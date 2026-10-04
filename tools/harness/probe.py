@@ -52,6 +52,7 @@ MECHANISMS: Dict[str, tuple] = {
     "voyage": ("event", "voyage", None),
     "arrival": ("event", "arrival", None),
     "wolf attack": ("event", "wolf", None),
+    "watchtower kept a wolf off": ("event", "wolf_deterred", None),  # (also a "wolf" event, counted apart: Codex #90)
     "wolf driven off": ("event", "wolf_driven_off", None),
     "fight": ("event", "fight", None),
     "theft": ("event", "theft", None),
@@ -140,6 +141,9 @@ class Probe:
 
     # ------------------------------------------------------------------ events
     def _on_event(self, ev) -> None:
+        if ev.kind == "wolf" and (ev.data or {}).get("driven_off"):
+            self.events["wolf_deterred"] += 1  # a watchtower's lookout drove it off: no attack
+            return
         self.events[ev.kind] += 1
         field = self._breakdown.get(ev.kind)
         if field and isinstance(v := (ev.data or {}).get(field), str):

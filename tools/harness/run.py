@@ -70,8 +70,7 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
         for t in range(240 * days):
             w.step(p.hook)
             p.after_tick()
-            if t % 240 == 0:
-                low = min(low, len(w.agents))
+            low = min(low, len(w.agents))  # (every tick: a death and a birth between daily samples hid a dip)
     row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture}
     row.update(metrics(w, low, len(p.starved)))
     row["births"] = p.events.get("birth", 0)
