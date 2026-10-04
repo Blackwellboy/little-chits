@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import buildings as BLD
+from . import items as IT
 from . import terrain as T
 
 DEER_TILES = (T.GRASS, T.MEADOW, T.FOREST)
@@ -154,7 +155,7 @@ def attacks(world) -> None:
             if max(abs(c.x - w["x"]), abs(c.y - w["y"])) > 1 or world.in_home(c) \
                     or BLD.walled(world, c.x, c.y) is not None:  # (a wolf just outside the wall bit those inside, Codex #47)
                 continue
-            if c.best_tool("light"):
+            if IT.ITEM_USES and c.best_tool("light"):
                 # a lantern or light bulb in hand is a street lamp its holder carries: the wolf won't close on the
                 # light (it bites whoever stands in the dark beside them)
                 c.bump("light_kept_wolf")
@@ -182,6 +183,8 @@ def defence_odds(world, o) -> float:
     if it is None or it.tool not in WEAPON_ODDS:  # (a thing this world's catalogue does not know: unarmed)
         return 0.0
     base = WEAPON_ODDS[it.tool]
+    if not IT.ITEM_USES:
+        return base
     return max(base, min(DEFENCE_MAX, base + DEFENCE_PER_POWER * (it.tool_power - 1.0)))
 
 

@@ -13,6 +13,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .. import diag
+from . import items as IT
 from . import buildings as BLD
 from . import terrain as T
 from .agent import Agent, TICKS_PER_DAY
@@ -90,6 +91,7 @@ FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "f
 # cooked or baked: eating one lifts the spirits (a loaf and cooked meat did not, though bread and cooked fish did;
 # ale is not eaten: it is drunk at the tavern, which has its own cheer, buildings.ALE_MOOD)
 PREPARED_FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish")
+OLD_PREPARED = ("bread", "berry_tart", "cooked_fish")  # (with items.ITEM_USES off)
 MEAL_MOOD = 4  # mood gained from a prepared meal
 
 
@@ -529,7 +531,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
         return RUNNING
     a.activity = f"gathering {world.item_name(kind)}"
     power = world.item(tool).tool_power if tool else 1.0
-    sharp = kind == "fiber" and a.has("sharp_stone")
+    sharp = IT.ITEM_USES and kind == "fiber" and a.has("sharp_stone")
     if sharp:
         power = float(SHARP_FIBER)  # (a flake in hand cuts the stalks: by hand they are pulled one at a time)
     if not _work(a, a.skill_speed("gathering") * (1.1 if a.mood > 70 else 1.0), float(rule["work"])):
@@ -647,7 +649,7 @@ def wear_arms(world, a: Agent, tool: Optional[str]) -> None:
     when it fished). Not an artifact: nobody could make another."""
     from . import artifacts as ART
 
-    if tool and a.has(tool) and not ART.is_artifact(tool):
+    if IT.ITEM_USES and tool and a.has(tool) and not ART.is_artifact(tool):
         a.bump("arms_worn")
         _wear(world, a, tool)
 
@@ -739,9 +741,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
     a.remove(pick, 1)
     a.hunger = min(100.0, a.hunger + world.item(pick).food)
     a.bump("meals")
-    if pick in PREPARED_FOODS:
+    if pick in (PREPARED_FOODS if IT.ITEM_USES else OLD_PREPARED):
         a.mood = min(100.0, a.mood + MEAL_MOOD)
-        a.bump("good_meals")
+        if IT.ITEM_USES:
+            a.bump("good_meals")
     if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
@@ -2968,9 +2971,9 @@ def _do_refuel(world, a: Agent, step, s) -> str:
     st = _find_structure(world, a, step.get("target"), 30, lambda x: x.design == "campfire" and x.functional and x.fuel < 80)
     if not st:
         return "no campfire nearby needs fuel"
-    fuel = next((k for k in FUEL_VALUE if a.has(k)), None)  # wood first; charcoal when there's no wood in hand
+    fuel = next((k for k in (FUEL_VALUE if IT.ITEM_USES else ("wood",)) if a.has(k)), None)  # wood first, then charcoal
     if fuel is None:
-        return "I need wood (or charcoal) to feed the fire"
+        return "I need wood (or charcoal) to feed the fire" if IT.ITEM_USES else "I need wood to feed the fire"
     mv = _goto_structure(world, a, s, st)
     if mv == "blocked":
         return "couldn't reach the fire"
@@ -3178,6 +3181,8 @@ def mend_materials(design: str) -> List[str]:
     plain building stuff (MEND_WITH). A stockpile is re-lashed with cord, a furnace patched with stone as well as
     brick; nobody mends a factory with a steam engine."""
     mats = [m for m, _ in DESIGNS[design].materials]
+    if not IT.ITEM_USES:
+        return mats[:1]
     return mats[:1] + [m for m in mats[1:] if m in MEND_WITH]
 
 

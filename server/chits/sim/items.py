@@ -204,6 +204,9 @@ ACTION_USES: Dict[str, str] = {
 }
 # ...of which these are a second use of something gathered or made for something else: no reason for a station to make
 # it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
+ITEM_USES = True  # F35's item uses and fixes (fuel, mending, a sharp stone, meal cheer, arms wear and defence, lights,
+# the plough kept in hand). False restores the behaviour before them, for tests/identity_runner.py, which compares a
+# one-village world with the tree before step 2b day by day (as projects.MAKE_FIRST does). Read at call time.
 SIDE_USES: Tuple[str, ...] = ("wood", "charcoal", "stone", "fiber", "clay", "cord", "brick", "sharp_stone")
 
 FUEL_VALUE: Dict[str, int] = {"wood": 35, "charcoal": 60}  # what one piece adds to a campfire's fuel (of 100)
@@ -216,7 +219,7 @@ SHARP_FIBER = 2  # plant fiber cut per stroke with a sharp stone in hand (1 by h
 def hand_tool(it: "Optional[Item]") -> bool:
     """A thing kept in hand and used as it is: any tool class, and a tool with none (the plough, which works by being
     carried at harvest: stored with the rest of a load it never doubled anything)."""
-    return it is not None and bool(it.tool or "tool" in it.props)
+    return it is not None and bool(it.tool or (ITEM_USES and "tool" in it.props))
 
 
 def match_recipe(bag: Dict[str, int], station: Optional[str]) -> Optional[Recipe]:

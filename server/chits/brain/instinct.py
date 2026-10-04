@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, WORK_RADIUS, _tablet_new,
                            food_items, mend_material, plan_bill, remembered_place, stockpile_room, village_stores)
 from ..sim.agent import Agent
+from ..sim import items as IT
 from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
 from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
@@ -70,7 +71,7 @@ LOST_TABLET_TRIP = 80  # how far a chit will walk to read a loose tablet of what
 def _fuel_steps(world, a: Agent) -> List[Dict[str, Any]]:
     """Two wood for a fire: in hand, from the stores, or (only with none stored nearby) chopped. Fires were fed with
     freshly chopped wood while 7,600 lay in World A's stores: 88 trips in two days."""
-    if a.has("wood", 2) or a.has("charcoal"):  # (charcoal in hand feeds a fire too, and for longer: no trip for wood)
+    if a.has("wood", 2) or (IT.ITEM_USES and a.has("charcoal")):  # (charcoal in hand feeds a fire too, and for longer: no trip for wood)
         return []
     if _stock_near(world, a, "wood") >= 2:
         return [{"do": "take", "what": "wood", "qty": 2 - a.inventory.get("wood", 0)}]

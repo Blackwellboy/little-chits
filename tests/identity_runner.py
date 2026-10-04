@@ -49,6 +49,10 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
+    from chits.sim import items
+
+    if hasattr(items, "ITEM_USES"):
+        items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()
