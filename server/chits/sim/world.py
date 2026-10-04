@@ -409,7 +409,8 @@ class World:
 
         for key, inv in (inventions or {}).items():  # foreign inventions travel with the chit
             if self.catalog.item(key) is None:
-                register_invention(self, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {})
+                register_invention(self, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()),
+                                   inv.get("effect") or {}, inv.get("station"))
             if key not in self.inventions and key.startswith("inv_"):
                 # ...and are known here as what they are (F34): in the catalogue alone the thing had no effect abroad
                 # (a coat that didn't warm) and could not be made, taught or written by its name. It is this chit's own
@@ -2044,7 +2045,10 @@ class World:
         from .invent import register_invention
 
         for key, inv in w.inventions.items():  # the world must know its own items again after a restart
-            register_invention(w, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {})
+            # (a save from before inventions had a rule, a station or a strength has none of those fields: it loads as
+            # it was, needing no station and with the numbers it had)
+            register_invention(w, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {},
+                               inv.get("station"))
         w.signs = dict(d.get("signs") or {})
         w.weather = d.get("weather", "clear")
         w.settlements = dict(d.get("settlements") or {})

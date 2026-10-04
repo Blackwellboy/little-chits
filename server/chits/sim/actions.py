@@ -1583,12 +1583,26 @@ def _do_invent(world, a: Agent, step, s) -> str:
     if taken:  # otherwise "wood" or "spear" would mean the invention for everyone here from now on
         return f"the name {name} is already taken by {world.item_name(taken) if normalize_item(name) or world.invention_by_name(name) or world.catalog.pack_key(name) else DESIGNS[taken].name}: give it a new name"
     purpose_text = str(step.get("purpose") or "").strip()
+    # "at" (optional, F34): made at a station the same parts can make more (a metal blade at the bench, a dish or a
+    # tonic over a fire); the chit walks there first, as for an experiment
+    station = str(step.get("at") or "").strip().lower() or None
+    if station:
+        station = {"campfire": "fire", "fire": "fire", "bench": "workshop", "workbench": "workshop"}.get(station, station)
+        if station not in STATIONS:
+            return f"'{station}' is not a known kind of station"
+        mv = _gather_station(world, a, s, station)
+        if mv == "none":
+            return f"there's no {station} nearby to invent at"
+        if mv == "blocked":
+            return f"couldn't reach the {station}"
+        if mv != "arrived":
+            return RUNNING
     a.activity = "inventing"
     a.set_emote("💡", world.tick, 4)
     if not _work(a, a.skill_speed("crafting"), 10.0):
         return RUNNING
     a.practice("crafting", 0.8)
-    v = verdict(bag, purpose_text, world.catalog)
+    v = verdict(bag, purpose_text, world.catalog, world.stations_at(a.x, a.y))  # (what stands here counts, asked for or not)
     ok, pid, effect, feedback = v["ok"], v["purpose"], v["effect"], v["feedback"]
     combo =" + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
     if not ok:
@@ -1596,7 +1610,7 @@ def _do_invent(world, a: Agent, step, s) -> str:
         return feedback
     # (not one brought from over the sea: that is its carrier's knowledge, and nobody here has had "the same idea")
     same = next((k for k, inv in world.inventions.items() if inv["purpose"] == pid and inv["inputs"] == bag
-                 and not inv.get("from")), None)
+                 and not inv.get("from") and inv.get("station") == v["station"]), None)
     for k, n in bag.items():
         a.remove(k, n)
     if same is not None:
@@ -1607,10 +1621,12 @@ def _do_invent(world, a: Agent, step, s) -> str:
         return DONE
     key = f"inv_{world.id.lower()}_{len(world.inventions) + 1}"
     props = invention_props(bag, pid, world.catalog)
-    register_invention(world, key, name, bag, props, effect)
+    register_invention(world, key, name, bag, props, effect, v["station"])
     world.inventions[key] = {"key": key, "name": name, "inputs": dict(bag), "purpose": pid, "purpose_text": purpose_text,
                              "effect": effect, "props": list(props), "by": a.id, "by_name": a.name, "tick": world.tick,
-                             "rule": v["rule"]}  # (which of invent.RULES made it; None from the first engine)
+                             # which of invent.RULES made it (None from the first engine), and the station that rule
+                             # needs: the thing can only be made again there
+                             "rule": v["rule"], "station": v["station"]}
     a.inventory[key] = a.inventory.get(key, 0) + 1
     world.learned(a, "recipe:" + key, "discovered")
     words = " and ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))

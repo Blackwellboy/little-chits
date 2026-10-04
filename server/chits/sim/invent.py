@@ -433,13 +433,15 @@ def carried_effect(inv: Optional[dict]) -> bool:
     return any(eff.get(k) for k in CARRIED_EFFECTS)
 
 
-def register_invention(world, key: str, name: str, inputs: Dict[str, int], props: Tuple[str, ...], effect: dict):
-    """Add an invented item and its recipe to *this world's* catalogue only."""
-    from .items import Item, Recipe
+def register_invention(world, key: str, name: str, inputs: Dict[str, int], props: Tuple[str, ...], effect: dict,
+                       station: Optional[str] = None):
+    """Add an invented item and its recipe to *this world's* catalogue only. `station`: where it has to be made (an
+    invention that only a bench or a fire made possible needs one to be made again)."""
+    from .items import STATIONS, Item, Recipe
 
     it = Item(key, name, tuple(props), food=float(effect.get("food", 0)), tool=effect.get("tool"),
               tool_power=float(effect.get("tool_power", 0.0)), carry_bonus=int(effect.get("carry_bonus", 0)), icon="💡")
-    r = Recipe(key, tuple(sorted(inputs.items())), None, 1, 8)
+    r = Recipe(key, tuple(sorted(inputs.items())), station if station in STATIONS else None, 1, 8)
     world.catalog.items[key] = it
     world.catalog.recipes[key] = r
     return r

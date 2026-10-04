@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.5"
+PROMPT_VERSION = "2026-10-04.6"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -60,7 +60,7 @@ def verb_guide(world) -> str:
         '{"do":"craft","what":"<item you know how to make>","qty":1}',
         '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop, forge, factory, mill, loom or fire: it turns stored materials into goods; add "what" to choose which)',
         '{"do":"experiment","with":["item","item"],"at":"fire|kiln|furnace|workshop|forge|factory|mill|loom","name":"<what you would call it>"}  (try combining 1-5 carried items, one on its own only at a station; the same item twice counts, and amounts matter; "at" and "name" optional; this is how new things are discovered, and the first to discover something names it)',
-        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items of up to 3 kinds. What the parts can do decides what it can be, each part doing one job: an edge or a hard head on something long is a tool, things that bind make a net, a sack or a wrap, something that burns in or on a holder is a light, edible parts are a dish, something that rolls under a frame carries or speeds. Better material makes it stronger. Your purpose chooses among what the parts allow; if they cannot do it, nothing is used up and you are told what they could make. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
+        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>","at":"fire|workshop"}  (imagine something new from 2-4 carried items of up to 3 kinds. What the parts can do decides what it can be, each part doing one job: an edge or a hard head on something long is a tool, things that bind make a net, a sack or a wrap, something that burns in or on a holder is a light, edible parts are a dish, something that rolls under a frame carries or speeds. Better material makes it stronger. "at" is optional: at a workshop metal can be worked into a head, over a fire a dish or a remedy is cooked, and a thing made that way needs that station to be made again. Your purpose chooses among what the parts allow; if they cannot do it, nothing is used up and you are told what they could make. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
         '{"do":"build","what":"<structure you know>"}  (starts a site or joins one nearby; delivers your materials and works on it)',
         '{"do":"help","site":"<site id>"}  (bring materials / labour to someone\'s construction)',
         '{"do":"upgrade","to":"longhouse|brick house|two-storey house"}  (rebuild your own home bigger where it stands: a hut becomes a longhouse or brick house, either of those a two-storey house; everyone living there stays, and a crowded home has fewer children)',
@@ -389,7 +389,7 @@ def scene(world, a: Agent) -> str:
     mine = [inv for k, inv in getattr(world, "inventions", {}).items() if f"recipe:{k}" in a.knows][:6]
     if mine:
         lines.append("- Inventions you know: " + "; ".join(
-            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}, for {inv['purpose']}{_does(inv)})"
+            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}{' at a ' + inv['station'] if inv.get('station') else ''}, for {inv['purpose']}{_does(inv)})"
             for inv in mine))
     fam = sorted(a.familiar)[:16]
     if fam:
