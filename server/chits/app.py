@@ -776,6 +776,25 @@ def end_experiment():
     return r.control_state()
 
 
+class PopulationBody(BaseModel):
+    cap: Optional[int] = None
+
+
+@app.post("/api/population")
+def set_population(b: PopulationBody):
+    """Hold each world at so many chits (null: the island's own limit). Births pause while a world is at or over it;
+    nobody is removed. Play only."""
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, "the limit on each world's chits can't be changed during an experiment run")
+    try:
+        r.set_pop_cap(b.cap)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    r._broadcast_snapshots()
+    return r.control_state()
+
+
 @app.post("/api/control")
 def control(c: Control):
     r = R()

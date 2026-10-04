@@ -63,6 +63,12 @@ def migrate_snapshot(d: Dict[str, Any]) -> Dict[str, Any]:
 
 
 POP_CAP = 60  # chits on a small island (the plan's invariants hold it to 60)
+POP_CAP_MIN = 6  # the fewest a game may hold a world to (World.cap): enough for families to go on
+# A world held far below what it holds today (90 chits, held at 20) must not simply stop having children: only adults
+# under 40 days have them and a chit lives about 47, so by the time the old had died the youngest would be too old
+# and the world would die out. While it is more than half as big again as its limit, the young (under YOUNG_DAYS) are
+# kept at half the limit; between that and the limit nobody is born; under the limit, births are as ever.
+YOUNG_DAYS = 20
 POP_CAP_BIG = 90  # ...and on an island of 256 or more: a 512 island held one village of 60 and its daughter villages died out
 RUIN_DAYS = 6  # an unrepaired ruin crumbles away, freeing the land
 ASHES_DAYS = 3  # a campfire left cold this long is gone (World A had 200 cold stone rings; they looked like graves)
@@ -253,6 +259,9 @@ class World:
         self.culture_names: Dict[str, str] = {}  # knowledge key -> this world's own name for it (T05)
         self.catalog = Catalog()  # this world's items: its own inventions, then the shared base physics (T20)
         self.pack: Optional[Dict[str, Any]] = None  # a content pack (sim/packs.py): extra items and recipes, data only
+        # a game's own limit on this world's people, below the island's (None: the island's). A model that keeps up
+        # with 20 chits drove 2% of a world of 90: births pause while the world is at or over it, nobody is removed
+        self.cap: Optional[int] = None
         if pack is not None:
             self.apply_pack(pack)
         self.inventions: Dict[str, Dict[str, Any]] = {}
@@ -1790,11 +1799,26 @@ class World:
         self._births()
         self.history.append(self.stats())
 
-    def pop_cap(self) -> int:
+    def island_cap(self) -> int:
         return POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP
 
+    def pop_cap(self) -> int:
+        base = POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP  # (the island's own; see island_cap)
+        return min(base, self.cap) if getattr(self, "cap", None) else base
+
+    def births_open(self) -> bool:
+        """May a child be born now? Under the limit, yes. A world held by its game (World.cap) and still far over
+        that limit keeps a young cohort (see YOUNG_DAYS), so it shrinks to its limit instead of dying out."""
+        n, cap = len(self.agents), self.pop_cap()
+        if n < cap:
+            return True
+        if not getattr(self, "cap", None) or cap >= self.island_cap() or n >= self.island_cap() or n <= cap + cap // 2:
+            return False
+        young = sum(1 for a in self.agents.values() if a.age(self.tick) < YOUNG_DAYS)
+        return young < cap // 2
+
     def _births(self) -> None:
-        if len(self.agents) >= self.pop_cap():
+        if not self.births_open():
             return
         from . import pioneers as PI
 
@@ -1836,7 +1860,7 @@ class World:
                 continue
             used |= {a.id, b.id}
             self._make_child(a, b, home)
-            if len(self.agents) >= self.pop_cap():
+            if not self.births_open():
                 return
 
     def _make_child(self, a: Agent, b: Agent, home: Structure) -> Agent:
@@ -1902,6 +1926,8 @@ class World:
         d = self._to_dict()
         if self.pack:  # (only then: a world without a pack saves exactly as it always did)
             d["pack"] = self.pack
+        if self.cap:  # (likewise)
+            d["cap"] = self.cap
         return d
 
     def _to_dict(self) -> Dict[str, Any]:
@@ -1968,6 +1994,10 @@ class World:
         w.culture_names = dict(d.get("culture_names") or {})
         w.catalog = Catalog()
         w.pack = None
+        # (a save file is untrusted: a limit that is no whole number, or below the fewest a game allows, would stop a
+        # world's births for good; one above the island's own is harmless, pop_cap takes the smaller)
+        cap = d.get("cap")
+        w.cap = max(POP_CAP_MIN, cap) if isinstance(cap, int) and not isinstance(cap, bool) and cap > 0 else None
         if d.get("pack"):  # (its keys were checked against the base tables when the world was made)
             w.apply_pack(d["pack"], check_base=False)
         w.inventions = dict(d.get("inventions") or {})
