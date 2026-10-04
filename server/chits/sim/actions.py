@@ -231,6 +231,8 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
+FARM_RETRY = TICKS_PER_DAY // 4  # after one farm proves a long way round, a hungry chit's plan leaves farms alone this
+# long: one at a time it tried every farm of a cluster across the water, 9-14 times in a row (tools/harness, seed 42)
 STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False: as before, for the identity test)
 
 
@@ -3124,6 +3126,8 @@ def _do_harvest(world, a: Agent, step, s) -> str:
         return "couldn't reach the farm"
     if mv == "moving" and _long_way(a, s, st.x, st.y):
         a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY
+        if STARVING_FETCH:  # the farms beside it are likely the same long way: forage a while (see FARM_RETRY)
+            a.reflex_rest["unreach:farms"] = world.tick + FARM_RETRY
         return "that farm is a long way round on foot"
     if mv != "arrived":
         return RUNNING

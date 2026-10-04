@@ -46,3 +46,20 @@ def test_a_farm_marked_a_long_way_round_is_not_planned_for_again():
     a.reflex_rest["unreach:" + farm.id] = w.tick + 240
     plan = Instinct()._survive(w, a, random.Random(1))
     assert plan and plan["goal"] != "harvest the farm", plan
+
+
+def test_after_one_farm_proves_a_long_way_round_the_plan_leaves_farms_alone_a_while():
+    # one at a time a chit tried every farm of a cluster across the water (tools/harness, seed 42)
+    from chits.sim import actions as A
+    w, a = _world()
+    farms = [_build(w, a, "farm", dx) for dx in (4, 7)]
+    for f in farms:
+        f.planted, f.growth = True, 1.0
+    assert Instinct()._survive(w, a, random.Random(1))["goal"] == "harvest the farm"
+    a.reflex_rest["unreach:" + farms[0].id] = w.tick + 240
+    a.reflex_rest["unreach:farms"] = w.tick + A.FARM_RETRY  # what the harvest step sets on a long way round
+    plan = Instinct()._survive(w, a, random.Random(1))
+    assert plan and plan["goal"] != "harvest the farm", plan
+    w.tick += A.FARM_RETRY + 1  # a while later the farms are worth a look again
+    a.reflex_rest.pop("unreach:" + farms[0].id)
+    assert Instinct()._survive(w, a, random.Random(1))["goal"] == "harvest the farm"
