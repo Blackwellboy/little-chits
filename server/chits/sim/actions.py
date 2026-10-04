@@ -231,6 +231,8 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
+FARM_RETRY = TICKS_PER_DAY // 4  # after one farm proves a long way round, a hungry chit's plan leaves farms alone this
+# long: one at a time it tried every farm of a cluster across the water, 9-14 times in a row (tools/harness, seed 42)
 STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False: as before, for the identity test)
 
 
@@ -451,6 +453,9 @@ def _stockpile_with(world, a: Agent, items, radius: int = 25):
 
 
 def _farm_ready(world, a: Agent):
+    if STARVING_FETCH and a.reflex_rest.get("unreach:farms", 0) > world.tick:
+        return None  # a farm just proved a long way round: the ones beside it likely are too (FARM_RETRY), for the
+        # hunger plan and the starvation reflex alike (Codex, #92)
     for st in world.structures_near(a.x, a.y, 30, "farm"):
         if st.functional and st.planted and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick:
             return st
@@ -586,7 +591,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
         n = min(world.res_amt[i], max(1, int(round(power))))
         world.res_amt[i] -= n
         world.dirty_res.add(i)
-        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y):
+        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y, a):
             a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
         if kind == "wood" and n and BLD.sawn(world, a.x, a.y):
             n *= 2  # (the sawmill cuts each log into twice the wood: the forest isn't felled any faster)
@@ -1004,12 +1009,19 @@ WORK_REACH = STATION_REACH  # how far a chit goes to reach a station it was aske
 # raw materials a shift never takes the stores below: builders and experimenters need them too (without it pots and
 # tablets emptied the stores of clay by day 25, where 30 or more lay in them without shifts)
 SEED_PLENTY = 60  # seeds the stores near a picker hold before it stops keeping the pips from berries
+PLENTY = False  # read what the village already holds before fetching more (issue #7, brain/surplus.py): off until the
+# seed-24 starvation in its 24-seed A/B is understood (docs/FIXES_2026-09-30.md, F33); off runs as before F33
 
 
-def seeds_plenty(world, x: int, y: int) -> bool:
+def seeds_plenty(world, x: int, y: int, a: Optional[Agent] = None) -> bool:
     """The stores here hold all the seed anyone will sow. Berry pips were the only seeds that never got used up:
-    one live world held 20,311 seeds by day 2,900, 62% of everything in its stores (issue #7)."""
-    return sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY
+    one live world held 20,311 seeds by day 2,900, 62% of everything in its stores (issue #7). For a picker `a`,
+    the stores around its home count too: berries are picked a long walk from the stores, where there never is any
+    seed, and the pips were carried home to villages that held 200."""
+    if sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY:
+        return True
+    home = world.structures.get(a.home or "") if a is not None and PLENTY else None
+    return home is not None and sum(p.storage.get("seeds", 0) for p in village_stores(world, home.x, home.y, 30)) >= SEED_PLENTY
 
 
 KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 4, "iron_ore": 4}
@@ -3144,6 +3156,8 @@ def _do_harvest(world, a: Agent, step, s) -> str:
         return "couldn't reach the farm"
     if mv == "moving" and _long_way(a, s, st.x, st.y):
         a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY
+        if STARVING_FETCH:  # the farms beside it are likely the same long way: forage a while (see FARM_RETRY)
+            a.reflex_rest["unreach:farms"] = world.tick + FARM_RETRY
         return "that farm is a long way round on foot"
     if mv != "arrived":
         return RUNNING

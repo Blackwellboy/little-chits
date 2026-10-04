@@ -32,24 +32,25 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**140** occurrences in 20 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**141** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
 |---|---|---|
 | `app.py` | 1 | 167 |
-| `brain/builder.py` | 11 | 63, 70, 82, 102, 103, 144, 333, 346, 352, 405, 412 |
-| `brain/civic.py` | 5 | 58, 67, 113, 173, 382 |
-| `brain/instinct.py` | 21 | 546, 556, 581, 648, 670, 688, 702, 703, 711, 719, 730, 794, 795, 831, 878, 895, 998, 1004, 1035 |
+| `brain/builder.py` | 11 | 64, 71, 83, 103, 104, 145, 331, 344, 350, 404, 411 |
+| `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
+| `brain/instinct.py` | 21 | 568, 578, 607, 674, 696, 714, 728, 729, 737, 745, 756, 823, 824, 860, 907, 924, 1032, 1038, 1069 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 8 | 366, 381, 382, 456, 687, 705 |
+| `brain/prompt.py` | 8 | 367, 382, 383, 457, 688, 706 |
+| `brain/surplus.py` | 1 | 137 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 482, 564 |
 | `runtime.py` | 1 | 1052 |
-| `sim/actions.py` | 29 | 614, 801, 1059, 1153, 1273, 1307, 1308, 1330, 1349, 1596, 1952, 2149, 2172, 2200, 2202, 2204, 2206, 2218, 2239, 2298, 2328, 2700, 2702, 2857, 2861, 3244 |
+| `sim/actions.py` | 29 | 619, 806, 1071, 1165, 1285, 1319, 1320, 1342, 1361, 1608, 1964, 2170, 2193, 2221, 2223, 2225, 2227, 2239, 2260, 2319, 2349, 2721, 2723, 2878, 2882, 3267 |
 | `sim/agent.py` | 1 | 373 |
-| `sim/buildings.py` | 21 | 176, 177, 193, 206, 212, 213, 215, 267, 268, 280, 282, 287, 289, 291, 362, 376, 389, 514, 955, 956, 1052 |
+| `sim/buildings.py` | 21 | 183, 184, 200, 213, 219, 220, 222, 274, 275, 287, 289, 294, 296, 298, 369, 383, 396, 521, 962, 963, 1059 |
 | `sim/hall.py` | 1 | 30 |
 | `sim/projects.py` | 15 | 245, 416, 523, 536, 646, 670, 679, 683, 685, 940, 985, 995, 999, 1006, 1057 |
 | `sim/wants.py` | 1 | 89 |
