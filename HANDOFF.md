@@ -40,46 +40,67 @@ been merged. The `wip/*` branches on the remote stay as history; nothing on them
 Continue from `origin/main`. (Until 2026-09-30 this said `claude/dazzling-dijkstra-5nv6xh` at `d386a1d` and "never
 `main`": that was before v2 merged. It no longer applies.)
 
-## Work in flight (updated 2026-10-04)
+## Work in flight (updated 2026-10-05)
 
 This section lets anyone, person or agent, pick up the current queue from GitHub alone. Update it in the same PR as any change that moves the queue.
 
-**Merged on 2026-10-04:**
+**Merged on 2026-10-04 and 05:**
 
 | PR | What |
 |---|---|
 | #82 | Wanderer floor for held worlds |
-| #83 | Loop guard: a thing a world cannot name no longer stops it |
+| #83 | Loop guard |
 | #84 | Fast settlement detection |
 | #85 | Invention engine, F34 |
+| #87 | This section |
+| #88 | Two starvation bugs: the hunger plan chose stores the eat step had given up on, and food fetches nothing interrupted. Switches `instinct.HUNGER_REACH`, `actions.STARVING_FETCH` |
+| #89 | A chit's needs are said in words just before its options when a model chooses ("You are starving ... Eat now.") |
+| #90 | `tools/harness/`: runs and A/Bs that report preventable deaths, stuck chits with autopsies, and a count for every mechanism |
+| #91 | A chit with no room in its hands is not offered a stockpile it must first fetch for |
+| #92 | After one farm proves a long way round, a hungry chit leaves farms alone for `FARM_RETRY` |
+| #93 | Hoarding, F33: ceilings per good and sinks. **Switched off** (`actions.PLENTY = False`) |
+| #94 | A real use for every item, F35. **Switched off** (`items.ITEM_USES = False`) |
+| #96 | An eat step keeps to the store it set out for. It flipped between two stores on either side of a ridge: 74 starved on one seed |
 
 #86 was closed because it made a test opt-in, which AGENTS.md forbids.
 
-**Open, in merge order:**
+**Open:**
 
 | Item | What | What it still needs |
 |---|---|---|
-| PR #88 (`dev/hunger-unreach`) | Two starvation bugs on main: the hunger plan chose stores the eat step had given up on; a food-fetch reflex was never interrupted. Switches `instinct.HUNGER_REACH`, `actions.STARVING_FETCH`. A/B: discoveries 71.8 > 74.1 and 75.0 > 74.4, starvation even. | CI, Codex, merge |
-| `dev/harness` | `tools/harness/`: per-seed runs and A/Bs, with preventable deaths, stuck chits, autopsies and fired counters for every mechanism | PR |
-| `dev/zones` | Ten building dead zones (reuse only within reach), town-only buildings, #78 note. Switch `builder.NEED_SITING` | Merge main, 24-seed A/B with the harness, PR |
-| `dev/hoard` | Hoarding, F33 / issue #7: a ceiling per good, sinks. Switch `actions.PLENTY` | The same |
-| `dev/items` | A real use for every item, F35. Switch `items.ITEM_USES` | The same |
-| `dev/rng-streams` | A separate random stream per system, to cut A/B noise | Being built |
+| PR #95 (`dev/zones`) | Building dead zones and town rank, **switched off** (`buildings.NEED_SITING`, `buildings.TOWN_GATE`), plus the Knowledge return position | Codex's second P2 (apply `_within` before joining an unfinished site), merge main, merge |
+| `dev/rng-streams` (local only, `~/projects/lc-rng` on the main PC) | A separate random stream per system, to cut A/B noise | Stopped partway. Restart it |
 
-**Found and not yet fixed:**
+**Switching the features on.** Each switched-off feature needs a 24-seed harness A/B with its switch on, against the main of the day, and has to clear the bar below. Then a one-line PR turns it on. A/B results so far, all against main before the latest fixes:
 
-- **The model choice prompt hides the chit's body.** On a decision bench of the game's own one-letter choices (216 items), every model tested chose at about chance when the right answer was obvious. Gemma 4 12B picked "experiment" over "eat" at 96% for a chit at hunger 4 with food in hand. The scene shows needs as `Hunger 4 energy 66 ...`, and "hunger" is a fullness meter, so "hunger 4" reads as barely hungry. Putting the needs in plain words just before the options ("You are starving: your belly is nearly empty (fullness 4 of 100). Eat now.") took eat and sleep accuracy from about 20% to 99-100% for Gemma 4 12B, JevK5 4B and Ornith 35B. Next: make this change in `brain/prompt.py`.
-- **Sheltering and sleeping give way to food only below hunger 8** (every other step: below 16). This starved two chits on seed 42 with the #88 fixes. Raising it to 16 was tried and reverted: it cost 0.5 era and starved more. It needs a narrower fix.
-- **A stuck loop.** The harness found a chit that failed to pick up wood 56 times in a row with full hands while building a stockpile (seed 7, day 27).
-- **Tools are never mended.** Tools break, but no chit mended or smelted one in four 60-day instinct runs.
+| Feature | Discoveries, usual / fresh | Starvation | Blocker |
+|---|---|---|---|
+| Hoarding (F33) | 74.1 > 76.3 / 74.4 > 73.8; era +0.4 / +0.2 | seed 24: 0 > 6 | Six chits walked to a store 18-29 tiles off at hunger 0 |
+| Items (F35) | 74.1 > 72.8 / 74.4 > 71.4 | +1 on two seeds | Slightly negative |
+| Zones | 74.1 > 70.3 / 74.4 > 67.0 | seed 2: 74 | Caused by the eat-step flip; #96 fixed it. Re-run |
+
+**Found and not yet fixed.** Every starvation found so far has one root: a chit lets hunger run too low before it acts, then can't make the walk. A single proper fix is worth more than more patches.
+
+- Sheltering, warming up and sleeping give way to food only below hunger 8, while every other step gives way below 16. Raising them to 16 was tried and reverted: it cost 0.5 era and starved more.
+- A harvest step counts as already fetching food, so the hunger reflex never interrupts it. A chit at hunger 10 with a store 8 tiles off walked 20 tiles to an unripe farm and starved (seed 27).
+- Chits start long walks (20-30 tiles) to a store at hunger 0.
+- Tools break but are never mended or smelted. In instinct-only worlds invention, barter, voyages, fights and theft never fire.
+
+**Models.** Use the decision bench (`tools/decbench.py`) for prompt and model questions: about 2 minutes per model, against hours for an A/B. In-game versus runs (same culture, 22-25 days, 3 seeds):
+
+| Model | Mean discoveries | Seconds per choice |
+|---|---|---|
+| JevK5 9B (`alibiserikbay/JevK5-GGUF`, Q8_0) | 48.7 | 0.25 |
+| Gemma 4 12B Q4_K_M | 32.3 | 0.41 |
+
+Population was similar. JevK5 9B makes about twice the decisions. Winnow 12B and JevK5 4B were benched too.
 
 **How to judge a change:**
 
-- Run the harness A/B (`tools/harness/`) against a worktree at current `origin/main`.
-- Use 60 days on two seed sets: the usual `42 7 99 1 2 3 4 5 6 11 12 13` (it flatters the base) and the fresh `21-32`. Add the 256 map on seeds 1 2 3 7.
-- The bar: no seed starves more than on main without an explanation from the autopsy, and discoveries, era and population are about even or better.
-- A change that alters a one-village world gets a module switch, which `tests/identity_runner.py` turns off (precedent: `projects.MAKE_FIRST`). A test must fail if the switch does nothing.
-- A branch whose A/B isn't settled can merge with its switch off.
+- Run `python tools/harness/ab.py BASE NEW --seeds "..." --days 60 --label NAME`, with BASE a worktree at current `origin/main`. Use two seed sets, the usual `42 7 99 1 2 3 4 5 6 11 12 13` (it flatters the base) and the fresh `21-32`. Add `--size 256` on seeds 1 2 3 7.
+- The bar: no seed starves more than on main without an explanation from the autopsy (`harness-out/LABEL/SEED-new.txt`), and discoveries, era and population are about even or better. Per-seed swings of 10-30 discoveries both ways are normal noise when a change alters a seed's history.
+- A change that alters a one-village world gets a module switch, which `tests/identity_runner.py` turns off. Precedent: `projects.MAKE_FIRST`. A test must fail if the switch does nothing.
+- A branch whose A/B isn't settled merges with its switch off. It must be shown identical to main on a few seeds with the harness.
 
 **Gates.** Keep pytest's exit status. A plain `| tail` once hid a failure:
 
@@ -90,15 +111,15 @@ python -m pytest tests plan/acceptance -q > /tmp/suite.txt 2>&1; s=$?; tail -1 /
 **Traps that bit us:**
 
 - `git stash` is shared between worktrees.
-- An A/B base must be at current `origin/main`. One A/B ran against an old commit, and its gain was meaningless.
-- A seed can sit on a knife edge: one single-revert variant starved 40 chits on one seed. Judge on 24 seeds.
+- An A/B base must be at current `origin/main`.
+- `docs/INVENTION_STRUCTURES.md` counts every `DESIGNS[` site, file by file. After a merge, regenerate its table from the code, or `test_inventions_cannot_be_buildings...` fails.
 - The loop-guard tests wait for `paused`, not `loop_error`.
 
 **Open decisions for the owner:**
 
+- Swap the RTX 5090 model to JevK5 9B (another service on the PC shares that server), and start a new game. The 2026-10-04 single-world game died out of old age at about day 161.
 - Dual-GPU strict comparison (issue #13).
 - Restoring the archived long-running worlds.
-- Which decision model to use. JevK5 4B is 2.5x faster than Gemma 4 12B, with similar agreement with a 35B reference. JevK5 9B and Winnow 12B are being benched.
 - Live-UI checks still owed: skip ahead, save and load, pack picker, recording meter, Docker Desktop.
 
 ## Continuation job
