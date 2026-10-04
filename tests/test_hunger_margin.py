@@ -135,6 +135,28 @@ def test_a_starving_chit_picking_berries_eats_the_one_in_hand_and_picks_on():
     assert a.plan == [{"do": "eat", "_reflex": True}, fetch]
 
 
+def test_a_harvest_naming_a_far_farm_is_judged_by_that_farm_not_a_nearer_one():
+    # the margin and the "already fetching food" exemption looked at the nearest ripe farm, while the step walked to
+    # the far one it named (Codex, #100)
+    w, (a, _) = village()
+    w.nearest_resource = lambda *args, **kw: None
+    w.piles_near = lambda *args, **kw: []
+    near = put(w, "farm", a, radius=4)
+    far = put(w, "farm", a, near=(a.x + 22, a.y))
+    for f in (near, far):
+        f.planted, f.growth = True, 1.0
+    assert A._farm_ready(w, a) is near and far.dist(a.x, a.y) >= 16
+    for hunger in (12.0, 18.0):  # below 16; and above it, short only for the walk to the far farm
+        a.hunger = hunger
+        a.plan = [{"do": "harvest", "target": far.id}]
+        A.reflexes(w, a)
+        assert a.plan[0] == {"do": "harvest", "target": near.id, "_reflex": True}, hunger
+        assert a.plan[1]["target"] == far.id
+    a.plan = [{"do": "harvest", "target": near.id}]  # the near one named: harvesting it is the fetch
+    A.reflexes(w, a)
+    assert len(a.plan) == 1 and a.plan[0]["target"] == near.id and not a.plan[0].get("_reflex")
+
+
 def test_an_eat_step_takes_food_from_a_store_it_passes_once():
     # kept to the store it set out for, 30 tiles round a lake, a child walked by a store 2 tiles off with 114 food in
     # it and starved a few tiles short of the first (seed 42)

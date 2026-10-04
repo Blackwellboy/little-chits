@@ -373,22 +373,43 @@ def _margin_short(world, a: Agent, head: Dict[str, Any]) -> bool:
     if not HUNGER_MARGIN or a.hunger >= MARGIN_FROM:
         return False
     near = _nearest_food(world, a, head.setdefault("_s", {}))
-    if near is None:
+    farm = _harvest_target(world, head)
+    if farm is not None:
+        d = _crow(a, *farm.center())  # a harvest of a named farm walks there, not to the nearest food (Codex, #100)
+    elif near is None:
         return False  # no food known: the margin can't say, and a walk to nowhere is no help
+    else:
+        d = near[0]
     left = (a.hunger + sum(world.item(f).food * a.inventory[f] for f in food_items(a))) / HUNGER_PER_TICK
-    return left < FOOD_SAFETY * near[0] * WALK_COST / _speed(world, a) + FOOD_SLACK
+    return left < FOOD_SAFETY * d * WALK_COST / _speed(world, a) + FOOD_SLACK
+
+
+def _crow(a: Agent, x: int, y: int) -> int:
+    return max(abs(x - a.x), abs(y - a.y))
+
+
+def _harvest_target(world, head: Dict[str, Any]):
+    """The farm a harvest step names by id, if it names one."""
+    if head.get("do") != "harvest" or not head.get("target"):
+        return None
+    st = world.structures.get(str(head["target"]))
+    return st if st is not None and st.design == "farm" else None
 
 
 def _far_harvest(world, a: Agent, head: Dict[str, Any]) -> bool:
     """A hungry chit's harvest step is no fetch of food when it has turned to sowing an unripe or empty farm, or when
     other food is nearer than any ripe farm: one at hunger 10 walked 20 tiles to an unripe farm with a store 8 tiles
-    off, sowed it and starved on the way back (tools/harness, seed 27)."""
+    off, sowed it and starved on the way back (tools/harness, seed 27). A step naming its farm is judged by that farm:
+    a ripe farm nearby doesn't make a walk to a far one a fetch of food."""
     if not HUNGER_MARGIN:
         return False
     s = head.setdefault("_s", {})
     if s.get("redirect"):
         return True
     near = _nearest_food(world, a, s)
+    farm = _harvest_target(world, head)
+    if farm is not None:
+        return near is not None and near[0] < _crow(a, *farm.center())
     return near is not None and near[1] != "harvest"
 
 
