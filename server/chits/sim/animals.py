@@ -175,7 +175,7 @@ def weapon_odds(world, o) -> float:
     held = o.best_tool("weapon")
     if not held:
         return WEAPON_ODDS["spear"]
-    d = ((world.inventions.get(held) or {}).get("effect") or {}).get("defence") if world.inventions else None
+    d = ((world.invention(held) or {}).get("effect") or {}).get("defence") if world.catalog.items else None
     return float(d) if d and 0.0 < d < 1.0 else WEAPON_ODDS["weapon"]
 
 

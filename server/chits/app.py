@@ -201,7 +201,7 @@ def inventions():
     for w in R().worlds.values():
         out[w.id] = [{**inv, "day": inv.get("tick", 0) // 240 + 1, "does": effect_words(inv.get("effect")),
                       "knowers": sum(1 for a in w.agents.values() if f"recipe:{inv['key']}" in a.knows)}
-                     for inv in w.inventions.values()]
+                     for inv in list(w.inventions.values()) + list(w.foreign.values())]
     return out
 
 

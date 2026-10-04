@@ -386,7 +386,8 @@ def scene(world, a: Agent) -> str:
     lines.append("")
     lines.append("YOU KNOW HOW TO MAKE: " + ("; ".join(recipes) if recipes else "nothing yet — experiment!"))
     lines.append("YOU KNOW HOW TO BUILD: " + "; ".join(designs))
-    mine = [inv for k, inv in getattr(world, "inventions", {}).items() if f"recipe:{k}" in a.knows][:6]
+    mine = [inv for known in (getattr(world, "inventions", {}), getattr(world, "foreign", {}))  # (its own world's, and
+            for k, inv in known.items() if f"recipe:{k}" in a.knows][:6]  # what it brought over the sea)
     if mine:
         lines.append("- Inventions you know: " + "; ".join(
             f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}{' at a ' + inv['station'] if inv.get('station') else ''}, for {inv['purpose']}{_does(inv)})"

@@ -115,7 +115,7 @@ def foods_of(world) -> Tuple[str, ...]:
 def kept_in_hand(world, key: str) -> int:
     """How many of these stay with the chit when it puts its load down: a bite of food, and one of an invention that
     does something while carried (a coat, a remedy, a hoe). Tools and containers are never part of the load."""
-    if world.inventions and world.invention_carried(key):
+    if world.catalog.items and world.invention_carried(key):
         return 1
     return 2 if is_food(key, world.catalog) else 0
 
@@ -124,7 +124,7 @@ def metal_of(world, tool: Optional[str]) -> Optional[str]:
     """The metal in a metal tool: a base tool's (METAL_OF), or an invented tool's own (invent.METALS)."""
     if tool in METAL_OF:
         return METAL_OF[tool]
-    inv = world.inventions.get(tool) if world.inventions and tool else None
+    inv = world.invention(tool) if world.catalog.items and tool else None
     if inv is None or not (it := world.item(tool)) or not it.tool:
         return None
     from .invent import invention_metal
@@ -290,7 +290,7 @@ def _reflexes(world, a: Agent) -> None:
             a.plan.insert(0, {"do": "store", "what": "all", "target": pile.id, "_reflex": True})
         else:
             junk = max((k for k in a.inventory if a.inventory[k] > 0 and not world.item(k).tool and not world.item(k).carry_bonus
-                        and k not in FOODS and not (world.inventions and (world.invention_carried(k) or world.item(k).food))),
+                        and k not in FOODS and not (world.catalog.items and (world.invention_carried(k) or world.item(k).food))),
                        key=lambda k: a.inventory[k], default=None)
             if junk:
                 a.plan.insert(0, {"do": "drop", "what": junk, "qty": max(1, a.inventory[junk] // 2), "_reflex": True})
@@ -349,7 +349,7 @@ def _food_reflex(world, a: Agent) -> Dict[str, Any]:
 
 def _speed(world, a: Agent) -> float:
     sp = 0.55
-    if world.inventions and (boost := world.invention_effect(a, "speed")):
+    if world.catalog.items and (boost := world.invention_effect(a, "speed")):
         sp *= boost  # shoes, a sledge: an invention for speed, as fast as what it is made of (invent.py)
     if a.is_child(world.tick):
         sp *= 0.8
@@ -642,7 +642,7 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
     from . import artifacts as ART
 
     order = ["stone", "sand", "wood", "clay", "fiber", "ore", "iron_ore", "seeds"]
-    kept = (lambda k: world.invention_carried(k)) if world.inventions else (lambda k: False)  # a coat, a hoe: like a tool
+    kept = (lambda k: world.invention_carried(k)) if world.catalog.items else (lambda k: False)  # a coat, a hoe: like a tool
     order += sorted((k for k, n in a.inventory.items() if k not in order and k not in FOODS and (it := world.item(k))
                      and not it.tool and not it.carry_bonus and not it.food and not ART.is_artifact(k) and not kept(k)),
                     key=lambda k: (-a.inventory[k], k))
@@ -664,7 +664,7 @@ WEAR_PLAIN, WEAR_METAL = 60, 140  # uses before a tool of stone or wood breaks, 
 def tool_wear_limit(tool: str, world=None) -> int:
     """How many uses a tool lasts. With `world`, an invented tool lasts as long as what it is made of (without it, as
     before, every invention counted as metal: a net of fiber and wood outlasted two stone axes)."""
-    if world is not None and world.inventions and tool in world.inventions:
+    if world is not None and world.catalog.items and world.invention(tool) is not None:
         return WEAR_METAL if metal_of(world, tool) else WEAR_PLAIN
     return WEAR_PLAIN if tool.startswith("stone") or tool == "spear" else WEAR_METAL
 
@@ -1608,9 +1608,10 @@ def _do_invent(world, a: Agent, step, s) -> str:
     if not ok:
         a.remember(world.tick, f"I tried to invent a {name} from {combo}: {feedback}", 3, "experiment")
         return feedback
-    # (not one brought from over the sea: that is its carrier's knowledge, and nobody here has had "the same idea")
+    # (one of this world's own: one brought from over the sea is its carrier's knowledge, in world.foreign, and nobody
+    # here has had "the same idea")
     same = next((k for k, inv in world.inventions.items() if inv["purpose"] == pid and inv["inputs"] == bag
-                 and not inv.get("from") and inv.get("station") == v["station"]), None)
+                 and inv.get("station") == v["station"]), None)
     for k, n in bag.items():
         a.remove(k, n)
     if same is not None:
@@ -3118,7 +3119,7 @@ def _do_harvest(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("farming"), 8.0):
         return RUNNING
     # a world-specific farming invention: as much more grain as what it is made of gives (invent.FARMING_GRAIN)
-    bonus = int(world.invention_effect(a, "farming")) if world.inventions else 0
+    bonus = int(world.invention_effect(a, "farming")) if world.catalog.items else 0
     grain_yield = (12 if a.has("plough") else 6) + bonus
     g = a.add("grain", grain_yield)
     if a.has("plough"):

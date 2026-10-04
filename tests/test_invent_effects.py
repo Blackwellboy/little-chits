@@ -228,7 +228,9 @@ def test_an_invention_carried_over_the_sea_works_and_is_known_by_name_there():
     wa.depart(a)
     out = wa.outbox.pop()
     there = wb.arrive(out["agent"], "A", "A", out["inventions"])
-    assert clogs in wb.inventions and wb.inventions[clogs]["from"] == "A" and "from" not in wa.inventions[clogs]
+    # known there as a thing from over the sea (world.foreign), never as one of that world's own inventions
+    assert wb.foreign[clogs]["from"] == "A" and clogs not in wb.inventions and "from" not in wa.inventions[clogs]
+    assert wb.invention(clogs)["name"] == "Clogs" and "foreign" not in wa.to_dict() and not wa.foreign
     assert clogs not in ITEMS and clogs not in RECIPES
     bare = A._speed(wb, b)
     assert wb.invention_effect(there, "speed") > 1 and A._speed(wb, there) > bare
@@ -247,13 +249,18 @@ def test_an_invention_carried_over_the_sea_works_and_is_known_by_name_there():
     assert own != clogs and own.startswith("inv_b_") and not wb.inventions[own].get("from")
     # it is in the save, and the observer's entry says where it came from and what it does
     w2 = World.from_dict(json.loads(json.dumps(wb.to_dict())))
-    assert w2.inventions[clogs]["from"] == "A" and w2.item(clogs).name == "Clogs"
+    assert w2.foreign[clogs]["from"] == "A" and w2.item(clogs).name == "Clogs" and clogs not in w2.inventions
+    carrier = next(c for c in w2.agents.values() if c.inventory.get(clogs))
+    assert w2.invention_effect(carrier, "speed") > 1  # it still works after a restart
     from chits import views
 
     e = views.encyclopedia(wb, f"recipe:{clogs}")
     assert e["invention"]["from"] == "A" and any("15% faster" in line for line in e["effects"]), e["effects"]
     assert "from" not in views.encyclopedia(wb, f"recipe:{own}")["invention"]
-    assert "walks 15% faster" in "; ".join(INV.effect_words(wb.inventions[clogs]["effect"]))
+    assert "walks 15% faster" in "; ".join(INV.effect_words(wb.foreign[clogs]["effect"]))
+    # carried onward (or home again), it travels with whoever holds or knows it
+    wb.depart(there)
+    assert clogs in wb.outbox[-1]["inventions"]
     # and the island it came from never hears of what was made here
     assert wa.item(own) is None
 

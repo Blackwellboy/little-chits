@@ -238,7 +238,7 @@ def _effects(w: World, key: str) -> List[str]:
         out.append("Wearable: a chit can wear it.")
     if key in ACTION_USES:
         out.append(f"Use: {ACTION_USES[key]}.")
-    inv = w.inventions.get(key)
+    inv = w.invention(key)
     if inv is not None:  # what an invention does while it is carried, with its strength (F34)
         from .sim.invent import CARRIED_EFFECTS, effect_words
 
@@ -271,7 +271,7 @@ def encyclopedia(w: World, k: str) -> Optional[Dict[str, Any]]:
         it, r = w.item(key), w.recipe(key)
         if it is None or r is None:
             return None
-        inv = w.inventions.get(key)
+        inv = w.invention(key)
         in_recipes = [rk for rk, rr in recipes.items() if any(i == key for i, _ in rr.inputs)]
         in_designs = [dk for dk, d in DESIGNS.items() if key in d.material_map]
         known_r = [rk for rk in in_recipes if discovered(w, f"recipe:{rk}")]

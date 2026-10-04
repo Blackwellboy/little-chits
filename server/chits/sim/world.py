@@ -266,6 +266,10 @@ class World:
         if pack is not None:
             self.apply_pack(pack)
         self.inventions: Dict[str, Dict[str, Any]] = {}
+        # another world's inventions that came here over the sea with a chit: this world's catalogue knows them, they
+        # do here what they did at home, and they are saved (World.adopt_foreign). Never mixed into `inventions`:
+        # those are what this world thought of itself.
+        self.foreign: Dict[str, Dict[str, Any]] = {}
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
@@ -352,20 +356,42 @@ class World:
         packs.apply(self.catalog, self.pack)
 
     def invention_by_name(self, text: Any) -> Optional[str]:
-        """An invention of this world, by key or by its local name (case-insensitive)."""
+        """An invention of this world, by key or by its local name (case-insensitive); then one that came here over
+        the sea (F34: its carrier could not make, teach or write it by name)."""
         if not text:
             return None
         s = str(text).strip()
-        if s in self.inventions:
+        if s in self.inventions or s in self.foreign:
             return s
         low = s.lower()
         for p in ("a ", "an ", "the "):
             if low.startswith(p) and low[len(p):]:
                 low = low[len(p):]
-        for k, inv in self.inventions.items():
-            if inv["name"].lower() == low:
-                return k
+        for known in (self.inventions, self.foreign):
+            for k, inv in known.items():
+                if inv["name"].lower() == low:
+                    return k
         return None
+
+    def invention(self, key: Any) -> Optional[Dict[str, Any]]:
+        """The record of an invention known here: this world's own, or one that came over the sea."""
+        if not isinstance(key, str):
+            return None
+        return self.inventions.get(key) or self.foreign.get(key)
+
+    def adopt_foreign(self, key: str, inv: Dict[str, Any], from_world: str = "") -> None:
+        """Another world's invention, here with a chit: this world's catalogue knows the thing and remembers it across
+        a restart, with everything that makes it work here as it did at home (what it does and how strongly, the
+        station it needs) and where it came from. It is the carrier's knowledge: nobody here knows how to make it
+        until taught, and it is not one of this world's own inventions."""
+        from .invent import register_invention
+
+        rec = {"key": key, "name": inv["name"], "inputs": dict(inv["inputs"]), "props": list(inv.get("props") or ()),
+               "effect": dict(inv.get("effect") or {}), "purpose": inv.get("purpose", ""),
+               "purpose_text": inv.get("purpose_text", ""), "station": inv.get("station"), "rule": inv.get("rule"),
+               "by_name": inv.get("by_name", ""), "tick": inv.get("tick", 0), "from": inv.get("from") or from_world}
+        register_invention(self, key, rec["name"], rec["inputs"], tuple(rec["props"]), rec["effect"], rec["station"])
+        self.foreign[key] = rec
 
     def norm_item(self, raw: Any) -> Optional[str]:
         """Free text -> an item key: this world's inventions, then its local names for things ("stoneaxe"
@@ -397,7 +423,7 @@ class World:
             a.homeland = self.id
         if not a.origin:  # sailing from its own land: its home waits for it
             a.voyage_home, a.home_id = a.home or "", a.id
-        carried = {k: self.inventions[k] for k in self.inventions
+        carried = {k: inv for known in (self.inventions, self.foreign) for k, inv in known.items()
                    if a.inventory.get(k) or f"recipe:{k}" in a.knows}
         self.outbox.append({"agent": a.to_dict(), "from": self.id, "arrive_tick": self.tick + BLD.voyage_ticks(self),
                             "inventions": carried})
@@ -409,13 +435,7 @@ class World:
 
         for key, inv in (inventions or {}).items():  # foreign inventions travel with the chit
             if self.catalog.item(key) is None:
-                register_invention(self, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()),
-                                   inv.get("effect") or {}, inv.get("station"))
-            if key not in self.inventions and key.startswith("inv_"):
-                # ...and are known here as what they are (F34): in the catalogue alone the thing had no effect abroad
-                # (a coat that didn't warm) and could not be made, taught or written by its name. It is this chit's own
-                # knowledge carried over the sea, marked with where it came from; nobody here knows it until taught.
-                self.inventions[key] = {**inv, "key": key, "from": inv.get("from") or from_world_id}
+                self.adopt_foreign(key, inv, from_world_id)
         a = Agent.from_dict(agent_dict)
         home_again = getattr(a, "homeland", "") == self.id
         if home_again and a.home_id and a.home_id not in self.agents and a.home_id not in self.dead:
@@ -772,7 +792,7 @@ class World:
         the best one counts, and 0 means it carries none. (It was a yes or no, so every magnitude was lost.)"""
         from .invent import LOWER_IS_BETTER
 
-        vals = [float(v) for k, inv in self.inventions.items()
+        vals = [float(v) for known in (self.inventions, self.foreign) for k, inv in known.items()
                 if a.inventory.get(k, 0) > 0 and (v := (inv.get("effect") or {}).get(kind))]
         if not vals:
             return 0.0
@@ -783,7 +803,7 @@ class World:
         in hand like a tool: not stored with the load, not dropped as junk."""
         from .invent import carried_effect
 
-        inv = self.inventions.get(key) if self.inventions else None
+        inv = self.invention(key) if self.catalog.items else None
         return inv is not None and carried_effect(inv)
 
     # ------------------------------------------------------------------ time
@@ -1717,7 +1737,7 @@ class World:
             a.energy -= 0.2
         sheltered = self.in_home(a)
         warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO)) or a.best_tool("light")
-        cloak = (self.invention_effect(a, "warmth") if self.inventions else 0.0) or 1.0  # (the share of the cold let through)
+        cloak = (self.invention_effect(a, "warmth") if self.catalog.items else 0.0) or 1.0  # (the share of the cold let through)
         if cloak > 0.5 and any(n > 0 and (it := self.item(k)) and "wearable" in it.props and "warm" in it.props
                                 for k, n in a.inventory.items()):
             cloak = 0.5  # a warm thing to wear (T31)
@@ -1748,14 +1768,14 @@ class World:
         if dmg:
             a.health -= dmg
         elif a.hunger > 40 and a.warmth > 40:
-            heal = 0.08 + (HEAL_PER_STRENGTH * self.invention_effect(a, "heal") if self.inventions else 0.0)  # a remedy
+            heal = 0.08 + (HEAL_PER_STRENGTH * self.invention_effect(a, "heal") if self.catalog.items else 0.0)  # a remedy
             a.health = min(100.0, a.health + heal * BLD.heal_mult(self, a))  # (a healer's house nearby)
         # mood: comfort + monuments + company
         target = (a.hunger + a.energy + a.warmth) / 3.0
         if (a.y * self.w + a.x) in self._zones()[1]:
             target += 15
         a.mood += (target - a.mood) * 0.01
-        if self.inventions and (joy := self.invention_effect(a, "mood")):
+        if self.catalog.items and (joy := self.invention_effect(a, "mood")):
             a.mood = max(0.0, min(100.0, a.mood + MOOD_PER_POINT * joy))
         if a.health <= 0:
             self.kill(a, causes[0] if causes else "illness")
@@ -1951,6 +1971,8 @@ class World:
             d["pack"] = self.pack
         if self.cap:  # (likewise)
             d["cap"] = self.cap
+        if self.foreign:  # (likewise)
+            d["foreign"] = self.foreign
         return d
 
     def _to_dict(self) -> Dict[str, Any]:
@@ -2049,6 +2071,9 @@ class World:
             # it was, needing no station and with the numbers it had)
             register_invention(w, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {},
                                inv.get("station"))
+        w.foreign = {}
+        for key, inv in (d.get("foreign") or {}).items():  # ...and the ones that came over the sea
+            w.adopt_foreign(key, inv)
         w.signs = dict(d.get("signs") or {})
         w.weather = d.get("weather", "clear")
         w.settlements = dict(d.get("settlements") or {})
