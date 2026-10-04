@@ -168,6 +168,17 @@ def attacks(world) -> None:
 WEAPON_ODDS = {"spear": 0.6, "weapon": 0.85}  # the chance a chit holding one drives a wolf off (armed friends add to it)
 
 
+def weapon_odds(world, o) -> float:
+    """The chance this armed chit drives a wolf off. An invented weapon is as good as what it is made of (its
+    "defence" number, invent.DEFENCE_ODDS: a club of wood and flint is no musket); one from before that number
+    meant anything (a bare 1) counts as any weapon did."""
+    held = o.best_tool("weapon")
+    if not held:
+        return WEAPON_ODDS["spear"]
+    d = ((world.invention(held) or {}).get("effect") or {}).get("defence") if world.catalog.items else None
+    return float(d) if d and 0.0 < d < 1.0 else WEAPON_ODDS["weapon"]
+
+
 def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
     """A chit with a spear (or anyone armed close by) fights back. Wolves bit 51 chits in World B, which carried
     40 spears and never used one. Driven off, the wolf flees and keeps its distance until morning."""
@@ -178,7 +189,7 @@ def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
         return False
     odds = 1.0
     for o in armed:
-        odds *= 1.0 - WEAPON_ODDS["weapon" if o.best_tool("weapon") else "spear"]
+        odds *= 1.0 - weapon_odds(world, o)
     if rng.random() >= 1.0 - odds:
         return False
     hero = min(armed, key=lambda o: max(abs(o.x - c.x), abs(o.y - c.y)))

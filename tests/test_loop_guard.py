@@ -100,8 +100,8 @@ def test_a_step_that_fails_pauses_the_game_and_says_why(env, monkeypatch):
             raise AttributeError("'NoneType' object has no attribute 'tool'")
 
         monkeypatch.setattr(r, "step_worlds", boom)
-        for _ in range(100):
-            if r.loop_error:
+        for _ in range(600):  # (the pause comes last, after the manifest is written: wait for it, not the error)
+            if r.paused:
                 break
             time.sleep(0.05)
         assert r.paused and "NoneType" in r.loop_error and calls["n"] == 1  # paused at once, not retried in a spin
@@ -130,8 +130,8 @@ def test_a_failed_step_ends_an_experiment_as_invalid_and_a_new_game_starts_clean
             raise RuntimeError("world B could not step")
 
         monkeypatch.setattr(r, "step_worlds", boom)
-        for _ in range(100):
-            if r.loop_error:
+        for _ in range(600):  # (the pause comes last, after the manifest is written: wait for it, not the error)
+            if r.paused:
                 break
             time.sleep(0.05)
         assert r.paused and "world B could not step" in r.invalid_reason
