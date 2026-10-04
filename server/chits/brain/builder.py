@@ -257,8 +257,14 @@ def need_spot(world, design: str, cx: int, cy: int, look: int, first: Optional[T
 
     if first is not None and not _reached(standing, first[0], first[1], radius) and reach(*first) >= least:
         return first
-    n, x, y = max((reach(*xy), -xy[0], -xy[1]) for xy, _ in lone)
-    return (-x, -y) if n >= least else None
+    # the places themselves, and halfway between any two near enough for one building to reach both (two children 12
+    # tiles apart are both within 8 of the middle, and of neither's place: Codex, #95)
+    spots = [(1, xy) for xy, _ in lone]
+    spots += [(0, ((p[0] + q[0]) // 2, (p[1] + q[1]) // 2)) for i, (p, _) in enumerate(lone) for q, _ in lone[i + 1:]
+              if radius < max(abs(p[0] - q[0]), abs(p[1] - q[1])) <= 2 * radius]
+    best = max(((reach(*xy), own, -xy[0], -xy[1]) for own, xy in spots
+                if own or not _reached(standing, xy[0], xy[1], radius)), default=(0, 0, 0, 0))
+    return (-best[2], -best[3]) if best[0] >= least else None
 
 
 def _dry_fields(world, a: Agent):

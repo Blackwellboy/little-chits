@@ -2288,6 +2288,9 @@ def _do_build(world, a: Agent, step, s) -> str:
         if within:
             return f"there's no clear ground within {within} tiles of there"
         return "there's no clear ground within 28 tiles: go somewhere open, or add \"near\":\"x,y\""
+    not_a_town = BLD.town_only(world, key, *pos)  # (where it would stand: the search can go 28 tiles past the town's edge)
+    if not_a_town:
+        return not_a_town
 
     st = world.place_site(key, pos[0], pos[1], a)
     st.builders[a.id] = 0.0

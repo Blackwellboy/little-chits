@@ -219,6 +219,21 @@ def test_a_school_is_built_for_children_none_reaches():
     assert site is not None and site is not far and site.dist(kx, ky) <= BLD.SCHOOL_RADIUS, said
 
 
+def test_a_school_goes_between_two_children_too_far_apart_for_either_place_to_reach_both():
+    # need_spot weighed only the children's own places: 12 tiles apart, each reached one, and no school was proposed,
+    # though one between them reaches both (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "school")
+    kids = _children(w, a, 2, a.x - 6, a.y)
+    kids[1].x = a.x + 6
+    assert [o for o in w.agents.values() if o.is_child(w.tick)] == kids
+    assert {(k.x, k.y) for k in kids} == {(a.x - 6, a.y), (a.x + 6, a.y)}
+    step = wants(w, a, "school")
+    assert step and near_of(step) == (a.x, a.y), step
+    site, said = begin(w, a, step)
+    assert site is not None and all(site.dist(k.x, k.y) <= BLD.SCHOOL_RADIUS for k in kids), said
+
+
 def test_no_school_for_children_one_reaches_or_for_one_child():
     w, a = meadow(n=60)
     able(a, w, "school")
@@ -501,6 +516,21 @@ def test_the_builder_plans_town_life_only_in_a_town():
             assert {"tavern", "bakery", "healer", "tailor", "park", "plaza", "palisade"} <= got, got
         else:
             assert not got & set(BLD.TOWN_ONLY), got
+
+
+def test_the_town_gate_is_asked_where_the_building_would_stand(monkeypatch):
+    # only the requested place was asked: a tavern "near" the town's edge went up 37 tiles from the hall, where the
+    # search found clear ground, out of the town (Codex, #95)
+    w, a, hall = _hall_village(24)
+    able(a, w, "tavern")
+    sign = 1 if hall.x < w.w // 2 else -1
+    edge = (hall.x + sign * 29 if sign > 0 else hall.x - 29, hall.y)
+    far = (hall.x + sign * 37 if sign > 0 else hall.x - 37 - 1, hall.y)
+    assert BLD.town_of(w, *edge) is not None and BLD.town_of(w, *far) is None
+    monkeypatch.setattr(w, "find_site", lambda design, x, y, *r, **k: far)  # (the only clear ground: past the edge)
+    site, said = begin(w, a, {"do": "build", "what": "tavern", "near": f"{edge[0]},{edge[1]}"})
+    assert site is None and "only a town can build a tavern" in said, said
+    assert not any(s.design == "tavern" for s in w.structures.values())
 
 
 def test_town_life_already_standing_keeps_working_outside_a_town():
