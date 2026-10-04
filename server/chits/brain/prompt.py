@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.6"
+PROMPT_VERSION = "2026-10-04.7"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -583,8 +583,30 @@ def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bo
         rows.append(f"{LETTERS[len(options)]}) {OWN_IDEA}")
     head = f"You are {a.name}. Your nature: {a.personality()}.\n"
     return [{"role": "system", "content": CHOICE_SYSTEM},
-            {"role": "user", "content": head + choice_scene(world, a) + "\n\nYOUR OPTIONS:\n" + "\n".join(rows)
-             + "\n\nAnswer with one letter only."}]
+            {"role": "user", "content": head + choice_scene(world, a) + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
+             + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
+
+
+def body_line(world, a: Agent) -> str:
+    """The chit's needs in words, just before its options. The choice scene shows them as numbers ("Hunger 4 energy
+    66 ..."), and "hunger" counts fullness: on a bench of 216 of the game's own choices (tools/decbench.py), Gemma 4
+    12B, JevK5 4B and Ornith 35B all chose about at chance when the answer was plain (a chit at hunger 4 with food in
+    hand picked "experiment" at 96%). With this line they chose to eat or sleep 99-100% of the time."""
+    words = []
+    if a.hunger < 15:
+        words.append(f"You are starving: your belly is nearly empty (fullness {a.hunger:.0f} of 100). Eat now.")
+    elif a.hunger < 45:
+        words.append(f"You are hungry (fullness {a.hunger:.0f} of 100).")
+    if a.energy < 15:
+        night = ", and it is night" if world.is_night else ""
+        words.append(f"You are exhausted (energy {a.energy:.0f} of 100){night}. Sleep now.")
+    elif a.energy < 35:
+        words.append(f"You are tired (energy {a.energy:.0f} of 100).")
+    if a.warmth < 15:
+        words.append(f"You are freezing (warmth {a.warmth:.0f} of 100).")
+    if a.health < 30:
+        words.append(f"You are badly hurt (health {a.health:.0f} of 100).")
+    return " ".join(words) or "Your body is fine: no urgent needs."
 
 
 def messages(world, a: Agent, style: str = "full") -> List[Dict[str, str]]:
