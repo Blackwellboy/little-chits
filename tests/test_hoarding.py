@@ -361,7 +361,6 @@ def test_stores_full_of_plenty_are_no_reason_for_another_stockpile():
     pile.storage.clear()
     pile.storage["wood"] = full  # full of wood, far over its ceiling: less wood is the answer
     assert actions.stockpile_room(pile) == 0 and SUR.glut(w, a)
-    a.inventory.clear()  # (hands free: nothing it must put down)
     assert "build a stockpile" not in goals(w, a, 300)
     pile.storage["wood"] = int(SUR.ceiling(w, a, "wood")) + SUR.GLUT_ROOM  # (over by no more than a store's spare room)
     pile.storage["pot"] = full - pile.storage["wood"]
