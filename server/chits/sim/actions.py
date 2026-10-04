@@ -2106,10 +2106,19 @@ REUSE_WITHIN = {"campfire": 6, "farm": 8, "shrine": 12, "kiln": 12, "workshop": 
 REUSE_WITHIN.update(BLD.REUSE_WITHIN)  # wells, granaries, mills, smithies, towers, schools, bell towers
 
 
+def reuse_within(key: str) -> Optional[int]:
+    """How near one of the same kind is used instead of starting another (no farther than it reaches, for the ten dead
+    zones, while buildings.NEED_SITING is on)."""
+    r = REUSE_WITHIN.get(key)
+    if r and BLD.NEED_SITING and key in BLD.AT_REACH:
+        r = min(r, BLD.EFFECT_RADIUS[key])
+    return r
+
+
 def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Optional[int] = None) -> Optional[str]:
     """One already stands where this would go up (x, y: by default where the chit is): use that instead."""
     x, y = (a.x, a.y) if x is None else (x, y)
-    radius = REUSE_WITHIN.get(key)
+    radius = reuse_within(key)
     if not radius:
         return None
     if key == "stockpile" and sum(1 for x in world.structures.values() if x.design == "stockpile" and x.functional) \

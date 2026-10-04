@@ -57,9 +57,10 @@ def main(argv):
         instinct_rules.HUNGER_REACH = False
     if hasattr(actions, "STARVING_FETCH"):
         actions.STARVING_FETCH = False
-    from chits.brain import builder
-    if hasattr(builder, "NEED_SITING"):  # (the builder's questions from before the dead zones were closed, F32)
-        builder.NEED_SITING = False
+    from chits.sim import buildings
+    for switch in ("NEED_SITING", "TOWN_GATE"):  # (F32's dead zones and town rank: off, as before them)
+        if hasattr(buildings, switch):
+            setattr(buildings, switch, False)
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()

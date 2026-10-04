@@ -26,6 +26,13 @@ from test_pioneers import _full_village
 from test_towns import put, village_of
 
 NOON = 4 * TICKS_PER_DAY + 120  # (nothing is started in the dark)
+
+
+@pytest.fixture(autouse=True)
+def switched_on(monkeypatch):
+    """Both are off by default until an A/B holds (buildings.NEED_SITING, buildings.TOWN_GATE): these tests are of them."""
+    monkeypatch.setattr(BLD, "NEED_SITING", True)
+    monkeypatch.setattr(BLD, "TOWN_GATE", True)
 TEN = ("well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour")
 
 
@@ -78,9 +85,12 @@ def near_of(step):
 
 
 # ---------------------------------------------------------------------------- the table
-def test_all_ten_are_reused_from_no_farther_than_they_reach():
+def test_all_ten_are_reused_from_no_farther_than_they_reach(monkeypatch):
     for d in TEN:
-        assert d in BLD.REUSE_CAPPED and A.REUSE_WITHIN[d] == BLD.EFFECT_RADIUS[d], d
+        assert d in BLD.AT_REACH and A.reuse_within(d) == BLD.EFFECT_RADIUS[d], d
+    monkeypatch.setattr(BLD, "NEED_SITING", False)  # (off: as before, farther than they reach)
+    for d in TEN:
+        assert A.reuse_within(d) == A.REUSE_WITHIN[d] > BLD.EFFECT_RADIUS[d], d
 
 
 @pytest.mark.parametrize("design", TEN)
@@ -508,8 +518,16 @@ def test_an_apartment_block_needs_a_town_too():
     assert home.design == "apartment"
 
 
-def test_the_words_a_model_reads_say_only_a_town():
+def test_the_words_a_model_reads_say_only_a_town(monkeypatch):
+    w, a = meadow()
     for d in BLD.TOWN_ONLY:
-        assert "only a town can build one" in DESIGNS[d].blurb, d
+        a.learn(f"design:{d}", "taught", w.tick)
+    text = P.scene(w, a)
+    build = next(x for x in text.split("\n") if x.startswith("YOU KNOW HOW TO BUILD: "))
+    for d in BLD.TOWN_ONLY:
+        entry = next(x for x in build.split(": ", 1)[1].split("; ") if x.startswith(DESIGNS[d].name + " ("))
+        assert entry.endswith("(only a town can build one))"), entry
+    monkeypatch.setattr(BLD, "TOWN_GATE", False)  # (off, the prompt says nothing it does not do)
+    assert "only a town" not in P.scene(w, a)
     assert P.PROMPT_VERSION >= "2026-10-04.4"
     assert SE.TOWN_POP == 20

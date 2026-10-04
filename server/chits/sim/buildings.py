@@ -78,17 +78,24 @@ LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 # refused as "one close by already"). Capping them all the same way made villages raise more of each: over 24 seeds
 # and 60 days it cost 2-3 discoveries, 0.3-0.4 of an age and a quarter of the stored food. So each is capped only once
 # its builder asks "is this pile, field, child or home served?" first and sites it to serve what is not
-# (brain/builder.py: NEED); tests/test_review_step2a.py lists any still waiting for that.
+# (brain/builder.py: NEED; on with NEED_SITING below); tests/test_review_step2a.py lists any still waiting for that.
 EFFECT_RADIUS = {"well": WELL_RADIUS, "granary": GRANARY_RADIUS, "watchtower": TOWER_RADIUS, "school": SCHOOL_RADIUS,
                  "bell_tower": BELL_RADIUS, "steam_pump": PUMP_RADIUS, "sawmill": SAW_RADIUS, "power_station": POWER_RADIUS,
                  "street_lamp": LAMP_RADIUS, "plaza": PLAZA_RADIUS, "tavern": TAVERN_RADIUS, "healer": HEALER_RADIUS,
                  "park": PARK_RADIUS, "university": UNI_RADIUS, "theatre": THEATRE_RADIUS, "harbour": HARBOUR_RADIUS,
                  "palisade": PALISADE_RADIUS, "town_hall": 25}  # (town_hall: settlements.HALL_REACH, which imports this module)
-REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre",
-                # each of these has a builder that asks what is unserved (brain/builder.py)
-                "well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour")
+REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre")
 for _d in REUSE_CAPPED:
     REUSE_WITHIN[_d] = min(REUSE_WITHIN[_d], EFFECT_RADIUS[_d])
+# The ten dead zones (F32). With NEED_SITING on, each of these is reused from no farther than it reaches
+# (actions.reuse_within), and brain/builder.py proposes one only where something it is for goes unserved, sited to
+# serve it. Off (the default), both are as before. tests/test_review_zones.py turns it on; tests/identity_runner.py
+# keeps it off. Not yet the default: a 24-seed A/B lost discoveries with it on.
+NEED_SITING = False
+AT_REACH = ("well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour")
+# Town rank (F32). With TOWN_GATE on, TOWN_ONLY buildings need a town at the build, the upgrade and in the builder
+# (town_only), and the prompt says so. Off (the default), knowing the idea of a town hall is enough, as before.
+TOWN_GATE = False
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
 PRESS_READ = 30  # a copy this near a press is one its people can read (a tablet on another island is none)
 GREAT_WORKS = ("monument", "great_library", "lighthouse", "aqueduct")
@@ -950,7 +957,7 @@ def town_only(world, key: str, x: int, y: int) -> str:
     """Why a town-life building can't go up at (x, y), in words a chit can act on; "" when it can."""
     from .settlements import TOWN_POP
 
-    if key not in TOWN_ONLY or town_of(world, x, y) is not None:
+    if not TOWN_GATE or key not in TOWN_ONLY or town_of(world, x, y) is not None:
         return ""
     return (f"only a town can build a {DESIGNS[key].name}: a village of {TOWN_POP} or more people with a town hall, "
             f"and the {DESIGNS[key].name} within reach of the hall")

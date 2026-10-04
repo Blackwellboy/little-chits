@@ -365,8 +365,7 @@ DESIGNS: Dict[str, Design] = {
                  "friendships (and hearing the chief's plan)", decay=0.5, min_pop=10),
         # towns: a hall at the heart of a big village makes it a town; its square is where everyone meets
         _d("palisade", "palisade", {"wood": 30, "stone": 10, "cord": 6}, 80, (("design", "town_hall"), ("design", "watchtower")),
-           size=(2, 2), blurb="a timber wall and gate round a town: no wolf bites anyone within 22 tiles of its gate "
-                             "(only a town can build one)",
+           size=(2, 2), blurb="a timber wall and gate round a town: no wolf bites anyone within 22 tiles of its gate",
            decay=1.0),
         _d("town_hall", "town hall", {"brick": 16, "wood": 10, "stone": 10, "glass": 2}, 120,
            (("recipe", "clay_tablet"), ("recipe", "brick"), ("recipe", "glass")), size=(3, 2),
@@ -375,29 +374,25 @@ DESIGNS: Dict[str, Design] = {
            decay=0.5, min_pop=20),
         _d("plaza", "plaza", {"stone": 12}, 20, (("design", "town_hall"),), size=(3, 3),
            blurb="a paved town square beside the hall: everyone within 12 tiles gathers there in the evening, which "
-                 "lifts spirits and makes neighbours friends (only a town can build one)", decay=0.3),
+                 "lifts spirits and makes neighbours friends", decay=0.3),
         # town life: each needs the idea of a town hall, so nothing changes until a world has towns
         _d("tavern", "tavern", {"wood": 12, "brick": 6, "stone": 4}, 50, (("recipe", "ale"), ("design", "town_hall")),
            size=(2, 2), blurb="ale and company: in the evening everyone within 10 tiles drops in, and with ale from the "
-                              "stores nearby spirits lift three times as much and friendships grow "
-                              "(only a town can build one)"),
+                              "stores nearby spirits lift three times as much and friendships grow"),
         _d("bakery", "bakery", {"brick": 10, "stone": 4, "wood": 4}, 40, (("design", "mill"), ("design", "town_hall")),
-           size=(2, 2), station="fire", blurb="a baker's oven: bread, loaves and tarts baked here come out two for one "
-                                               "(only a town can build one)"),
+           size=(2, 2), station="fire", blurb="a baker's oven: bread, loaves and tarts baked here come out two for one"),
         _d("healer", "healer's house", {"wood": 10, "stone": 6, "pot": 2}, 40, (("recipe", "pot"), ("design", "town_hall")),
            size=(2, 2), blurb="a place to mend: the hurt and sick within 10 tiles heal three times as fast, and the badly "
-                              "hurt go there to rest (only a town can build one)"),
+                              "hurt go there to rest"),
         _d("tailor", "tailor", {"wood": 8, "stone": 4, "cord": 4}, 35, (("recipe", "cord"), ("design", "town_hall")),
            size=(2, 2), station="loom", blurb="a loom and a cutting table: warm clothes are woven here from plant fiber "
-                                              "and cord, and a warm thing to wear halves the cold (only a town can "
-                                              "build one)"),
+                                              "and cord, and a warm thing to wear halves the cold"),
         _d("park", "park", {"wood": 4, "stone": 4, "seeds": 6}, 25, (("design", "town_hall"),), size=(2, 2),
-           blurb="trees, flowers and a bench: everyone within 6 tiles is in better spirits, as by a monument "
-                 "(only a town can build one)", decay=1.0),
+           blurb="trees, flowers and a bench: everyone within 6 tiles is in better spirits, as by a monument", decay=1.0),
         _d("apartment", "apartment block", {"brick": 24, "wood": 8, "glass": 6, "iron": 2}, 140,
            (("design", "two_storey_house"), ("recipe", "iron"), ("design", "town_hall")), size=(2, 2),
            blurb="a tall brick block of flats: a home for up to 12 on the ground of one house (a crowded two-storey "
-                 "house can be rebuilt as one; only a town can build one)"),
+                 "house can be rebuilt as one)"),
         # cities: what only a city can raise (the build itself checks), and a harbour for a town on the coast
         _d("university", "university", {"brick": 30, "stone": 20, "glass": 6, "paper": 8}, 160,
            (("design", "library"), ("recipe", "paper"), ("design", "town_hall")), size=(3, 3),
