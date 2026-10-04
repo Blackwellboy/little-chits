@@ -40,20 +40,20 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `app.py` | 1 | 167 |
 | `brain/builder.py` | 10 | 63, 70, 80, 100, 101, 142, 194, 205, 211, 254 |
 | `brain/civic.py` | 5 | 58, 67, 113, 173, 382 |
-| `brain/instinct.py` | 21 | 537, 547, 572, 631, 653, 671, 685, 686, 694, 702, 713, 777, 778, 814, 861, 878, 981, 987, 1018 |
+| `brain/instinct.py` | 21 | 541, 551, 576, 635, 657, 675, 689, 690, 698, 706, 717, 781, 782, 818, 865, 882, 985, 991, 1022 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 8 | 366, 381, 382, 455, 656, 674 |
+| `brain/prompt.py` | 8 | 366, 381, 382, 456, 657, 675 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 482, 564 |
 | `runtime.py` | 1 | 1012 |
-| `sim/actions.py` | 29 | 602, 789, 1047, 1141, 1261, 1295, 1296, 1318, 1337, 1584, 1939, 2136, 2159, 2187, 2189, 2191, 2193, 2202, 2215, 2274, 2304, 2676, 2678, 2833, 2837, 3220 |
+| `sim/actions.py` | 29 | 602, 789, 1047, 1141, 1261, 1295, 1296, 1318, 1337, 1584, 1940, 2137, 2160, 2188, 2190, 2192, 2194, 2203, 2216, 2275, 2305, 2677, 2679, 2834, 2838, 3221 |
 | `sim/agent.py` | 1 | 373 |
 | `sim/buildings.py` | 19 | 169, 170, 186, 199, 205, 206, 208, 260, 261, 270, 272, 277, 279, 281, 352, 366, 379, 504, 1023 |
 | `sim/hall.py` | 1 | 30 |
 | `sim/projects.py` | 15 | 245, 416, 523, 536, 646, 670, 679, 683, 685, 940, 985, 995, 999, 1006, 1057 |
 | `sim/wants.py` | 1 | 89 |
-| `sim/world.py` | 8 | 176, 837, 1247, 1279, 1296, 1421, 1609, 1613 |
+| `sim/world.py` | 8 | 176, 857, 1267, 1299, 1316, 1441, 1629, 1633 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
 | `views.py` | 9 | 16, 38, 57, 134, 158, 283, 291, 342 |
@@ -63,9 +63,9 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 ### 2. Other reads of the shared table
 
 Membership, iteration and `.get`: `story/recap.py` 43, `diag.py` 211 and 559, `sim/projects.py` 481, 645 and 681,
-`sim/actions.py` 1152 and 2570 (`_knowledge_key`: what `teach` and `write` accept), `sim/hall.py` 29,
-`sim/world.py` 1456 (`design_prereqs_met` over every design, each tick a chit learns), `lab/treatment.py` 96,
-`views.py` 276, `brain/civic.py` 171, `brain/instinct.py` 1027, `sim/packs.py` 145 and 303, and
+`sim/actions.py` 1152 and 2571 (`_knowledge_key`: what `teach` and `write` accept), `sim/hall.py` 29,
+`sim/world.py` 1476 (`design_prereqs_met` over every design, each tick a chit learns), `lab/treatment.py` 96,
+`views.py` 276, `brain/civic.py` 171, `brain/instinct.py` 1031, `sim/packs.py` 145 and 303, and
 `items.all_knowledge_keys()` / `items.normalize_design()` (13 call sites of `normalize_design`), which the plan's
 locked tests pin to the base tables.
 

@@ -26,6 +26,7 @@ from . import prospect as PR
 from . import pioneers as PIO
 from . import ground as GR
 from . import civic
+from . import inventor as INVENTOR  # the one "invent" option of a chit that chooses (never for an instinct-only chit)
 
 RAW = ("wood", "stone", "fiber", "berries", "clay", "sand")
 # the most items any recipe takes: the steam engine's 2 steel + 2 gears + a pot is 5, and a bag that stopped growing at 4
@@ -419,6 +420,9 @@ class Instinct:
         best = self.plan(world, a)
         if needy or self._kind(best.get("goal", "")) != "chore":
             add(best)  # instinct's own pick, unless it's just a chore on a good day
+        # one invention it could make now from what it carries (F34): instinct never invents, so without this a chit
+        # that only chooses could never invent. Only for a chit whose mind is a model, and it draws nothing random.
+        add(INVENTOR.option(world, a))
         seed = world.tick * 31 + zlib.crc32(a.id.encode())
         pool: Dict[str, List[Dict[str, Any]]] = {}
         for i in range(30):
@@ -469,7 +473,7 @@ class Instinct:
                     used.add(k)
         spare = [k for k, n in a.inventory.items()
                  if n > 0 and k not in used and not a._item(k).tool and not a._item(k).carry_bonus
-                 and not (world.inventions and world.invention_carried(k))]
+                 and not (world.catalog.items and world.invention_carried(k))]
         if not spare:
             return steps
         junk = max(spare, key=lambda k: (k not in FOODS, a.inventory[k] * a._item(k).weight))
@@ -575,7 +579,7 @@ class Instinct:
                 keep |= set(s.needs)
         junk = max((k for k in a.inventory if not a._item(k).tool and not a._item(k).carry_bonus and k not in FOODS
                     and k not in keep and a.inventory[k] > 0
-                    and not (world.inventions and (world.invention_carried(k) or a._item(k).food))),
+                    and not (world.catalog.items and (world.invention_carried(k) or a._item(k).food))),
                    key=lambda k: a.inventory[k], default=None)
         if junk:
             return {"goal": "lighten my load", "thought": f"I'm carrying too much {item_name(junk)}.",
