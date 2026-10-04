@@ -19,6 +19,13 @@ from chits.sim.items import DESIGNS, item_name
 from test_buildings import put, run_step, village
 
 
+@pytest.fixture(autouse=True)
+def plenty(monkeypatch):
+    """The readings of the village's stock are behind actions.PLENTY (off by default until the seed-24 starvation
+    is understood): every test here runs with them on."""
+    monkeypatch.setattr(actions, "PLENTY", True)
+
+
 def grown(n=2, seed=1):
     """A village of grown chits with one stockpile beside them."""
     w, ags = village(n, seed)
