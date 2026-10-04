@@ -8,6 +8,10 @@ one-village world (a lacking building's made materials come first, ``projects.MA
 run; tests/test_village_scopes.py covers it on its own.
 
 Skipped where BASE is not in the repository (a shallow clone). ``LC_IDENTITY_DAYS`` runs it longer (default 12).
+
+Opt-in (``LC_IDENTITY=1``) since F32 merged (#81): it proved then that village scoping changes nothing in a
+one-village world, and every later change to what instinct does (builders, hoarding) differs from BASE by design,
+so in the default suite it could only fail. Run it when a change claims to leave a one-village world alone.
 """
 
 import json
@@ -22,6 +26,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BASE = "0540269"  # main, before one project slot per settlement
 RUNNER = Path(__file__).with_name("identity_runner.py")
 DAYS = int(os.environ.get("LC_IDENTITY_DAYS", "12"))
+pytestmark = pytest.mark.skipif(os.environ.get("LC_IDENTITY") != "1",
+                                reason="opt-in: LC_IDENTITY=1 (see the docstring)")
 
 
 def _run(server: Path, seed: int, culture: str):
