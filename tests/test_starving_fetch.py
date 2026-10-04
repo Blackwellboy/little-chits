@@ -51,3 +51,28 @@ def test_a_chit_that_is_only_hungry_fetches_on():
     a.hunger = actions.STARVING + 5
     actions.reflexes(w, a)
     assert a.plan[0]["do"] == "gather"
+
+
+def test_an_eat_step_keeps_to_the_store_it_set_out_for():
+    # re-picking the nearest store every tick, a chit between two stores whose walks lead past each other turned back
+    # and forth on two tiles until it starved: 74 in one 60-day run (tools/harness seed 2)
+    from chits.sim import actions as A
+    from chits.sim.world import World
+    w = World("A", "A", 3, "direct", 64, 2)
+    a = next(iter(w.agents.values()))
+    a.inventory.clear()
+    a.hunger = 30.0
+
+    def pile(dx):
+        pos = w.find_site("stockpile", a.x + dx, a.y, 10)
+        st = w.place_site("stockpile", pos[0], pos[1], a)
+        w.complete_structure(st, a)
+        st.storage["berries"] = 20
+        return st
+
+    far, near = pile(9), pile(-4)
+    s = {"store": far.id}  # it set out for the far one; now the other is nearer as the crow flies
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s.get("store") == far.id
+    end = a.path[-1] if a.path else (a.x, a.y)
+    assert far.dist(*end) < near.dist(*end), (end, (far.x, far.y), (near.x, near.y))
