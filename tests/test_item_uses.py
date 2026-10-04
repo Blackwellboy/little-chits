@@ -2,7 +2,17 @@
 
 from chits.sim.items import ACTION_USES, DESIGNS, ITEMS, RECIPES
 from chits.sim.actions import GATHER_RULES
+import pytest
+
 from chits.sim.artifacts import ARTIFACTS  # registers them in ITEMS, whatever order the tests run in
+
+
+@pytest.fixture(autouse=True)
+def _item_uses_on(monkeypatch):
+    """F35's item uses are off by default until A/B'd (items.ITEM_USES): these tests are about them, so switch them on."""
+    from chits.sim import items as IT_
+
+    monkeypatch.setattr(IT_, "ITEM_USES", True)
 
 # Artifacts only arrive by god mode, and what they do is found on pickup and inspection (artifacts.on_pickup /
 # on_inspect), so the made-or-found pipeline below is about everything else.

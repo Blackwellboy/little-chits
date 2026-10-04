@@ -221,7 +221,8 @@ def discovered(w: World, k: str) -> bool:
 
 def _effects(w: World, key: str) -> List[str]:
     """What an item does by itself, each line from one field of its entry in the item table."""
-    from .sim.items import ACTION_USES, GATHER_RULES
+    from .sim import items as IT
+    from .sim.items import ACTION_USES, GATHER_RULES, SIDE_USES
 
     it = w.item(key)
     out = []
@@ -236,7 +237,7 @@ def _effects(w: World, key: str) -> List[str]:
         out.append(f"Carrying: its holder can carry {it.carry_bonus} more.")
     if "wearable" in it.props:
         out.append("Wearable: a chit can wear it.")
-    if key in ACTION_USES:
+    if key in ACTION_USES and (IT.ITEM_USES or key not in SIDE_USES):  # (F35's uses only once switched on)
         out.append(f"Use: {ACTION_USES[key]}.")
     inv = w.invention(key)
     if inv is not None:  # what an invention does while it is carried, with its strength (F34)

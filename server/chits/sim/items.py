@@ -239,9 +239,9 @@ ACTION_USES: Dict[str, str] = {
 }
 # ...of which these are a second use of something gathered or made for something else: no reason for a station to make
 # it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
-ITEM_USES = True  # F35's item uses and fixes (fuel, mending, a sharp stone, meal cheer, arms wear and defence, lights,
-# the plough kept in hand). False restores the behaviour before them, for tests/identity_runner.py, which compares a
-# one-village world with the tree before step 2b day by day (as projects.MAKE_FIRST does). Read at call time.
+ITEM_USES = False  # F35's item uses and fixes (fuel, mending, a sharp stone, meal cheer, arms wear and defence, lights,
+# the plough kept in hand). Off until a 24-seed A/B settles them (docs/FIXES_2026-09-30.md, F35): off, the simulator
+# behaves as before them; their tests switch them on. tests/identity_runner.py also sets it False. Read at call time.
 SIDE_USES: Tuple[str, ...] = ("wood", "charcoal", "stone", "fiber", "clay", "cord", "brick", "sharp_stone")
 
 FUEL_VALUE: Dict[str, int] = {"wood": 35, "charcoal": 60}  # what one piece adds to a campfire's fuel (of 100)
@@ -297,7 +297,7 @@ DESIGNS: Dict[str, Design] = {
     d.key: d
     for d in [
         _d("campfire", "campfire", {"wood": 3, "stone": 2}, 10, (), station="fire",
-           blurb="warmth and light at night; cook food here; burns wood as fuel (or charcoal, which lasts longer)", decay=0.0),
+           blurb="warmth and light at night; cook food here; burns wood as fuel", decay=0.0),
         _d("hut", "hut", {"wood": 8, "fiber": 4}, 30, (), size=(2, 2),
            blurb="a home: sleep here to recover faster and stay warm; families need one"),
         _d("stockpile", "stockpile", {"wood": 6, "cord": 1}, 14, (("recipe", "cord"),),

@@ -16,6 +16,14 @@ from chits.sim.world import Tablet, World
 from test_buildings import put, run_step, village
 
 
+@pytest.fixture(autouse=True)
+def _item_uses_on(monkeypatch):
+    """F35's item uses are off by default until A/B'd (items.ITEM_USES): these tests are about them, so switch them on."""
+    from chits.sim import items as IT_
+
+    monkeypatch.setattr(IT_, "ITEM_USES", True)
+
+
 def _night(w):
     w.tick = 240 * 5 + 230  # late at night
     assert w.is_night
@@ -346,6 +354,28 @@ def test_a_side_use_is_no_reason_to_make_a_thing_in_bulk():
     assert actions._useful(w, "clothes") and actions._useful(w, "plough") and actions._useful(w, "paper")
     w.first["recipe:copper"] = {"tick": 0, "by": a.id, "name": a.name}
     assert actions._useful(w, "charcoal")
+
+
+def test_switched_off_nothing_claims_or_does_the_new_uses(monkeypatch):
+    """Off (the default until A/B'd), the simulator, the prompt and the encyclopedia are as before F35."""
+    from chits import views
+    from chits.sim import items as IT_
+
+    monkeypatch.setattr(IT_, "ITEM_USES", False)
+    w, (a, _) = village()
+    fire = put(w, "campfire", a)
+    fire.fuel = 10.0
+    a.inventory["charcoal"] = 1
+    assert run_step(w, a, {"do": "refuel", "target": fire.id}) == "I need wood to feed the fire"
+    assert actions.mend_materials("stockpile") == ["wood"]
+    a.inventory.clear()
+    a.inventory.update({"lantern": 1, "sharp_stone": 1})
+    sc = P.scene(w, a)
+    assert "lantern (light and warmth at night)" in sc and "cuts 2 plant fiber" not in sc
+    guide = P.verb_guide(w)
+    assert "charcoal" not in guide and "cord or brick" not in guide and "lifts your spirits" not in guide
+    w.first["recipe:charcoal"] = {"tick": 0, "by": a.id, "name": a.name}
+    assert not any(e.startswith("Use:") for e in views.encyclopedia(w, "recipe:charcoal")["effects"])
 
 
 # ---------------------------------------------------------------------------------------------- uses that were already real

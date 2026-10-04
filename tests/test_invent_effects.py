@@ -123,7 +123,7 @@ def _harvest(w, a):
     return a.inventory.get("grain", 0)
 
 
-def test_an_invented_weapon_is_as_good_as_its_material():
+def test_an_invented_weapon_is_as_good_as_its_material(monkeypatch):
     w, a = _world(seed=9)
     assert AN.weapon_odds(w, a) == AN.WEAPON_ODDS["spear"]  # (asked only of the armed: the fallback)
     club = _invent(w, a, ["wood", "wood", "stone"], "Club", "a club to fight wolves")
@@ -133,14 +133,12 @@ def test_an_invented_weapon_is_as_good_as_its_material():
     a.inventory.clear()
     a.inventory["musket"] = 1
     # a weapon that is not invented goes by its kind, a little better for a stronger one (F35's item uses); with
-    # those switched off, as any weapon did
-    assert AN.WEAPON_ODDS["weapon"] < AN.weapon_odds(w, a) <= AN.DEFENCE_MAX
+    # those switched off (the default until they are A/B'd), as any weapon did
     from chits.sim import items as IT
-    IT.ITEM_USES = False
-    try:
-        assert AN.weapon_odds(w, a) == AN.WEAPON_ODDS["weapon"]
-    finally:
-        IT.ITEM_USES = True
+    monkeypatch.setattr(IT, "ITEM_USES", True)
+    assert AN.WEAPON_ODDS["weapon"] < AN.weapon_odds(w, a) <= AN.DEFENCE_MAX
+    monkeypatch.setattr(IT, "ITEM_USES", False)
+    assert AN.weapon_odds(w, a) == AN.WEAPON_ODDS["weapon"]
 
 
 def test_an_invention_keeps_all_its_parts_properties_so_inventions_compose():
