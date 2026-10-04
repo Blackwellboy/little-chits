@@ -305,6 +305,27 @@ def scope_of_project(world, p: Dict[str, Any]) -> Optional[Scope]:
     return next((sc for sc in scs if sc.id == vid), None)
 
 
+def village(world, a: Optional[Agent] = None, village_id: str = "") -> Optional[Scope]:
+    """One village among several, for what is a village's own beside its project (research.py): a chit's, or the one
+    with this id. None for a world that is one village (everything is the world's), or when there is no such village."""
+    scs = scopes(world)
+    if scs[0].whole:
+        return None
+    if village_id:
+        return next((sc for sc in scs if sc.id == village_id), None)
+    return scope_of(world, a) if a is not None else None
+
+
+def stores(world, sc: Scope) -> List:
+    """The stores whose goods count as a village's (``stock``)."""
+    return _stores(world, sc)
+
+
+def stations(world, sc: Scope) -> set:
+    """The stations a village's chits can use."""
+    return set().union(*(s.stations() for s in _usable(world, sc)))
+
+
 def current(world, a: Agent) -> Optional[Dict[str, Any]]:
     """The project of this chit's village (whether the chit knows of it is ``knows``)."""
     if not hasattr(world, "civic"):

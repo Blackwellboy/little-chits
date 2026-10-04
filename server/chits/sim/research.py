@@ -59,11 +59,14 @@ def hint_text(parts: List[Tuple[str, int]], station: Optional[str]) -> str:
     return f"Scholars at the library think {what}{at} might make something new."
 
 
-def village_handled(world) -> set:
+def village_handled(world, sc=None) -> set:
+    """What a village has handled: its chits, and what lies in its stores (`sc`: one village among several)."""
+    from . import projects
+
     seen: set = set()
-    for a in world.agents.values():
+    for a in projects.members(world, sc):
         seen |= set(a.familiar)
-    for s in world.structures.values():
+    for s in (world.structures.values() if sc is None else projects.stores(world, sc)):
         if s.design in STORES and s.functional:  # (warehouses too)
             seen |= {k for k, n in s.storage.items() if n > 0}
     return seen
@@ -72,15 +75,22 @@ def village_handled(world) -> set:
 def candidates(world, a: Optional[Agent] = None) -> List[str]:
     """Undiscovered base recipes whose every input someone in the village has handled: the project's target first
     (the project of the scholar's own village), then those that can be made at a station the village has, simplest
-    first."""
+    first. The village is the scholar's own: what its chits know and have handled, the stations they can use. (With
+    several villages these were still the whole world's: a daughter looking for cord, which its mother knew, never
+    had a hint for it, and its scholars' insight went on something else.)"""
     from . import projects
 
-    known = {k.split(":", 1)[1] for a in world.agents.values() for k in a.knows if k.startswith("recipe:")}
-    handled = village_handled(world)
-    active = {h["recipe"] for h in world.civic.get("hints", []) if not h.get("found")}
-    have = set()
-    for s in world.structures.values():
-        have |= s.stations()
+    sc = projects.village(world, a)
+    known = {k.split(":", 1)[1] for o in projects.members(world, sc) for k in o.knows if k.startswith("recipe:")}
+    handled = village_handled(world, sc)
+    active = {h["recipe"] for h in world.civic.get("hints", []) if not h.get("found")
+              and (sc is None or h.get("village", sc.id) == sc.id)}
+    if sc is None:
+        have = set()
+        for s in world.structures.values():
+            have |= s.stations()
+    else:
+        have = projects.stations(world, sc)
     p = (projects.current(world, a) if a is not None else projects.of(world)) or {}
     target = p.get("key") if p.get("kind") == "discover" else None
     out = []
@@ -94,6 +104,8 @@ def candidates(world, a: Optional[Agent] = None) -> List[str]:
 
 
 def give_hint(world, a: Optional[Agent]) -> Optional[Dict[str, Any]]:
+    from . import projects
+
     cands = candidates(world, a)
     if not cands:
         return None
@@ -103,6 +115,9 @@ def give_hint(world, a: Optional[Agent]) -> Optional[Dict[str, Any]]:
     h = {"id": f"h{world.civic.get('hints_given', 0) + 1}", "recipe": k, "parts": [list(x) for x in parts],
          "station": r.station, "text": hint_text(parts, r.station), "tick": world.tick, "by": a.id if a else "",
          "by_name": a.name if a else "", "found": 0}
+    sc = projects.village(world, a)
+    if sc is not None:
+        h["village"] = sc.id  # (one village among several: the idea is its scholars', about what it has not found)
     world.civic.setdefault("hints", []).append(h)
     world.civic["hints_given"] = world.civic.get("hints_given", 0) + 1
     if a is not None:
@@ -136,10 +151,16 @@ def study_gain(world, a: Agent, tablets: int) -> float:
 
 
 def active_hints(world, a: Optional[Agent] = None) -> List[Dict[str, Any]]:
-    """Hints not yet come true. Where chits talk, word gets round; elsewhere only those who study know them."""
+    """Hints not yet come true. Where chits talk, word gets round; elsewhere only those who study know them. An idea
+    a village's scholars had (one village among several) goes round that village, and no farther."""
     hs = [h for h in (getattr(world, "civic", None) or {}).get("hints", []) if not h.get("found")]
     if a is not None and not world.flags.get("say") and not a.stats.get("studied"):
         return []
+    if a is not None and any(h.get("village") for h in hs):
+        from . import projects
+
+        sc = projects.village(world, a)
+        hs = [h for h in hs if not h.get("village") or (sc is not None and sc.id == h["village"])]
     return hs
 
 
@@ -148,11 +169,16 @@ def scene_lines(world, a: Agent) -> List[str]:
 
 
 def tick(world) -> None:
+    from . import projects
+
     for h in world.civic.get("hints", []):
         if h.get("found"):
             continue
         kk = f"recipe:{h['recipe']}"
-        finder = min((a for a in world.agents.values() if kk in a.knows), key=lambda a: a.knows[kk]["tick"], default=None)
+        # (a village's idea comes true when one of its own finds it; if that village is no more, anyone)
+        who = projects.members(world, projects.village(world, village_id=h["village"])) if h.get("village") \
+            else world.agents.values()
+        finder = min((a for a in who if kk in a.knows), key=lambda a: a.knows[kk]["tick"], default=None)
         if finder is not None:
             h["found"] = world.tick
             world.emit("hint_true", f"The scholars' idea came true: {finder.name} found what they had hinted at", 3,

@@ -11,7 +11,7 @@ from chits import views
 from chits.brain import civic
 from chits.brain import prompt as P
 from chits.brain.instinct import Instinct
-from chits.sim import projects, wants
+from chits.sim import projects, research, wants
 from chits.sim.items import DESIGNS
 from chits.sim.world import World
 
@@ -589,3 +589,71 @@ def test_a_project_follows_its_village_when_the_villages_id_changes():
     now = _sc(w, b)
     assert now.id != old and projects.of(w, now.id) is p and old not in w.civic["projects"]
     assert not [e for e in _events(w, "project") if e.data.get("abandoned")]
+
+
+# ---------------------------------------------------------------------------------------------- its scholars
+def _seeking_cord(culture: str = "direct"):
+    """The mother knows cord; the daughter, which has handled fiber, has the project to discover it."""
+    w, A, B, _ = _two(culture)
+    for c in A:
+        c.learn("recipe:cord", "discovered", w.tick)
+        c.familiar.add("fiber")
+    for c in B:
+        c.knows.pop("recipe:cord", None)
+        c.familiar.discard("fiber")
+    sa, sb = _sc(w, A[0]), _sc(w, B[0])
+    p = projects.start(w, "discover", "cord", "on the road", None, "need", sc=sb)
+    return w, A, B, sa, sb, p
+
+
+def test_a_villages_scholars_think_about_what_their_own_village_has_not_found():
+    """What is known, handled and at hand was still the whole world's: the mother knew cord, so the daughter's
+    project to discover it could never be its scholars' idea, and their insight went on something else."""
+    w, A, B, sa, sb, p = _seeking_cord()
+    a, b = A[0], B[0]
+    assert "cord" not in research.candidates(w, b)  # nobody in the daughter village has handled fiber yet
+    B[1].familiar.add("fiber")
+    assert research.candidates(w, b)[0] == "cord"  # the village's own project first
+    assert "cord" not in research.candidates(w, a)  # the mother knows it already
+    # what only the other village has handled is no idea of this one's
+    for c in A:
+        c.familiar.add("sand")
+    for c in B:
+        c.familiar.discard("sand")
+    assert "glass" not in research.candidates(w, b)
+    h = research.give_hint(w, b)
+    assert h["recipe"] == "cord" and h["village"] == sb.id
+    assert "cord" not in research.candidates(w, b)  # (one idea about a thing at a time)
+    # the mother's knowing cord does not make the daughter's idea come true
+    w.tick += 10
+    research.tick(w)
+    assert not h["found"] and not _events(w, "hint_true")
+    # word of it goes round the daughter village, and no farther
+    assert research.scene_lines(w, B[2]) and research.scene_lines(w, a) == []
+    assert any("Scholars' hint" in l for l in P.scene(w, B[2]).splitlines())
+    assert not any("Scholars' hint" in l for l in P.scene(w, a).splitlines())
+    B[2].learn("recipe:cord", "discovered", w.tick)
+    research.tick(w)
+    assert h["found"] and _events(w, "hint_true")[-1].actor == B[2].id
+
+
+def test_where_chits_cant_talk_a_villages_idea_is_known_to_its_own_scholars_only():
+    w, A, B, sa, sb, p = _seeking_cord("stigmergy")
+    a, b = A[0], B[0]
+    B[1].familiar.add("fiber")
+    h = research.give_hint(w, b)
+    assert h["village"] == sb.id
+    assert research.active_hints(w, B[2]) == []  # never studied: nobody could tell it
+    B[2].bump("studied")
+    a.bump("studied")
+    assert research.active_hints(w, B[2]) == [h] and research.active_hints(w, a) == []  # (a scholar of the other village)
+    assert civic.hinted_experiment(Instinct(), w, a, random.Random(1)) is None
+
+
+def test_a_one_village_worlds_ideas_are_the_worlds_as_before():
+    w = World("A", "A", 3, "direct", 64, 6)
+    a, b = list(w.agents.values())[:2]
+    a.familiar.add("fiber")
+    a.knows.pop("recipe:cord", None)
+    h = research.give_hint(w, a)
+    assert h and "village" not in h and research.active_hints(w, b) == [h]
