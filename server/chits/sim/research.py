@@ -69,16 +69,19 @@ def village_handled(world) -> set:
     return seen
 
 
-def candidates(world) -> List[str]:
-    """Undiscovered base recipes whose every input someone in the village has handled: the project's target first,
-    then those that can be made at a station the village has, simplest first."""
+def candidates(world, a: Optional[Agent] = None) -> List[str]:
+    """Undiscovered base recipes whose every input someone in the village has handled: the project's target first
+    (the project of the scholar's own village), then those that can be made at a station the village has, simplest
+    first."""
+    from . import projects
+
     known = {k.split(":", 1)[1] for a in world.agents.values() for k in a.knows if k.startswith("recipe:")}
     handled = village_handled(world)
     active = {h["recipe"] for h in world.civic.get("hints", []) if not h.get("found")}
     have = set()
     for s in world.structures.values():
         have |= s.stations()
-    p = world.civic.get("project") or {}
+    p = (projects.current(world, a) if a is not None else projects.of(world)) or {}
     target = p.get("key") if p.get("kind") == "discover" else None
     out = []
     for k, r in RECIPES.items():
@@ -91,7 +94,7 @@ def candidates(world) -> List[str]:
 
 
 def give_hint(world, a: Optional[Agent]) -> Optional[Dict[str, Any]]:
-    cands = candidates(world)
+    cands = candidates(world, a)
     if not cands:
         return None
     k = cands[0]

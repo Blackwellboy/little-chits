@@ -25,7 +25,7 @@ def setup(monkeypatch=None):
     m._spawn = lambda coro: spawned.append(coro)
     m._ask = lambda world, agent, brain: None
     if monkeypatch is not None:
-        monkeypatch.setattr(PJ, "candidates", lambda world: [(1.0, "build", "stockpile", "why", {}),
+        monkeypatch.setattr(PJ, "candidates", lambda world, sc=None: [(1.0, "build", "stockpile", "why", {}),
                                                             (0.5, "build", "well", "why", {})])
     return w, a, m, m.brains["chief"], spawned
 
@@ -45,7 +45,7 @@ def test_asked_sent_answered_adopted(monkeypatch):
     fake_reply(b)
     asyncio.run(spawned[0])
     d = diag.of(w)
-    assert d.chief["answered"] == 1 and d.chief["adopted"] == 1 and w.civic["project"]["key"] == "stockpile"
+    assert d.chief["answered"] == 1 and d.chief["adopted"] == 1 and PJ.of(w)["key"] == "stockpile"
     log = d.chief_log[-1]
     assert log["ended"] == "adopted" and log["queue_ms"] == 56 and log["latency_ms"] == 1234
     assert log["sent"] >= log["asked"]
@@ -62,7 +62,7 @@ def test_a_chief_whose_brain_is_down_is_never_asked(monkeypatch):
     w.tick += PJ.ASK_DAYS * TICKS_PER_DAY + 1
     PJ._expire_ask(w)
     assert diag.of(w).chief_log[-1]["ended"] == "expired: the chief's mind was never asked (unavailable)"
-    assert w.civic["project"]["chosen_by"] != "chief"  # (need decided)
+    assert PJ.of(w)["chosen_by"] != "chief"  # (need decided)
 
 
 def test_each_way_a_question_expires_is_told_apart(monkeypatch):
@@ -72,7 +72,7 @@ def test_each_way_a_question_expires_is_told_apart(monkeypatch):
     w.tick += PJ.ASK_DAYS * TICKS_PER_DAY + 1
     PJ._expire_ask(w)
     assert diag.of(w).chief_log[-1]["ended"] == "expired: the chief's mind didn't answer"
-    w.civic["project"] = None
+    w.civic["projects"].clear()
     PJ.next_project(w)
     w.leader = list(w.agents)[1]  # a new chief before the old one answered
     PJ._expire_ask(w)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addToasts, milestoneOf, nextStep, stepLabel, TOAST_MAX, TOAST_MS, type Checklist, type Toast } from "../../web/src/state/milestones";
+import { addToasts, milestoneOf, nextStep, stepLabel, TOAST_MAX, TOAST_MS, villageOrder, type Checklist, type Toast, type VillageRow } from "../../web/src/state/milestones";
 import type { WorldEvent } from "../../web/src/types";
 
 const ev = (seq: number, kind: string, importance = 5, data: Record<string, any> = {}): WorldEvent =>
@@ -59,5 +59,21 @@ describe("the road checklist", () => {
   it("marks the first step still to do", () => {
     expect(nextStep(c)).toBe(2);
     expect(nextStep({ ...c, steps: c.steps.map((s) => ({ ...s, done: true })) })).toBe(-1);
+  });
+});
+
+describe("villageOrder", () => {
+  const row = (id: string, x: number | null, y: number | null): VillageRow<string> =>
+    ({ id, name: id, x, y, population: 6, with: "", active: null });
+  const rows = [row("mother", 60, 80), row("daughter", 104, 26), row("unplaced", null, null)];
+
+  it("puts the village in view first and keeps the game's order for the rest", () => {
+    expect(villageOrder(rows, { x: 100, y: 30 }).map((r) => r.id)).toEqual(["daughter", "mother", "unplaced"]);
+    expect(villageOrder(rows, { x: 61, y: 79 }).map((r) => r.id)).toEqual(["mother", "daughter", "unplaced"]);
+  });
+
+  it("keeps the game's order (the chief's village first) when nothing is in view", () => {
+    expect(villageOrder(rows, null)).toBe(rows);
+    expect(villageOrder([rows[1]], { x: 0, y: 0 })).toEqual([rows[1]]);
   });
 });

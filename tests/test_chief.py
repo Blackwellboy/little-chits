@@ -24,7 +24,7 @@ def test_a_model_chief_is_asked_and_an_instinct_chief_is_not():
     w, a = _village()
     a.brain = "instinct"
     assert projects.next_project(w)["chosen_by"] == "need" and not w.civic.get("ask")
-    w.civic["project"] = None
+    w.civic["projects"].clear()
     a.brain = "some-model"
     assert projects.next_project(w) is None
     ask = w.civic["ask"]
@@ -49,21 +49,21 @@ def test_an_unanswered_question_expires_and_need_decides_and_says_why():
     projects.next_project(w)
     w.tick += projects.ASK_DAYS * TICKS_PER_DAY + 1
     projects.tick(w)
-    p = w.civic["project"]
+    p = projects.of(w)
     assert w.civic.get("ask") is None and p["chosen_by"] == "need"
     assert p["fallback"] == "the chief's mind was never asked (unavailable)" and w.civic["fallbacks"] == 1
     ev = [e for e in w.events if e.kind == "project"][-1]
     assert ev.data["fallback"] == p["fallback"] and "chosen by need because" in ev.text
     assert "because the chief's mind was never asked" in projects.scene_line(w, a)
     # asked, but no answer came
-    w.civic["project"] = None
+    w.civic["projects"].clear()
     projects.next_project(w)
     w.civic["ask"]["sent"] = True
     w.tick += projects.ASK_DAYS * TICKS_PER_DAY + 1
     projects.tick(w)
-    assert w.civic["project"]["fallback"] == "the chief's mind didn't answer"
+    assert projects.of(w)["fallback"] == "the chief's mind didn't answer"
     # a need pick with no chief to ask is plain need
-    w.civic["project"] = None
+    w.civic["projects"].clear()
     a.brain = "instinct"
     assert "fallback" not in projects.next_project(w)
 
@@ -94,7 +94,7 @@ def test_the_mind_puts_the_question_to_the_chiefs_model():
     asyncio.run(run())
     msgs, kw = next((m_, k) for m_, k in seen if "chief of" in m_[1]["content"])
     assert kw["max_tokens"] == 1 and "B) " in msgs[1]["content"]
-    p = w.civic["project"]
+    p = projects.of(w)
     assert p["chosen_by"] == "chief" and p["key"] == ask["options"][1]["key"]
     rec = next(r for r in m.decisions if r["style"] == "chief-project")
     assert rec["outcome"] == "adopted" and rec["choice"]["requested"] == "B"

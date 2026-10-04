@@ -480,6 +480,9 @@ button.danger { color: var(--bad); }
 .prog-project { margin: 10px 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
 .prog-project h4 { margin: 0 0 4px; }
 .prog-project .prog-list { margin-top: 6px; }
+.prog-villages { list-style: none; margin: 0; padding: 0; }
+.prog-villages li { margin: 0 0 8px; }
+.prog-villages button.link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; text-decoration: underline dotted; }
 /* What it weighed: a chit model s one-token choice, option by option */
 .weighed .opt { display: grid; grid-template-columns: 1fr 70px 34px; gap: 6px; align-items: center; font-size: 12px; padding: 2px 0; }
 .weighed .opt .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted, #9aa3b5); }

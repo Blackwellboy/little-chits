@@ -2,8 +2,8 @@
 towards what you want, and imitate the village's most renowned chit.
 
 ``extend`` adds weighted options to (and reweighs) the list instinct's ``_progress`` draws from. Like everything
-instinct does, it only uses what the chit could know: the project where it knows of it (``projects.knows``: word of
-mouth where chits talk, the site in sight where they can't), hints as ``research.active_hints`` allows, and a hint
+instinct does, it only uses what the chit could know: its own village's project (``projects.current``) where it knows
+of it (``projects.knows``: word of mouth where chits talk, the site in sight where they can't), hints as ``research.active_hints`` allows, and a hint
 names properties, so the chit matches them against things it has handled.
 """
 
@@ -50,7 +50,7 @@ def project_options(ins, world, a: Agent, rng) -> List[Opt]:
 
     from ..sim import projects
 
-    p = world.civic.get("project")
+    p = projects.current(world, a)
     if not p or a.is_child(world.tick) or not projects.knows(world, a, p):
         return []
     tr = a.traits
@@ -92,9 +92,9 @@ def duty(ins, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
     """The village's project, ahead of idle talk and odd jobs, some of the time (more for the diligent). Called by
     instinct's communal planner after the winter food store: projects only ever showed up among the options of a
     chit with nothing else to do, and a busy village never got to them (World B made iron once in 300 days)."""
-    from ..sim import food
+    from ..sim import food, projects
 
-    p = (getattr(world, "civic", None) or {}).get("project")
+    p = projects.current(world, a)
     if not p or rng.random() > DUTY + 0.3 * a.traits.get("diligence", 0.5) or food.short(world, a):
         return None  # (with the stores running low, filling them comes first)
     opts = project_options(ins, world, a, rng)
@@ -110,7 +110,7 @@ def find_plan(world, a: Agent, p: Dict[str, Any], rng) -> Optional[Dict[str, Any
 
     thought = "The village needs something nobody here has ever held. Let me look."
     goal = "search for what the village needs"
-    mine = any(o is a for o in projects.imaginers(world, DESIGNS[p["for"]]))
+    mine = any(o is a for o in projects.imaginers(world, DESIGNS[p["for"]], projects.scope_of_project(world, p)))
     new = lambda k: k in GATHER_RULES and k not in a.familiar
     if mine:
         stored = sorted({k for s in world.structures_near(a.x, a.y, 30, "stockpile") if s.functional
@@ -161,7 +161,8 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     from .instinct import _reachable
 
     key, target = p["key"], p.get("for", "")
-    left = p["n"] - projects.stock(world, key, target)
+    sc = projects.scope_of_project(world, p)  # the project's own village: its stores, its chits
+    left = p["n"] - projects.stock(world, key, target, sc)
     if left <= 0:
         return None
     # (an ingredient to try for a discovery has no building: with no design to look for, any unfinished site that
@@ -178,14 +179,14 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return {"goal": f"make {what} for the village's {where}", "thought": f"The {where} needs {left} more {what}. I know how to make it.",
                 "steps": steps + ([deliver] if deliver else [])}
     # what it's made of is word of mouth from those who make it: only where chits talk, and only if someone does
-    if not world.flags.get("say") or not any(o.knows_recipe(key) for o in world.agents.values()):
+    if not world.flags.get("say") or not any(o.knows_recipe(key) for o in projects.members(world, sc)):
         return None
     r = world.recipe(key)
     raw = [k for k, _ in (r.inputs if r else ()) if k in GATHER_RULES
            and (not GATHER_RULES[k]["requires"] or a.best_tool(GATHER_RULES[k]["tool"]))]  # (iron ore too, Codex #46)
     if not raw or pile is None:
         return None
-    k = min(raw, key=lambda x: projects.stock(world, x))  # what the stores are shortest of
+    k = min(raw, key=lambda x: projects.stock(world, x, sc=sc))  # what the stores are shortest of
     return {"goal": f"collect {item_name(k)} for the village's {what}", "thought": f"Whoever makes the {what} will need {item_name(k)}.",
             "steps": [{"do": "gather", "what": k, "qty": 4}, {"do": "store", "what": k}]}
 
@@ -329,7 +330,7 @@ def research_options(ins, world, a: Agent, rng) -> List[Opt]:
     lib = _library(world, a)
     if lib is not None:
         w = STUDY_W + 1.2 * a.traits.get("curiosity", 0.5)
-        p = world.civic.get("project")
+        p = projects.current(world, a)
         if p and p["kind"] == "discover" and projects.knows(world, a, p):
             w *= 1.5  # the village is looking for something: the scholars may find the way
         out.append((w, {"goal": "study at the library", "thought": "The tablets might give us an idea.",

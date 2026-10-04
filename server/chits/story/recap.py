@@ -101,9 +101,10 @@ def recap(w: World, counts: Optional[Dict[str, int]] = None, rival: Optional[Wor
         lines.append(f"Across the water, {rival.name} is in the {ERAS[rival.era()[0]][0]} with {rd} discoveries to "
                      f"{w.name}'s {len(w.first)}.{ahead}")
     lead = w.agents.get(getattr(w, "leader", "") or "")
-    proj = ((getattr(w, "civic", None) or {}).get("project") or {})
+    from ..sim.projects import of, title
+
+    proj = of(w) or {}  # (the chief's village's project)
     if lead or proj:
-        from ..sim.projects import title
 
         now = f"Chief {lead.name} leads" if lead else "Nobody leads"
         lines.append(f"Now: {now}" + (f", and the village is working to {title(proj)}" if proj else "") + ".")

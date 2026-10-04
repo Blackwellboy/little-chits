@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.2"
+PROMPT_VERSION = "2026-10-04.3"
 
 
 def _dir(dx: int, dy: int) -> str:

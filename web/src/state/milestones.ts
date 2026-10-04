@@ -35,6 +35,20 @@ export function milestoneOf(e: Pick<WorldEvent, "kind" | "data">): Milestone | n
   }
 }
 
+/** A village and its project, as the Progress panel lists them (a hamlet too small for a project of its own says
+ *  whose it works on in `with`). */
+export type VillageRow<P> = { id: string; name: string; x: number | null; y: number | null; population: number; with: string; active: P | null };
+
+/** The villages in the order the panel shows them: the one in view first (the village nearest where the camera was
+ *  last sent), then the rest as the game lists them (the chief's village first). With no place in view, the game's
+ *  order stands. */
+export function villageOrder<P>(rows: VillageRow<P>[], at: { x: number; y: number } | null): VillageRow<P>[] {
+  if (!at || rows.length < 2) return rows;
+  const far = (r: VillageRow<P>) => (r.x == null || r.y == null ? Infinity : Math.max(Math.abs(r.x - at.x), Math.abs(r.y - at.y)));
+  const near = rows.reduce((best, r) => (far(r) < far(best) ? r : best), rows[0]);
+  return [near, ...rows.filter((r) => r !== near)];
+}
+
 export type Toast = WorldEvent & { world: string; key: string; _t?: number };
 
 export const TOAST_MAX = 4;
