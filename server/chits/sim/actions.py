@@ -196,6 +196,7 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
+STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False: as before, for the identity test)
 
 
 def reflexes(world, a: Agent) -> None:
@@ -208,7 +209,7 @@ def reflexes(world, a: Agent) -> None:
 
 def _reflexes(world, a: Agent) -> None:
     head = a.plan[0] if a.plan else {}
-    if head.get("_reflex") and head.get("do") in ("gather", "pickup") and head.get("what") in FOODS \
+    if STARVING_FETCH and head.get("_reflex") and head.get("do") in ("gather", "pickup") and head.get("what") in FOODS \
             and a.hunger < STARVING and a.reflex_rest.get("food", 0) <= world.tick:
         # a food reflex is itself a reflex, so nothing interrupted it: chits starved at hunger 0 holding the fish
         # they had caught (the step wanted 3), or walking between spent fish tiles with 550 food in a store 25

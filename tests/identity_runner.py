@@ -51,6 +51,8 @@ def main(argv):
         projects.MAKE_FIRST = bool(make_first)
     from chits.sim import actions
 
+    if hasattr(actions, "STARVING_FETCH"):  # a later change to what a one-village world does, switched off
+        actions.STARVING_FETCH = False
     if hasattr(actions, "PLENTY"):  # the readings of the village's stock (F33) change a one-village world too: off
         actions.PLENTY = bool(make_first)  # with MAKE_FIRST, for the comparison with the tree before either
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
