@@ -19,11 +19,12 @@ def starving(fish=0):
 def test_a_starving_chit_eats_the_fish_it_holds_instead_of_fishing_on():
     w, a = starving(fish=2)
     actions.reflexes(w, a)
-    assert a.plan[0]["do"] == "eat" and a.plan[1]["do"] == "gather"
+    # the eat takes the fetch's place: left behind it, the fetch walked the fed chit back out to the water
+    assert a.plan == [{"do": "eat", "_reflex": True}]
     for _ in range(50):
         w.tick += 1
         actions.run(w, a)
-        if a.plan and a.plan[0]["do"] == "gather":
+        if not a.plan:
             break
     assert a.hunger > 20 and a.inventory.get("fish", 0) < 2
 
@@ -35,13 +36,31 @@ def test_after_a_while_fetching_in_vain_a_starving_chit_goes_to_the_stores():
     a.plan[0]["_s"] = {"ticks": actions.FETCH_PATIENCE // 2}
     actions.reflexes(w, a)
     assert a.plan[0]["do"] == "gather"  # (not straight away: the fish may be close)
-    a.plan[0]["_s"]["ticks"] = actions.FETCH_PATIENCE + 1
-    actions.reflexes(w, a)
-    assert a.plan[0]["do"] == "eat"
+    fetch = a.plan[0]
     pile.storage.clear()
-    a.plan.pop(0)
+    fetch["_s"]["ticks"] = actions.FETCH_PATIENCE + 1
     actions.reflexes(w, a)
     assert a.plan[0]["do"] == "gather"  # nothing stored: fishing is still the best it has
+    pile.storage["bread"] = 20
+    actions.reflexes(w, a)
+    assert a.plan == [{"do": "eat", "_reflex": True}]
+
+
+def test_a_chit_eating_from_a_store_of_grain_fills_up():
+    """Three grain is 36: about what a walk round the water to the store costs, and chits who worked across it starved
+    going back and forth on three grain a trip."""
+    w, (a, _) = village()
+    pile = put(w, "stockpile", a)
+    pile.storage["grain"] = 100
+    a.hunger = 2.0
+    a.plan = [{"do": "eat"}]
+    for _ in range(200):
+        w.tick += 1
+        actions.run(w, a)
+        if not a.plan:
+            break
+    assert a.hunger >= 70, a.hunger
+    assert pile.storage["grain"] <= 100 - 6
 
 
 def test_a_chit_that_is_only_hungry_fetches_on():

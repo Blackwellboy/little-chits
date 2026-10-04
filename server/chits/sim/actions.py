@@ -196,6 +196,8 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
+MEAL_FULL = 80  # a chit eating from a store takes enough to bring its hunger up to this (at least 3 of the food)
+MEAL_BITES = 8  # the most it eats on one eat step after the first (it was 4: five grain is 60)
 
 
 def reflexes(world, a: Agent) -> None:
@@ -212,9 +214,10 @@ def _reflexes(world, a: Agent) -> None:
             and a.hunger < STARVING and a.reflex_rest.get("food", 0) <= world.tick:
         # a food reflex is itself a reflex, so nothing interrupted it: chits starved at hunger 0 holding the fish
         # they had caught (the step wanted 3), or walking between spent fish tiles with 550 food in a store 25
-        # tiles off. Eat what is in hand; after FETCH_PATIENCE with nothing, go and eat from the stores
+        # tiles off. Eat what is in hand; after FETCH_PATIENCE with nothing, go and eat from the stores. The eat
+        # takes the fetch's place (left behind it, the fetch walked the fed chit straight back out to the water)
         if food_items(a) or (head.get("_s", {}).get("ticks", 0) > FETCH_PATIENCE and _stockpile_with(world, a, FOODS, 30)):
-            a.plan.insert(0, {"do": "eat", "_reflex": True})
+            a.plan[0] = {"do": "eat", "_reflex": True}
             return
     if head.get("_reflex"):
         # ...except that starving beats waiting out the weather, warming up or sleeping (chits starved under
@@ -713,7 +716,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
             if st.storage.get(f, 0) > 0:
                 if a.free_space() < world.item(f).weight:
                     _drop_for_room(world, a, world.item(f).weight)
-                took = a.add(f, min(st.storage[f], 3))
+                # a meal: enough to fill up (three grain is 36, about what a walk round the water to the store
+                # costs: chits who worked across it starved going back and forth)
+                meal = max(3, -(-(MEAL_FULL - a.hunger) // max(1, world.item(f).food)))
+                took = a.add(f, min(st.storage[f], meal))
                 st.storage[f] -= took
                 if st.storage[f] <= 0:
                     st.storage.pop(f)
@@ -731,7 +737,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
     a.bump("meals")
     if pick in ("bread", "berry_tart", "cooked_fish"):
         a.mood = min(100.0, a.mood + 4)
-    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
+    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < MEAL_BITES:
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
     s["note"] = f"Ate {world.item_name(pick)}; hunger now {a.hunger:.0f}/100"
