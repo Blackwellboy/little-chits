@@ -257,24 +257,29 @@ def need_spot(world, design: str, cx: int, cy: int, look: int, first: Optional[T
     if sum(n for _, n in lone) < least:
         return None, []
     serve = [(x, y, 1, 1, n) for (x, y), n in lone]
+    fw, fh = DESIGNS[design].size  # (its reach is measured from its whole footprint, as the build's _serving measures it)
+
+    def covers(x: int, y: int, p: Tuple[int, int]) -> bool:  # (x, y): the footprint's top-left corner
+        return max(p[0] - (x + fw - 1), x - p[0], p[1] - (y + fh - 1), y - p[1], 0) <= radius
 
     def reached(x: int, y: int) -> List[Tuple[int, int]]:
-        return [p for p, _ in lone if max(abs(p[0] - x), abs(p[1] - y)) <= radius]
+        return [p for p, _ in lone if covers(x, y, p)]
 
     def reach(x: int, y: int) -> int:
-        return sum(n for p, n in lone if max(abs(p[0] - x), abs(p[1] - y)) <= radius)
+        return sum(n for p, n in lone if covers(x, y, p))
 
     if first is not None and not _reached(standing, first[0], first[1], radius) and reach(*first) >= least:
         return first, serve
-    # Reach is a square, so the places from which one building reaches a given few are a rectangle, and its lower
-    # corner is (some x - r, some y - r): weighing those corners finds the best place there is (two children 12 apart,
-    # three clusters 20 from a middle that only it reaches; Codex, #95). The building goes in the middle of that
-    # rectangle, where there is the most room for its site. The homes themselves come first on a tie.
-    xs = sorted({p[0] - radius for p, _ in lone})
-    ys = sorted({p[1] - radius for p, _ in lone})
+    # Reach is a square round a footprint, so the top-left corners from which one building reaches a given few are a
+    # rectangle, and its lower corner is (some x - r - w + 1, some y - r - h + 1): weighing those corners finds the best
+    # place there is (two children 17 apart, reached by a 2x2 school between them; three clusters 20 from a middle that
+    # only it reaches; Codex, #95). The building goes in the middle of that rectangle, where there is the most room for
+    # its site. The homes themselves come first on a tie.
+    xs = sorted({p[0] - radius - fw + 1 for p, _ in lone})
+    ys = sorted({p[1] - radius - fh + 1 for p, _ in lone})
     if len(xs) * len(ys) > NEED_SPOTS:
-        x0, x1 = min(p[0] for p, _ in lone) - radius, max(p[0] for p, _ in lone) + radius
-        y0, y1 = min(p[1] for p, _ in lone) - radius, max(p[1] for p, _ in lone) + radius
+        x0, x1 = min(p[0] for p, _ in lone) - radius - fw + 1, max(p[0] for p, _ in lone) + radius
+        y0, y1 = min(p[1] for p, _ in lone) - radius - fh + 1, max(p[1] for p, _ in lone) + radius
         step = max(2, radius // 3)
         while ((x1 - x0) // step + 1) * ((y1 - y0) // step + 1) > NEED_SPOTS:
             step += 1
@@ -286,8 +291,9 @@ def need_spot(world, design: str, cx: int, cy: int, look: int, first: Optional[T
             break
         if home:
             return (-x, -y), serve
-        few = reached(-x, -y)
-        mid = ((min(p[0] for p in few) + max(p[0] for p in few)) // 2, (min(p[1] for p in few) + max(p[1] for p in few)) // 2)
+        few = reached(-x, -y)  # (the corners from which all of these are reached: from max - r - w + 1 to min + r)
+        mid = ((max(p[0] for p in few) - radius - fw + 1 + min(p[0] for p in few) + radius) // 2,
+               (max(p[1] for p in few) - radius - fh + 1 + min(p[1] for p in few) + radius) // 2)
         if world.inb(*mid) and not _reached(standing, mid[0], mid[1], radius):
             return mid, serve
     return None, []
@@ -321,17 +327,30 @@ def _food_pile(world, a: Agent):
 
 
 def _uncut_stand(world, a: Agent) -> Optional[Tuple[int, int]]:
-    """The nearest tree to this chit when it stands among enough others and no sawmill reaches it."""
+    """The nearest tree to this chit (within SAW_LOOK; by rings, then as the crow flies, then by row and column, as
+    World.nearest_resource takes the nearest) that no sawmill reaches
+    and that stands among enough others. A lone tree or one a sawmill already reaches is passed over: only the nearest
+    was looked at, so a lone tree 2 tiles off hid a stand of six 9 tiles off (Codex, #95)."""
     from ..sim import terrain as T
 
-    wood = world.nearest_resource(a.x, a.y, "wood", SAW_LOOK)
-    if wood is None or _reached(_standing(world, "sawmill"), wood[0], wood[1], BLD.SAW_RADIUS):
-        return None
     W, kinds, amts = world.w, world.res_kind, world.res_amt
-    trees = sum(1 for y in range(max(0, wood[1] - SAW_STAND), min(world.h, wood[1] + SAW_STAND + 1))
-                for x in range(max(0, wood[0] - SAW_STAND), min(W, wood[0] + SAW_STAND + 1))
-                if kinds[y * W + x] == T.R_WOOD and amts[y * W + x] > 0)
-    return wood if trees >= SAW_MIN_TREES else None
+
+    def tree(x: int, y: int) -> bool:
+        return kinds[y * W + x] == T.R_WOOD and amts[y * W + x] > 0
+
+    mills = _standing(world, "sawmill")
+    near = sorted((max(abs(x - a.x), abs(y - a.y)), (x - a.x) ** 2 + (y - a.y) ** 2, y, x)
+                  for y in range(max(0, a.y - SAW_LOOK), min(world.h, a.y + SAW_LOOK + 1))
+                  for x in range(max(0, a.x - SAW_LOOK), min(W, a.x + SAW_LOOK + 1))
+                  if tree(x, y) and world.reachable_edge(y * W + x))
+    for _, _, y, x in near:
+        if _reached(mills, x, y, BLD.SAW_RADIUS):
+            continue
+        stand = sum(1 for yy in range(max(0, y - SAW_STAND), min(world.h, y + SAW_STAND + 1))
+                    for xx in range(max(0, x - SAW_STAND), min(W, x + SAW_STAND + 1)) if tree(xx, yy))
+        if stand >= SAW_MIN_TREES:
+            return x, y
+    return None
 
 
 def _open_fish(world, hall) -> Optional[Tuple[int, int]]:

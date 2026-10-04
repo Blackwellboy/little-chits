@@ -229,9 +229,41 @@ def test_a_school_goes_between_two_children_too_far_apart_for_either_place_to_re
     assert [o for o in w.agents.values() if o.is_child(w.tick)] == kids
     assert {(k.x, k.y) for k in kids} == {(a.x - 6, a.y), (a.x + 6, a.y)}
     step = wants(w, a, "school")
-    assert step and near_of(step) == (a.x, a.y), step
+    assert step and near_of(step) == (a.x - 1, a.y - 1), step  # (the top-left corner of a 2x2 school centred between them)
     site, said = begin(w, a, step)
     assert site is not None and all(site.dist(k.x, k.y) <= BLD.SCHOOL_RADIUS for k in kids), said
+
+
+def test_a_school_reaches_two_children_17_apart_from_its_footprint():
+    # need_spot scored a place as a point: no coordinate is within 8 of children 17 apart, but a 2x2 school between them
+    # reaches both from its two columns, as the build measures it (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "school")
+    kids = _children(w, a, 2, a.x - 8, a.y)
+    kids[1].x = a.x + 9
+    step = wants(w, a, "school")
+    assert step and near_of(step) == (a.x, a.y - 1), step  # (the one column it can stand in, centred top to bottom)
+    site, said = begin(w, a, step)
+    assert site is not None and all(site.dist(k.x, k.y) <= BLD.SCHOOL_RADIUS for k in kids), said
+
+
+def test_a_footprint_whose_top_left_is_past_the_reach_can_still_reach_through_its_far_side():
+    # the bounded search took top-left corners within 8 of the place only: a 2x2 school with its corner 9 to the left of
+    # two children reaches them through its right column, and was never looked at (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "school")
+    cx, cy = a.x, a.y
+    a.x, a.y = cx - 9, cy + 12
+    _children(w, a, 2, cx, cy)
+    for y in range(cy - 10, cy + 11):
+        for x in range(cx - 10, cx + 11):
+            if not (x in (cx - 9, cx - 8) and y >= cy):  # (clear only left of them, and a way out to it)
+                w.tiles[y * w.w + x] = T.ROCK
+    w.rebuild_block()
+    step = wants(w, a, "school")
+    assert step and near_of(step) == (cx, cy), step
+    site, said = begin(w, a, step)
+    assert site is not None and site.x == cx - 9 and site.dist(cx, cy) <= BLD.SCHOOL_RADIUS, said
 
 
 def test_a_school_is_not_raised_where_it_would_reach_too_few_of_those_it_was_sited_for():
@@ -250,7 +282,7 @@ def test_a_school_is_not_raised_where_it_would_reach_too_few_of_those_it_was_sit
     w.rebuild_block()
     assert w.find_site("school", mx, my, BLD.SCHOOL_RADIUS, reach=(a.x, a.y), widen=False)[0] >= mx + 8
     step = wants(w, a, "school")
-    assert step and near_of(step) == (mx, my) and step["_least"] == BI.SCHOOL_MIN_CHILDREN, step
+    assert step and near_of(step) == (mx - 1, my - 1) and step["_least"] == BI.SCHOOL_MIN_CHILDREN, step
     site, said = begin(w, a, step)
     assert site is None and "from which it would reach" in said, (site and (site.x, site.y), said)
     assert not any(s.design == "school" for s in w.structures.values())
@@ -358,6 +390,33 @@ def test_a_sawmill_is_built_for_a_stand_none_reaches():
     assert step and near_of(step) == tree and step["_within"] == BLD.SAW_RADIUS
     site, said = begin(w, a, step)
     assert site is not None and site is not far and site.dist(*tree) <= BLD.SAW_RADIUS, said
+
+
+def _trees(w, spots):
+    for x, y in spots:
+        i = y * w.w + x
+        w.tiles[i], w.res_kind[i], w.res_amt[i] = T.FOREST, T.R_WOOD, 5
+    w.rebuild_block()
+
+
+def test_a_sawmill_looks_past_a_lone_tree_or_a_served_stand_to_one_none_reaches():
+    # only the nearest tree was looked at: a lone tree 2 tiles off hid a stand of six 9 tiles off, and a stand a sawmill
+    # already reaches hid an unserved one beyond it (Codex, #95)
+    w, a = meadow(n=60)
+    able(a, w, "sawmill")
+    _trees(w, [(a.x + 2, a.y)] + [(a.x - 9 + i % 2, a.y - 1 + i // 2) for i in range(6)])
+    assert w.nearest_resource(a.x, a.y, "wood", BI.SAW_LOOK) == (a.x + 2, a.y)
+    step = wants(w, a, "sawmill")
+    assert step and near_of(step) == (a.x - 8, a.y), step
+    site, said = begin(w, a, step)
+    assert site is not None and site.dist(a.x - 8, a.y) <= BLD.SAW_RADIUS, said
+    w, a = meadow(n=60)
+    able(a, w, "sawmill")
+    _trees(w, [(a.x + 3 + i % 2, a.y - 1 + i // 2) for i in range(6)] + [(a.x - 11 + i % 2, a.y - 1 + i // 2) for i in range(6)])
+    mill = at(w, a, "sawmill", a.x + 13, a.y)  # (reaches the near stand, not the far one)
+    assert BLD.sawn(w, a.x + 3, a.y) and not BLD.sawn(w, a.x - 10, a.y) and mill.dist(a.x - 10, a.y) > BLD.SAW_RADIUS
+    step = wants(w, a, "sawmill")
+    assert step and near_of(step) == (a.x - 10, a.y), step
 
 
 def test_no_sawmill_for_trees_one_reaches_or_for_a_few_trees():

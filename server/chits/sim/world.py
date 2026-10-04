@@ -1312,8 +1312,11 @@ class World:
         comp = self._components() if reach and self.inb(*reach) and not self.block[reach[1] * self.w + reach[0]] else None
         home = comp[reach[1] * self.w + reach[0]] if comp else 0
         cands = []
-        for dy in range(-radius, radius + 1):
-            for dx in range(-radius, radius + 1):
+        # (with `serves`, a footprint whose top-left corner is up to its own size past the radius to the left or above
+        # still reaches through its far side: `serves` is what decides, Codex #95)
+        lx, ly = (w - 1, h - 1) if serves is not None else (0, 0)
+        for dy in range(-radius - ly, radius + 1):
+            for dx in range(-radius - lx, radius + 1):
                 nx, ny = x + dx, y + dy
                 if design in ("boat", "lighthouse", "sand_pit", "harbour") and not self.coastal(nx, ny):
                     continue

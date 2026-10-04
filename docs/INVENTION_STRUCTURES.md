@@ -32,13 +32,13 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**143** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**144** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
 |---|---|---|
 | `app.py` | 1 | 167 |
-| `brain/builder.py` | 11 | 64, 71, 83, 103, 104, 145, 371, 386, 392, 448, 455 |
+| `brain/builder.py` | 12 | 64, 71, 83, 103, 104, 145, 260, 390, 405, 411, 467, 474 |
 | `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
 | `brain/instinct.py` | 21 | 569, 579, 608, 675, 697, 716, 730, 731, 739, 747, 758, 825, 826, 862, 909, 926, 1034, 1040, 1071 |
 | `brain/outposts.py` | 1 | 68 |
@@ -54,7 +54,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `sim/hall.py` | 1 | 30 |
 | `sim/projects.py` | 15 | 245, 416, 523, 536, 646, 670, 679, 683, 685, 940, 985, 995, 999, 1006, 1057 |
 | `sim/wants.py` | 1 | 89 |
-| `sim/world.py` | 8 | 177, 890, 1303, 1337, 1354, 1479, 1667, 1671 |
+| `sim/world.py` | 8 | 177, 890, 1303, 1340, 1357, 1482, 1670, 1674 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
 | `views.py` | 9 | 16, 38, 57, 134, 158, 284, 292, 343 |
