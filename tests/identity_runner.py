@@ -57,6 +57,8 @@ def main(argv):
         instinct_rules.HUNGER_REACH = False
     if hasattr(actions, "STARVING_FETCH"):
         actions.STARVING_FETCH = False
+    if hasattr(actions, "HUNGER_MARGIN"):  # (food by the ticks left against the walk, not by fixed hunger numbers)
+        actions.HUNGER_MARGIN = False
     if hasattr(actions, "PLENTY"):  # the readings of the village's stock (F33) change a one-village world too: off
         actions.PLENTY = bool(make_first)  # with MAKE_FIRST, for the comparison with the tree before either
     from chits.sim import buildings

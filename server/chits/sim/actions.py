@@ -16,7 +16,7 @@ from .. import diag
 from . import items as IT
 from . import buildings as BLD
 from . import terrain as T
-from .agent import Agent, TICKS_PER_DAY
+from .agent import HUNGER_PER_TICK, Agent, TICKS_PER_DAY
 from .items import (
     ORE_KINDS,
     HOME_STORES,
@@ -241,6 +241,18 @@ FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild be
 FARM_RETRY = TICKS_PER_DAY // 4  # after one farm proves a long way round, a hungry chit's plan leaves farms alone this
 # long: one at a time it tried every farm of a cluster across the water, 9-14 times in a row (tools/harness, seed 42)
 STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False: as before, for the identity test)
+# The hunger margin. Every starvation the harness found had one shape: a chit let its hunger run low under some other
+# step, then could not make the walk to food. A fixed hunger number can't fit both a chit beside a store and one 30
+# tiles from it, so a chit compares the ticks its hunger has left with the walk to the nearest food it knows of.
+HUNGER_MARGIN = True  # (False: the fixed thresholds before it, for the identity test)
+WALK_COST = 1.5  # movement points per tile as the crow flies: terrain costs 1.0-1.8, a diagonal 1.41, paths bend
+FOOD_SAFETY = 1.5  # food comes first once the ticks left are under this many walks there...
+FOOD_SLACK = 12  # ...plus this many ticks to take, pick or harvest it and start eating
+MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is looked up (SNACK_BELOW)
+MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
+EAT_TO = 70  # a chit eating from a store takes enough for a meal to here (the eat step's own "fed")...
+MEAL_MAX = 6  # ...up to this many items: 3 grain (+36) left a chit hungry again soon after
+MARGIN_STEPS = False  # the margin also for a plan's own steps (otherwise these give way to food below hunger 16)
 
 
 def reflexes(world, a: Agent) -> None:
@@ -266,7 +278,10 @@ def _reflexes(world, a: Agent) -> None:
         # ...except that starving beats waiting out the weather, warming up or sleeping (chits starved under
         # those reflexes, which only end when the weather clears or they're warm or rested), or carrying a load to
         # the store (one starved on a 120-tile walk to a stockpile a bridge had put within reach)
-        if head.get("do") in ("shelter", "warm_up", "sleep", "store") and a.hunger < 8:
+        if head.get("do") in ("shelter", "warm_up", "sleep", "store") and (a.hunger < 8 or (
+                _margin_short(world, a, head) and a.reflex_rest.get("food", 0) <= world.tick)):
+            # (at hunger 8 a chit beside a store has time to spare and one 25 tiles off has none: chits sheltered down
+            # to 8, ate one berry, sheltered again and starved on the walk)
             food = _food_reflex(world, a)
             if food.get("do") != "explore":
                 a.plan.insert(0, dict(food, _reflex=True))
@@ -277,6 +292,10 @@ def _reflexes(world, a: Agent) -> None:
     # already fetching food is fine, unless it's nearly too late and there's food in hand: chits starved at
     # hunger 8 carrying berries while they gathered more
     fetching = hv == "gather" and head.get("what") in ("berries", "fish") and not (a.hunger < 10 and food_items(a))
+    hungry = a.hunger < 16 or (MARGIN_STEPS and a.plan and hv != "eat" and not fetching
+                               and a.reflex_rest.get("food", 0) <= world.tick and _margin_short(world, a, head))
+    if hv == "harvest" and hungry and _far_harvest(world, a, head):
+        hv = None  # not fetching food after all: a farm still to sow, or food much nearer than the farm (below)
     if SNACK_BELOW > a.hunger >= 16 and food_items(a) and hv not in ("eat", "sleep") and not fetching \
             and a.activity != "sleeping":
         # a bite of what it carries: instinct eats below 45, but a model-driven chit only ate when starving and
@@ -290,7 +309,7 @@ def _reflexes(world, a: Agent) -> None:
         # too hungry to have children (instinct eats below 45; a model plan rarely says "eat")
         a.plan.insert(0, {"do": "eat", "_reflex": True})
         return
-    if a.hunger < 16 and hv not in ("eat", "harvest") and not fetching and a.reflex_rest.get("food", 0) <= world.tick:
+    if hungry and hv not in ("eat", "harvest") and not fetching and a.reflex_rest.get("food", 0) <= world.tick:
         a.plan.insert(0, dict(_food_reflex(world, a), _reflex=True))
         a.set_emote("😣", world.tick, 20)
         return
@@ -330,9 +349,60 @@ def _stockpile_with_room(world, a: Agent):
     return None
 
 
+def _nearest_food(world, a: Agent, s: Dict[str, Any]):
+    """[distance as the crow flies, verb] of the nearest food not in hand (None: none known), from the lookups the
+    food reflex makes, kept in the step's state for MARGIN_RECHECK ticks."""
+    seen = s.get("food_near")
+    if not seen or world.tick - seen[0] >= MARGIN_RECHECK:
+        best = min(_food_options(world, a), key=lambda o: o[0], default=None)
+        seen = s["food_near"] = [world.tick, best and [best[0], best[1]["do"]]]
+    return seen[1]
+
+
+def _margin_short(world, a: Agent, head: Dict[str, Any]) -> bool:
+    """The ticks this chit's hunger (and the food in its hands) has left are too few for the walk to the nearest
+    food: HUNGER_PER_TICK a tick, at its walking speed now (slower exhausted or laden), WALK_COST per tile."""
+    if not HUNGER_MARGIN or a.hunger >= MARGIN_FROM:
+        return False
+    near = _nearest_food(world, a, head.setdefault("_s", {}))
+    if near is None:
+        return False  # no food known: the margin can't say, and a walk to nowhere is no help
+    left = (a.hunger + sum(world.item(f).food * a.inventory[f] for f in food_items(a))) / HUNGER_PER_TICK
+    return left < FOOD_SAFETY * near[0] * WALK_COST / _speed(world, a) + FOOD_SLACK
+
+
+def _far_harvest(world, a: Agent, head: Dict[str, Any]) -> bool:
+    """A hungry chit's harvest step is no fetch of food when it has turned to sowing an unripe or empty farm, or when
+    other food is nearer than any ripe farm: one at hunger 10 walked 20 tiles to an unripe farm with a store 8 tiles
+    off, sowed it and starved on the way back (tools/harness, seed 27)."""
+    if not HUNGER_MARGIN:
+        return False
+    s = head.setdefault("_s", {})
+    if s.get("redirect"):
+        return True
+    near = _nearest_food(world, a, s)
+    return near is not None and near[1] != "harvest"
+
+
 def _food_reflex(world, a: Agent) -> Dict[str, Any]:
     if food_items(a):
         return {"do": "eat"}
+    opts = _food_options(world, a)
+    if opts:
+        best = min(opts, key=lambda o: o[0])[1]
+        if best.get("do") == "gather" and a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 8):
+            return {"do": "gather", "what": "fish", "qty": 3}
+        return best
+    if _farm_ready(world, a):
+        return {"do": "harvest"}
+    if a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 20):
+        return {"do": "gather", "what": "fish", "qty": 3}
+    if world.nearest_resource(a.x, a.y, "berries", 34):
+        return {"do": "gather", "what": "berries", "qty": 3}
+    return {"do": "explore"}
+
+
+def _food_options(world, a: Agent) -> List[Tuple[int, Dict[str, Any]]]:
     # the nearest food, not always the stockpile first: from hunger 16 a chit has ~70 ticks, and an exhausted one
     # walks 0.4 tiles a tick, so chits starved on the way to a pile 30 tiles off with berries a few tiles away
     here = (a.x, a.y)
@@ -353,18 +423,7 @@ def _food_reflex(world, a: Agent) -> Dict[str, Any]:
     berry = world.nearest_resource(a.x, a.y, "berries", 34)
     if berry:
         opts.append((d(*berry) + 2, {"do": "gather", "what": "berries", "qty": 3}))  # +2: picking takes a moment
-    if opts:
-        best = min(opts, key=lambda o: o[0])[1]
-        if best.get("do") == "gather" and a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 8):
-            return {"do": "gather", "what": "fish", "qty": 3}
-        return best
-    if _farm_ready(world, a):
-        return {"do": "harvest"}
-    if a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 20):
-        return {"do": "gather", "what": "fish", "qty": 3}
-    if world.nearest_resource(a.x, a.y, "berries", 34):
-        return {"do": "gather", "what": "berries", "qty": 3}
-    return {"do": "explore"}
+    return opts
 
 
 # ---------------------------------------------------------------------------- movement helpers
@@ -795,7 +854,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
             if st.storage.get(f, 0) > 0:
                 if a.free_space() < world.item(f).weight:
                     _drop_for_room(world, a, world.item(f).weight)
-                took = a.add(f, min(st.storage[f], 3))
+                n = 3
+                if HUNGER_MARGIN:  # enough for a meal: one small one sent the chit back into danger soon after
+                    n = max(3, min(MEAL_MAX, math.ceil((EAT_TO - a.hunger) / max(1.0, world.item(f).food))))
+                took = a.add(f, min(st.storage[f], n))
                 st.storage[f] -= took
                 if st.storage[f] <= 0:
                     st.storage.pop(f)
@@ -815,7 +877,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
         a.mood = min(100.0, a.mood + MEAL_MOOD)
         if IT.ITEM_USES:
             a.bump("good_meals")
-    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
+    if a.hunger < EAT_TO and food_items(a) and s.get("ate", 0) < (MEAL_MAX - 1 if HUNGER_MARGIN else 4):
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
     s["note"] = f"Ate {world.item_name(pick)}; hunger now {a.hunger:.0f}/100"
