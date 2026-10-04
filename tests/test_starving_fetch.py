@@ -46,23 +46,6 @@ def test_after_a_while_fetching_in_vain_a_starving_chit_goes_to_the_stores():
     assert a.plan == [{"do": "eat", "_reflex": True}]
 
 
-def test_a_chit_eating_from_a_store_of_grain_fills_up():
-    """Three grain is 36: about what a walk round the water to the store costs, and chits who worked across it starved
-    going back and forth on three grain a trip."""
-    w, (a, _) = village()
-    pile = put(w, "stockpile", a)
-    pile.storage["grain"] = 100
-    a.hunger = 2.0
-    a.plan = [{"do": "eat"}]
-    for _ in range(200):
-        w.tick += 1
-        actions.run(w, a)
-        if not a.plan:
-            break
-    assert a.hunger >= 70, a.hunger
-    assert pile.storage["grain"] <= 100 - 6
-
-
 def test_a_chit_that_is_only_hungry_fetches_on():
     w, a = starving(fish=2)
     a.hunger = actions.STARVING + 5

@@ -196,8 +196,6 @@ MEAL_RADIUS = 12  # ...or walks this far to a stockpile with food  # ticks a ref
 REFLEX_REST = 60  # ticks (6 in-game hours) a shelter/warm_up reflex stays quiet after finding nowhere to go
 STARVING = 10  # below this hunger a chit fetching food eats what it holds (as the "fetching" rule below already says)
 FETCH_PATIENCE = 40  # ticks a starving chit spends fetching food in the wild before it goes to the stores instead
-MEAL_FULL = 80  # a chit eating from a store takes enough to bring its hunger up to this (at least 3 of the food)
-MEAL_BITES = 8  # the most it eats on one eat step after the first (it was 4: five grain is 60)
 
 
 def reflexes(world, a: Agent) -> None:
@@ -716,10 +714,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
             if st.storage.get(f, 0) > 0:
                 if a.free_space() < world.item(f).weight:
                     _drop_for_room(world, a, world.item(f).weight)
-                # a meal: enough to fill up (three grain is 36, about what a walk round the water to the store
-                # costs: chits who worked across it starved going back and forth)
-                meal = max(3, -(-(MEAL_FULL - a.hunger) // max(1, world.item(f).food)))
-                took = a.add(f, min(st.storage[f], meal))
+                took = a.add(f, min(st.storage[f], 3))
                 st.storage[f] -= took
                 if st.storage[f] <= 0:
                     st.storage.pop(f)
@@ -737,7 +732,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
     a.bump("meals")
     if pick in ("bread", "berry_tart", "cooked_fish"):
         a.mood = min(100.0, a.mood + 4)
-    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < MEAL_BITES:
+    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
     s["note"] = f"Ate {world.item_name(pick)}; hunger now {a.hunger:.0f}/100"
