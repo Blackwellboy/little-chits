@@ -20,7 +20,7 @@ from . import theme, views
 from .brain.mind import INSTINCT, Mind
 from .recorder import Recorder
 from .sim.agent import TICKS_PER_DAY
-from .sim.world import CULTURE_FLAGS, ERAS, World
+from .sim.world import CULTURE_FLAGS, ERAS, POP_CAP_MIN, World
 from .store import Store
 
 log = logging.getLogger("chits.runtime")
@@ -260,6 +260,11 @@ class Runtime:
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
         w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack)
+        # a new play game's limit on each world's people (0: the island's own). Never an experiment's: its worlds run
+        # by the island's own rules, whatever this machine's settings say (Codex, #79)
+        cap = _env_int("CHITS_POP_CAP", 0) if self.contract != "experiment" else 0
+        if cap:
+            w.cap = max(POP_CAP_MIN, min(w.island_cap(), cap))
         self._attach(w)
         return w
 
@@ -365,6 +370,27 @@ class Runtime:
         self._broadcast_snapshots()
 
     # -------------------------------------------------------------- run contract
+    def pop_cap_state(self) -> Dict[str, Any]:
+        ws = list(self.worlds.values())
+        return {"cap": next((w.cap for w in ws if w.cap), None), "min": POP_CAP_MIN,
+                "island": min((w.island_cap() for w in ws), default=None)}
+
+    def set_pop_cap(self, cap: Optional[int]) -> Dict[str, Any]:
+        """Hold every world of this game at so many chits (None: the island's own limit). Nobody is removed: births
+        pause while a world is at or over the limit, so a bigger world shrinks as its old die. The same limit for
+        every world; play only (an experiment's worlds are never changed from outside); marked on the run."""
+        if self.contract == "experiment":
+            raise PermissionError("not allowed in an experiment run")
+        st = self.pop_cap_state()
+        if cap is not None and not (st["min"] <= cap <= (st["island"] or cap)):
+            raise ValueError(f"the limit must be between {st['min']} and {st['island']} (this island's own limit)")
+        if cap == st["island"]:
+            cap = None
+        for w in self.worlds.values():
+            w.cap = cap
+        self.mark_sandbox(f"each world held at {cap} chits" if cap else "the limit on each world's chits was lifted")
+        return self.pop_cap_state()
+
     def mark_sandbox(self, reason: str) -> None:
         """Someone reached into the world from outside (god mode, a rewind...). Permanent for this run."""
         if self.contract == "experiment":
@@ -412,6 +438,7 @@ class Runtime:
         return {"run_id": self.run_id, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "contract": self.contract,
                 "mode": self.mode, "seed": first.seed if first else None, "size": first.w if first else None,
                 "chits": chits if chits is not None else (len(first.agents) if first else None),
+                "pop_cap": getattr(first, "cap", None) if first else None,
                 "worlds": worlds, "prompt_version": P.PROMPT_VERSION, "rng_scheme": RNG_SCHEME,
                 "source_commit": source_commit(),
                 "code_stretches": json.loads(self.store.get_meta("code_stretches") or "[]"),
@@ -848,7 +875,7 @@ class Runtime:
                 "sandbox_modified": self.store.get_meta("sandbox_modified") == "1",
                 "durable_tick": {wid: getattr(w, "_durable_tick", -1) for wid, w in self.worlds.items()},
                 "save_errors": dict(self.save_errors), "invalid_reason": self.invalid_reason,
-                "skip": self.skip_state(), "last_skip": self.last_skip}
+                "skip": self.skip_state(), "last_skip": self.last_skip, "pop_cap": self.pop_cap_state()}
 
     def brain_summary(self) -> Dict[str, Any]:
         out = {}

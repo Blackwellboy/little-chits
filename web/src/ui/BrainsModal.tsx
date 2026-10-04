@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
 import { thoughtLine } from "./thoughts";
+import { popCapText, validCap } from "./popCap";
 import { api, errorText } from "../net/socket";
 import { useUI } from "../state/store";
 import { Capacity } from "./sizing";
@@ -14,6 +15,29 @@ const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model:
 function Thought({ l }: { l: any }) {
   const t = thoughtLine(l);
   return <p>{t.quote && <>“{t.quote}” → </>}{t.goal && <><i>{t.goal}</i>: </>}{t.rest}</p>;
+}
+
+function PopCapRow() {
+  const control = useUI((s) => s.control);
+  const [draft, setDraft] = useState("");
+  const [msg, setMsg] = useState("");
+  const pc = control?.pop_cap;
+  if (!pc || control?.contract === "experiment") return null;
+  const n = Number(draft);
+  const hold = async (cap: number | null) => {
+    try { await api("/api/population", { cap }); setDraft(""); setMsg(""); } catch (e) { setMsg(errorText(e)); }
+  };
+  return (
+    <div className="pop-cap" title="Hold every world of this game at so many chits, so the models can keep up with them">
+      <b>👥 Chits per world</b>
+      <input type="number" min={pc.min} max={pc.island ?? undefined} placeholder={String(pc.cap ?? pc.island ?? "")}
+        value={draft} onChange={(e) => setDraft(e.target.value)} />
+      <button disabled={!draft || !validCap(n, pc)} onClick={() => hold(n)}>Hold at this</button>
+      {pc.cap != null && <button onClick={() => hold(null)}>No limit</button>}
+      <small className="muted">{popCapText(pc)}</small>
+      {msg && <small className="err">{msg}</small>}
+    </div>
+  );
 }
 
 function ago(t: number): string {
@@ -136,6 +160,7 @@ export function BrainsModal() {
             {brains.map((b) => <option key={b.config.id} value={b.config.id}>{b.label}</option>)}
           </select>
         </label>
+        <PopCapRow />
         <h3>Endpoints</h3>
         <div className="brain-list">
           {brains.map((b) => (
