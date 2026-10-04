@@ -2152,10 +2152,19 @@ REUSE_WITHIN = {"campfire": 6, "farm": 8, "shrine": 12, "kiln": 12, "workshop": 
 REUSE_WITHIN.update(BLD.REUSE_WITHIN)  # wells, granaries, mills, smithies, towers, schools, bell towers
 
 
+def reuse_within(key: str) -> Optional[int]:
+    """How near one of the same kind is used instead of starting another (no farther than it reaches, for the ten dead
+    zones, while buildings.NEED_SITING is on)."""
+    r = REUSE_WITHIN.get(key)
+    if r and BLD.NEED_SITING and key in BLD.AT_REACH:
+        r = min(r, BLD.EFFECT_RADIUS[key])
+    return r
+
+
 def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Optional[int] = None) -> Optional[str]:
     """One already stands where this would go up (x, y: by default where the chit is): use that instead."""
     x, y = (a.x, a.y) if x is None else (x, y)
-    radius = REUSE_WITHIN.get(key)
+    radius = reuse_within(key)
     if not radius:
         return None
     if key == "stockpile" and sum(1 for x in world.structures.values() if x.design == "stockpile" and x.functional) \
@@ -2197,6 +2206,30 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
     return None
 
 
+def _serving(step, key: str, within: int):
+    """With buildings.NEED_SITING: a test of a site's top-left corner, whether a `key` standing there reaches at least
+    "_least" of those the builder sited it for ("_serve": [x, y, w, h, how many]); None when the step names none. The
+    nearest clear ground to the place it was sited at could reach fewer: a school between two children went up past
+    one of them, reached the other only, and as a site going up kept a second from being planned (Codex, #95)."""
+    serve, least = step.get("_serve"), step.get("_least")
+    if not (BLD.NEED_SITING and within and isinstance(serve, list) and isinstance(least, int)):
+        return None
+    try:
+        rects = [(int(x), int(y), int(w), int(h), int(n)) for x, y, w, h, n in serve]
+    except (TypeError, ValueError):
+        return None
+    fw, fh = DESIGNS[key].size
+
+    def reaches(x: int, y: int) -> bool:
+        got = 0
+        for rx, ry, rw, rh, n in rects:
+            if max(rx - (x + fw - 1), x - (rx + rw - 1), 0, ry - (y + fh - 1), y - (ry + rh - 1)) <= within:
+                got += n
+        return got >= least
+
+    return reaches
+
+
 def _redirect(world, a: Agent, s) -> str:
     """Run the step this build turned into (refuel a fire, sow a farm) to its end."""
     sub = s["redirect"]
@@ -2232,9 +2265,15 @@ def _do_build(world, a: Agent, step, s) -> str:
         hall = BLD.hall_near(world, a)
         if hall is not None:
             ox, oy = hall.x + hall.w // 2, hall.y + hall.h // 2
-    # join an existing unfinished site of the same kind there rather than duplicating it
-    for st in world.structures_near(ox, oy, 12, key):
-        if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st):
+    # "_within": instinct sited it to serve something at that place (a field, a store, a home): any farther off it
+    # would not reach it, and the same plan would be made again tomorrow
+    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
+    serves = _serving(step, key, within)
+    # join an existing unfinished site of the same kind there rather than duplicating it (one going up farther off than
+    # the place it is for would not serve it either: a well 8 tiles from dry fields was joined, and watered none, Codex #95)
+    for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
+        if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
+                and (serves is None or serves(st.x, st.y)):
             s["site"] = st.id
             s["joined"] = True
             return _do_help(world, a, step, s)
@@ -2251,6 +2290,9 @@ def _do_build(world, a: Agent, step, s) -> str:
     if key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None:
         return (f"only a city can build a {DESIGNS[key].name}: a town of 40 or more with five kinds of public building "
                 f"around its hall and paved streets")
+    not_a_town = BLD.town_only(world, key, ox, oy)  # (a site already begun was joined above: it can be finished)
+    if not_a_town:
+        return not_a_town
     # models kept starting a second hut beside their own (53 huts for 26 chits); a pioneer's new home is the exception
     from . import pioneers as PI
 
@@ -2260,13 +2302,23 @@ def _do_build(world, a: Agent, step, s) -> str:
             and not (crowded and home.founder != a.id) and not PI.builds_home_at(world, a, ox, oy):
         return (f"I already have a home ({DESIGNS[home.design].name} {home.id}): repair it if it's damaged, or help "
                 f"build someone else's instead of a second one")
-    pos = world.find_site(key, ox, oy, 8 if key != "road" else 3, reach=(a.x, a.y))
-    # (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
-    for radius in ((16, 28) if key not in ("road", "boat", "lighthouse", "mine") else ()):
-        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y))
+    # (with "_within", no farther off than it says) (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
+    radii = (3,) if key == "road" else (8,) if key in ("boat", "lighthouse", "mine") else (8, 16, 28)
+    if within:
+        radii = tuple(r for r in radii if r < within) + (within,)
+    pos = None
+    for radius in radii:
+        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y), widen=not within, serves=serves)
     if not pos:
         a.reflex_rest["nobuild:" + key] = world.tick + TICKS_PER_DAY  # a crowded village: don't retry every plan
+        if serves is not None:
+            return f"there's no clear ground within {within} tiles of there from which it would reach those it is for"
+        if within:
+            return f"there's no clear ground within {within} tiles of there"
         return "there's no clear ground within 28 tiles: go somewhere open, or add \"near\":\"x,y\""
+    not_a_town = BLD.town_only(world, key, *pos)  # (where it would stand: the search can go 28 tiles past the town's edge)
+    if not_a_town:
+        return not_a_town
 
     st = world.place_site(key, pos[0], pos[1], a)
     st.builders[a.id] = 0.0

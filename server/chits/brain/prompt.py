@@ -20,7 +20,8 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.9"
+PROMPT_VERSION = "2026-10-05.1"
+TOWN_WORDS = " (only a town can build one)"  # after a town-life building's blurb while buildings.TOWN_GATE is on
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -407,7 +408,7 @@ def scene(world, a: Agent) -> str:
     # what each building is for: models only saw materials, and never learned a brick house is warmer or a road faster
     designs = [
         f"{DESIGNS[d].name} ({', '.join(f'{n} {world.item_name(m)}' for m, n in DESIGNS[d].materials)}"
-        + (f": {DESIGNS[d].blurb}" if DESIGNS[d].blurb else "") + ")"
+        + (f": {DESIGNS[d].blurb}" if DESIGNS[d].blurb else "") + TOWN_WORDS * (BLD.TOWN_GATE and d in BLD.TOWN_ONLY) + ")"
         for d in (k.split(':', 1)[1] for k in a.knows if k.startswith("design:"))
         if d != "boat" or getattr(world, "contact", False)  # a boat goes nowhere while the islands can't meet
     ]

@@ -57,11 +57,14 @@ def test_the_builder_never_proposes_what_the_build_refuses_as_one_close_by():
 # is refused. Capping them all cost a 60-day A/B 2-3 discoveries and a quarter of the stored food (villages raised more
 # of each), so each waits for a builder that asks whether the pile, field or home is served. Take one off this list in
 # the change that gives it that builder.
-DEAD_ZONES = {"well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour"}
+# (2026-10-04, dev/zones: all ten have one now, tests/test_review_zones.py, while buildings.NEED_SITING is on, which
+# is not yet the default. A design added here must say why.)
+DEAD_ZONES = set()
 
 
-def test_the_dead_zones_still_open_are_exactly_the_listed_ones():
-    still = {d for d, r in BLD.EFFECT_RADIUS.items() if A.REUSE_WITHIN.get(d, 0) > r}
+def test_the_dead_zones_still_open_are_exactly_the_listed_ones(monkeypatch):
+    monkeypatch.setattr(BLD, "NEED_SITING", True)
+    still = {d for d, r in BLD.EFFECT_RADIUS.items() if (A.reuse_within(d) or 0) > r}
     assert still == DEAD_ZONES, sorted(still ^ DEAD_ZONES)
 
 

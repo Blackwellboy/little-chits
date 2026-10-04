@@ -5,6 +5,7 @@ import { nextStep, stepLabel, villageOrder, type Checklist, type VillageRow } fr
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
 import { entryLines, type Entry } from "./encyclopedia";
+import { rowClicked } from "./listPosition";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 
@@ -452,13 +453,15 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
   // the entry opens below the whole table (thousands of pixels down in an old world): bring it to the reader, or a
   // click on a row looks like nothing happened
   const openRef = useRef<HTMLDivElement>(null);
-  // ...and closing it puts the reader back at the row they clicked, not at the foot of the table (Codex, #77)
+  // ...and closing it puts the reader back at the row they clicked, not at the foot of the table (Codex, #77): the
+  // row of the entry now showing, when they went from one entry to another (ui/listPosition.ts)
   const cameFrom = useRef<{ el: Element; top: number } | null>(null);
   const toggle = (key: string, from: HTMLElement) => {
-    if (openKey === key) { setOpenKey(null); return; }
     const el = from.closest(".panel");
-    if (el && !openKey) cameFrom.current = { el, top: el.scrollTop };
-    setOpenKey(key);
+    const next = rowClicked({ open: openKey, top: cameFrom.current?.top ?? null }, key, el ? el.scrollTop : null);
+    const at = el ?? cameFrom.current?.el;
+    cameFrom.current = at && next.top != null ? { el: at, top: next.top } : null;
+    setOpenKey(next.open);
   };
   useEffect(() => {
     if (openKey) openRef.current?.scrollIntoView({ block: "start" });
