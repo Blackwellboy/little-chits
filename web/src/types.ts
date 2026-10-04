@@ -46,6 +46,7 @@ export type Control = {
   skip?: import("./ui/skip").SkipState | null; last_skip?: import("./ui/skip").SkipResult | null;
   speed: number; paused: boolean; tps: number; pace_to_brain: boolean; waiting_on_brain: boolean; speeds: number[];
   pop_cap?: { cap: number | null; min: number; island: number | null };
+  loop_error?: string; invalid_reason?: string;
 };
 
 export type AgentDetail = AgentBrief & {

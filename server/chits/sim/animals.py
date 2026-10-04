@@ -176,9 +176,19 @@ DEFENCE_PER_POWER = 0.05  # ...and what each point of the weapon's power above 1
 DEFENCE_MAX = 0.95  # no weapon makes it certain
 
 
-def defence_odds(world, o) -> float:
-    """The chance this armed chit drives a wolf off: by the kind of weapon, a little better for a stronger one."""
-    tool = o.best_tool("weapon") or o.best_tool("spear")
+def weapon_odds(world, o) -> float:
+    """The chance this armed chit drives a wolf off. An invented weapon is as good as what it is made of (its
+    "defence" number, invent.DEFENCE_ODDS: a club of wood and flint is no musket). Otherwise it goes by the kind of
+    weapon, a little better for a stronger one (F35)."""
+    held = o.best_tool("weapon")
+    inv = world.invention(held) if held and world.catalog.items else None
+    if inv is not None:
+        d = (inv.get("effect") or {}).get("defence")
+        # one from before that number meant anything (a bare 1) counts as any weapon did
+        return float(d) if d and 0.0 < d < 1.0 else WEAPON_ODDS["weapon"]
+    tool = held or o.best_tool("spear")
+    if not tool:
+        return WEAPON_ODDS["spear"]  # (asked only of the armed)
     it = world.item(tool)
     if it is None or it.tool not in WEAPON_ODDS:  # (a thing this world's catalogue does not know: unarmed)
         return 0.0
@@ -186,7 +196,6 @@ def defence_odds(world, o) -> float:
     if not IT.ITEM_USES:
         return base
     return max(base, min(DEFENCE_MAX, base + DEFENCE_PER_POWER * (it.tool_power - 1.0)))
-
 
 def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
     """A chit with a spear (or anyone armed close by) fights back. Wolves bit 51 chits in World B, which carried
@@ -198,7 +207,7 @@ def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
         return False
     odds = 1.0
     for o in armed:
-        odds *= 1.0 - defence_odds(world, o)
+        odds *= 1.0 - weapon_odds(world, o)
     if rng.random() >= 1.0 - odds:
         return False
     hero = min(armed, key=lambda o: max(abs(o.x - c.x), abs(o.y - c.y)))

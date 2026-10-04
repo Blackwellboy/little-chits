@@ -214,7 +214,7 @@ def test_a_spear_wears_when_it_hunts():
 
 
 def test_a_spear_wears_when_it_drives_off_a_wolf_and_breaks_in_the_end(monkeypatch):
-    monkeypatch.setattr(AN, "defence_odds", lambda world, o: 1.0)
+    monkeypatch.setattr(AN, "weapon_odds", lambda world, o: 1.0)
     w, (c, other) = village()
     other.x, other.y = c.x + 20, c.y
     c.inventory["spear"] = 1
@@ -247,16 +247,16 @@ def test_a_stronger_weapon_drives_a_wolf_off_more_surely_but_never_surely():
 
     w, (a, b) = village()
     a.inventory["spear"] = 1
-    assert AN.defence_odds(w, a) == AN.WEAPON_ODDS["spear"]  # power 1: as it was
+    assert AN.weapon_odds(w, a) == AN.WEAPON_ODDS["spear"]  # power 1: as it was
     b.inventory["musket"] = 1
-    assert AN.WEAPON_ODDS["weapon"] < AN.defence_odds(w, b) <= AN.DEFENCE_MAX < 1.0
+    assert AN.WEAPON_ODDS["weapon"] < AN.weapon_odds(w, b) <= AN.DEFENCE_MAX < 1.0
     register_invention(w, "inv_a_1", "Club", {"wood": 1, "stone": 1}, ("invented",), {"tool": "weapon", "tool_power": 1.0})
     a.inventory.clear()
     a.inventory["inv_a_1"] = 1
-    assert AN.defence_odds(w, a) == AN.WEAPON_ODDS["weapon"]
+    assert AN.weapon_odds(w, a) == AN.WEAPON_ODDS["weapon"]
     register_invention(w, "inv_a_2", "Pike", {"wood": 1, "iron": 1}, ("invented",), {"tool": "weapon", "tool_power": 9.0})
     a.inventory["inv_a_2"] = 1
-    assert AN.defence_odds(w, a) == AN.DEFENCE_MAX
+    assert AN.weapon_odds(w, a) == AN.DEFENCE_MAX
 
 
 def test_a_carried_key_the_world_does_not_know_never_breaks_the_new_code():
@@ -268,7 +268,7 @@ def test_a_carried_key_the_world_does_not_know_never_breaks_the_new_code():
 
     w, (a, _) = village()
     assert w.item("inv_from_elsewhere") is None
-    assert AN.defence_odds(w, Holder()) == 0.0  # unarmed, not a crash
+    assert AN.weapon_odds(w, Holder()) == 0.0  # unarmed, not a crash
     pile = put(w, "stockpile", a)
     a.inventory.update({"inv_from_elsewhere": 1, "stone": 2})
     assert run_step(w, a, {"do": "store", "what": "all"}) == actions.DONE

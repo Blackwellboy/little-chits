@@ -193,12 +193,15 @@ def encyclopedia(wid: str, knowledge: str):
 
 @app.get("/api/inventions")
 def inventions():
-    """Each world's own inventions (T20): what it is, what it's for, who invented it, how many know it."""
+    """Each world's own inventions (T20): what it is, what it's for, who invented it, how many know it, what it does
+    (with its strength) and, for one carried here over the sea, where it came from."""
+    from .sim.invent import effect_words
+
     out = {}
     for w in R().worlds.values():
-        out[w.id] = [{**inv, "day": inv["tick"] // 240 + 1,
+        out[w.id] = [{**inv, "day": inv.get("tick", 0) // 240 + 1, "does": effect_words(inv.get("effect")),
                       "knowers": sum(1 for a in w.agents.values() if f"recipe:{inv['key']}" in a.knows)}
-                     for inv in w.inventions.values()]
+                     for inv in list(w.inventions.values()) + list(w.foreign.values())]
     return out
 
 
@@ -811,6 +814,8 @@ def control(c: Control):
     if c.paused is not None:
         r.stop_skip()
         r.paused = c.paused
+    if wants_resume:
+        r.loop_error = ""  # (a step that fails again pauses it again and says so)
     if c.pace_to_brain is not None:
         if r.contract == "experiment" and not c.pace_to_brain:
             raise HTTPException(409, "an experiment run always waits for its models")
