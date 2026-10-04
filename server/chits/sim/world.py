@@ -450,10 +450,17 @@ class World:
     WANDER_BELOW = 8  # a play world this small draws a wanderer every WANDER_EVERY_DAYS
     WANDER_EVERY_DAYS = 2
 
+    def wander_below(self) -> int:
+        """How small a world must be to draw a wanderer. A world its game holds below its island's own limit (World.cap)
+        draws them while it is under three quarters of that limit: live, a world of 90 held at 20 fell to 10 and went on
+        falling, its few young scattered over four villages and too far apart to pair, though births were open again."""
+        cap = getattr(self, "cap", None)
+        return min(cap, max(self.WANDER_BELOW, (cap * 3) // 4)) if cap else self.WANDER_BELOW
+
     def welcome_wanderer(self) -> Optional[Agent]:
         """A young adult from the wilds finds a dwindling village and stays. Play games only (the runtime decides):
         World B aged out to 5 chits overnight, and an empty world is the end of the show for anyone watching."""
-        if not self.agents or len(self.agents) >= self.WANDER_BELOW:
+        if not self.agents or len(self.agents) >= self.wander_below():
             return None
         rng = self.rng_for("wanderers")
         near = rng.choice(list(self.agents.values()))

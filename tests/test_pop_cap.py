@@ -184,3 +184,20 @@ def test_the_limit_needs_the_access_token_like_every_private_route(env, monkeypa
     with _client() as c:
         assert c.post("/api/population", json={"cap": 20}).status_code == 401
         assert c.post("/api/population?token=s3cret-for-this-test", json={"cap": 20}).status_code == 200
+
+
+def test_a_held_world_well_under_its_limit_draws_wanderers():
+    # live: a world of 90 held at 20 fell to 10 and kept falling (its young too scattered to pair); the small-world
+    # rule only began at 8
+    held = World("A", "A", 3, "direct", 64, 10)
+    held.cap = 20
+    assert held.wander_below() == 15
+    assert held.welcome_wanderer() is not None and len(held.agents) == 11
+    full = World("A", "A", 3, "direct", 64, 15)
+    full.cap = 20
+    assert full.welcome_wanderer() is None  # three quarters of its limit: no more come
+    free = World("A", "A", 3, "direct", 64, 10)
+    assert free.wander_below() == World.WANDER_BELOW and free.welcome_wanderer() is None  # an unheld world: as before
+    tiny = World("A", "A", 3, "direct", 64, 6)
+    tiny.cap = 6
+    assert tiny.wander_below() == 6 and tiny.welcome_wanderer() is None  # never over its own limit
