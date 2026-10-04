@@ -573,3 +573,6 @@ button.danger { color: var(--bad); }
 .spread-close { float: right; font-size: 11px; padding: 2px 8px; margin: 0 0 4px 8px; opacity: .8; border-radius: 8px;
   background: rgba(255,255,255,0.08); border: 1px solid var(--line); color: inherit; cursor: pointer; }
 .spread-close:hover { opacity: 1; }
+.pop-cap { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 8px 0 2px; font-size: 13px; }
+.pop-cap input { width: 64px; }
+.pop-cap small { flex-basis: 100%; }
