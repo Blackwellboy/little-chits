@@ -1562,7 +1562,7 @@ def _do_experiment(world, a: Agent, step, s) -> str:
 
 def _do_invent(world, a: Agent, step, s) -> str:
     """Imagine something new from 2-4 carried items (T20). The world judges it by the items' properties."""
-    from .invent import invention_props, judge, register_invention
+    from .invent import invention_props, register_invention, verdict
 
     bag_list = _experiment_bag(step, world)
     if not bag_list:
@@ -1588,8 +1588,9 @@ def _do_invent(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("crafting"), 10.0):
         return RUNNING
     a.practice("crafting", 0.8)
-    ok, pid, effect, feedback = judge(bag, purpose_text, world.catalog)
-    combo = " + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
+    v = verdict(bag, purpose_text, world.catalog)
+    ok, pid, effect, feedback = v["ok"], v["purpose"], v["effect"], v["feedback"]
+    combo =" + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
     if not ok:
         a.remember(world.tick, f"I tried to invent a {name} from {combo}: {feedback}", 3, "experiment")
         return feedback
@@ -1608,7 +1609,8 @@ def _do_invent(world, a: Agent, step, s) -> str:
     props = invention_props(bag, pid, world.catalog)
     register_invention(world, key, name, bag, props, effect)
     world.inventions[key] = {"key": key, "name": name, "inputs": dict(bag), "purpose": pid, "purpose_text": purpose_text,
-                             "effect": effect, "props": list(props), "by": a.id, "by_name": a.name, "tick": world.tick}
+                             "effect": effect, "props": list(props), "by": a.id, "by_name": a.name, "tick": world.tick,
+                             "rule": v["rule"]}  # (which of invent.RULES made it; None from the first engine)
     a.inventory[key] = a.inventory.get(key, 0) + 1
     world.learned(a, "recipe:" + key, "discovered")
     words = " and ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))

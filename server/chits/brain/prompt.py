@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.4"
+PROMPT_VERSION = "2026-10-04.5"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -60,7 +60,7 @@ def verb_guide(world) -> str:
         '{"do":"craft","what":"<item you know how to make>","qty":1}',
         '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop, forge, factory, mill, loom or fire: it turns stored materials into goods; add "what" to choose which)',
         '{"do":"experiment","with":["item","item"],"at":"fire|kiln|furnace|workshop|forge|factory|mill|loom","name":"<what you would call it>"}  (try combining 1-5 carried items, one on its own only at a station; the same item twice counts, and amounts matter; "at" and "name" optional; this is how new things are discovered, and the first to discover something names it)',
-        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items of up to 3 kinds; the world decides if their properties suit the purpose. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
+        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items of up to 3 kinds. What the parts can do decides what it can be, each part doing one job: an edge or a hard head on something long is a tool, things that bind make a net, a sack or a wrap, something that burns in or on a holder is a light, edible parts are a dish, something that rolls under a frame carries or speeds. Better material makes it stronger. Your purpose chooses among what the parts allow; if they cannot do it, nothing is used up and you are told what they could make. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
         '{"do":"build","what":"<structure you know>"}  (starts a site or joins one nearby; delivers your materials and works on it)',
         '{"do":"help","site":"<site id>"}  (bring materials / labour to someone\'s construction)',
         '{"do":"upgrade","to":"longhouse|brick house|two-storey house"}  (rebuild your own home bigger where it stands: a hut becomes a longhouse or brick house, either of those a two-storey house; everyone living there stays, and a crowded home has fewer children)',
@@ -636,6 +636,8 @@ def compact_system_prompt(world, a: Agent) -> str:
     return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
             "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
             "kiln, furnace, workshop, forge, factory, mill or loom). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
+            "You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts can do "
+            "decides what it can be, and the purpose chooses among that.\n"
             'Reply with ONE JSON object only: {"thought":"...","goal":"...","plan":[{"do":"gather","what":"wood","qty":4},...]}\n'
             "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, site, near, dir, text, name, purpose, "
             "give and get (trade), intent (sail).\n"
