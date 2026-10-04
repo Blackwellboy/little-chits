@@ -38,6 +38,10 @@ STATION_CUES = (("It needed far more heat than a campfire gives", "kiln"), ("Onl
                 ("This needs machines", "factory"), ("It felt like it needed heat", "fire"))
 
 
+# a hungry chit plans only for the stores and farms its eat and harvest steps can reach (False: the old lookups, which
+# chose a store the step had found a long way round, every tick; tests/identity_runner.py turns it off)
+HUNGER_REACH = True
+
 def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     """How much of an item the stockpiles around this chit hold."""
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
@@ -595,10 +599,17 @@ class Instinct:
             # the stores and farms the eat and harvest steps will use (the same two lookups): one the walk found to be
             # a long way round is marked unreachable for a day, and a plan for it again would fail again. Live in a
             # 60-day run, a chit planned "eat from the stores" every tick with food a few tiles off, and starved.
-            if _stockpile_with(world, a, FOODS, 30):
+            if HUNGER_REACH:
+                store, farm = _stockpile_with(world, a, FOODS, 30), _farm_ready(world, a)
+            else:  # (the old lookups, for tests/identity_runner.py)
+                store = next((st for st in world.structures_near(a.x, a.y, 30, "stockpile")
+                              if any(st.storage.get(f, 0) for f in FOODS)), None)
+                farm = next((st for st in world.structures_near(a.x, a.y, 30, "farm")
+                             if st.functional and st.planted and st.growth >= 1), None)
+            if store:
                 return {"goal": "eat from the stores", "thought": "There's food in the stockpile.",
                         "steps": [{"do": "eat"}]}
-            if _farm_ready(world, a):
+            if farm:
                 return {"goal": "harvest the farm", "thought": "The grain is ripe.",
                         "steps": [{"do": "harvest"}, {"do": "eat"}]}
             what = "fish" if a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 18) and rng.random() < 0.6 else "berries"

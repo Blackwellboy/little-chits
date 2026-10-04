@@ -49,6 +49,9 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
+    from chits.brain import instinct as instinct_rules
+    if hasattr(instinct_rules, "HUNGER_REACH"):  # later changes to what a one-village world does, switched off
+        instinct_rules.HUNGER_REACH = False
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()
