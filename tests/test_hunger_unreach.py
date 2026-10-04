@@ -63,3 +63,17 @@ def test_after_one_farm_proves_a_long_way_round_the_plan_leaves_farms_alone_a_wh
     w.tick += A.FARM_RETRY + 1  # a while later the farms are worth a look again
     a.reflex_rest.pop("unreach:" + farms[0].id)
     assert Instinct()._survive(w, a, random.Random(1))["goal"] == "harvest the farm"
+
+
+def test_the_starvation_reflex_leaves_farms_alone_a_while_too():
+    # below hunger 16 the reflex chooses food itself; it asked for the next farm of the cluster at once (Codex, #92)
+    from chits.sim import actions as A
+    w, a = _world()
+    farm = _build(w, a, "farm", 4)
+    farm.planted, farm.growth = True, 1.0
+    a.hunger = 10.0
+    w.nearest_resource = lambda *args, **kw: None  # the ripe farm is the only food in reach
+    w.piles_near = lambda *args, **kw: iter(())
+    assert A._food_reflex(w, a).get("do") == "harvest"
+    a.reflex_rest["unreach:farms"] = w.tick + A.FARM_RETRY
+    assert A._food_reflex(w, a).get("do") != "harvest"

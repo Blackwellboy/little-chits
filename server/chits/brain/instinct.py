@@ -610,8 +610,7 @@ class Instinct:
             # a long way round is marked unreachable for a day, and a plan for it again would fail again. Live in a
             # 60-day run, a chit planned "eat from the stores" every tick with food a few tiles off, and starved.
             if HUNGER_REACH:
-                store = _stockpile_with(world, a, FOODS, 30)
-                farm = _farm_ready(world, a) if a.reflex_rest.get("unreach:farms", 0) <= world.tick else None
+                store, farm = _stockpile_with(world, a, FOODS, 30), _farm_ready(world, a)
             else:  # (the old lookups, for tests/identity_runner.py)
                 store = next((st for st in world.structures_near(a.x, a.y, 30, "stockpile")
                               if any(st.storage.get(f, 0) for f in FOODS)), None)

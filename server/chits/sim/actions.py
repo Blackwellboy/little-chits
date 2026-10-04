@@ -453,6 +453,9 @@ def _stockpile_with(world, a: Agent, items, radius: int = 25):
 
 
 def _farm_ready(world, a: Agent):
+    if STARVING_FETCH and a.reflex_rest.get("unreach:farms", 0) > world.tick:
+        return None  # a farm just proved a long way round: the ones beside it likely are too (FARM_RETRY), for the
+        # hunger plan and the starvation reflex alike (Codex, #92)
     for st in world.structures_near(a.x, a.y, 30, "farm"):
         if st.functional and st.planted and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick:
             return st
