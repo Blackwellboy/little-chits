@@ -71,7 +71,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 
 | Item | What | What it still needs |
 |---|---|---|
-| PR #95, merged (`dev/zones`) | Building dead zones and town rank, **switched off** (`buildings.NEED_SITING`, `buildings.TOWN_GATE`), plus the Knowledge return position | Codex's second P2 (apply `_within` before joining an unfinished site), merge main, merge |
+| Zones follow-up (issue #98) | #95 merged with `buildings.NEED_SITING` and `buildings.TOWN_GATE` off | Fix the issue's edge case, then re-run the 24-seed A/B with the switches on |
 | `dev/rng-streams` (local only, `~/projects/lc-rng` on the main PC) | A separate random stream per system, to cut A/B noise | Stopped partway. Restart it |
 
 **Switching the features on.** Each switched-off feature needs a 24-seed harness A/B with its switch on, against the main of the day, and has to clear the bar below. Then a one-line PR turns it on. A/B results so far, all against main before the latest fixes:
