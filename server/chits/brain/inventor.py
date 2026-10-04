@@ -133,16 +133,19 @@ def option(world, a: Agent) -> Optional[Dict[str, Any]]:
         if pid not in found:
             continue
         bag, rule, effect = found[pid]
-        if any(inv["inputs"] == bag and inv["purpose"] == pid and f"recipe:{k}" in a.knows
-               for k, inv in world.inventions.items()):
-            continue  # it knows that one already: it can simply make it
+        if any(inv.get("inputs") == bag and inv.get("purpose") == pid and f"recipe:{k}" in a.knows
+               for k, inv in list(world.inventions.items()) + list(world.foreign.items())):
+            continue  # it knows that one already (its own world's or one a traveller taught): it can simply make it
         v = verdict(bag, PURPOSE_TEXT[pid], world.catalog, here)
         name = _name(world, a, bag, rule.key)
         if not v["ok"] or v["purpose"] != pid or name is None:
             continue
         does = "; ".join(effect_words(v["effect"]))
+        step = {"do": "invent", "with": [k for k in sorted(bag) for _ in range(bag[k])], "name": name,
+                "purpose": PURPOSE_TEXT[pid]}
+        if rule.station:  # drafted beside a station: made there, not as the weaker thing it would be anywhere else
+            step["at"] = rule.station
         return {"goal": f"invent a {name} ({rule.what}: {does})",
                 "thought": f"What I carry could make something new {PURPOSE_TEXT[pid]}.",
-                "steps": [{"do": "invent", "with": [k for k in sorted(bag) for _ in range(bag[k])], "name": name,
-                           "purpose": PURPOSE_TEXT[pid]}]}
+                "steps": [step]}
     return None

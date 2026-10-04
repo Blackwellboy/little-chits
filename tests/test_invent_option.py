@@ -110,3 +110,32 @@ def test_every_purpose_text_and_rule_noun_is_one_the_judge_understands():
     for pid, text in IV.PURPOSE_TEXT.items():
         assert INV._named(text)[0] == pid, text
     assert set(IV.NOUN) == set(INV.RULE)
+
+
+def test_an_option_drafted_at_a_station_says_so_and_a_taught_foreign_recipe_is_not_reinvented():
+    # (Codex, #85) the step is run later, maybe after the chit has moved: it names the station the option was drafted
+    # at, so it is made there and not as a weaker stationless thing
+    w, a = _world()
+    shop = w.place_site("workshop", *w.find_site("workshop", a.x + 4, a.y, 10), a)
+    w.complete_structure(shop, a)
+    a.x, a.y = shop.x, shop.y
+    assert "workshop" in w.stations_at(a.x, a.y)
+    a.inventory.update({"copper": 1, "wood": 1})
+    opt = IV.option(w, a)
+    assert opt and opt["steps"][0].get("at") == "workshop", opt
+    a.x, a.y = shop.x + 30, shop.y  # away from the bench the same parts make something stationless, and say no station
+    away_opt = IV.option(w, a)
+    assert away_opt is None or "at" not in away_opt["steps"][0], away_opt
+    # a recipe a traveller taught (another world's invention) is made, not invented again
+    home, here = _world()[0], _world(seed=4)
+    home_chit = next(iter(home.agents.values()))
+    home_chit.inventory.update({"fiber": 2, "wood": 1})
+    run(home, home_chit, IV.option(home, home_chit))
+    (key, inv), = home.inventions.items()
+    w2, b = here
+    w2.adopt_foreign(key, inv, "A")
+    b.inventory.update({"fiber": 2, "wood": 1})
+    assert IV.option(w2, b)["steps"][0]["purpose"] == "to catch fish"  # not taught yet: it may invent its own
+    b.learn(f"recipe:{key}", "taught", w2.tick)
+    opt = IV.option(w2, b)
+    assert opt is None or opt["steps"][0]["purpose"] != "to catch fish", opt
