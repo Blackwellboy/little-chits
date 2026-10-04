@@ -1,7 +1,8 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect } from "react";
-import { api } from "../net/socket";
-import { localStorageSet, useUI, worlds } from "../state/store";
+import { api, errorText } from "../net/socket";
+import { localStorageSet, notifyError, useUI, worlds } from "../state/store";
+import { lookButton } from "./look";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { SkipControl } from "./SkipControl";
@@ -29,6 +30,7 @@ export function TopBar() {
   const setSpeed = (speed: number) => api("/api/control", { speed }).then((c) => set({ control: c }));
   const setView = (v: "A" | "B" | "split") => { set({ view: v }); localStorageSet("view", v); };
   const brainsInUse = metas.some((w) => brains[w.id] && brains[w.id].id !== "instinct");
+  const look = lookButton(theme, control?.contract);
   const restart = async () => {
     const m = worlds[metas[0]?.id]?.meta;
     if (!m || !confirm("Restart this game from day 1? Same island, same mode, same models. The current history is erased.")) return;
@@ -95,11 +97,9 @@ export function TopBar() {
         onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
         {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
       </button>
-      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`}
-        title={theme === "norse" ? "Look: Fjordfolk, the Norse theme (click for the classic look)"
-          : "Look: classic (click for Fjordfolk, the Norse theme: Nordic art, and Norse names for chits born from now on)"}
-        onClick={() => api("/api/theme", { theme: theme === "norse" ? "default" : "norse" }).catch(() => {})}>
-        {theme === "norse" ? "ᚠ" : "●"}<small>{theme === "norse" ? "norse" : "classic"}</small>
+      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`} title={look.title} disabled={look.disabled}
+        onClick={() => api("/api/theme", { theme: look.next }).catch((e) => notifyError(errorText(e)))}>
+        {look.glyph}<small>{look.label}</small>
       </button>
       <button className={`icon-btn ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
         onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
