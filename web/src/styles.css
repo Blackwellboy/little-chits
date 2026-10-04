@@ -588,3 +588,4 @@ button.danger { color: var(--bad); }
   padding: 10px 14px; border-radius: 10px; background: rgba(120, 20, 20, 0.94); border: 1px solid rgba(255,120,120,0.6);
   color: #fff; font-size: 13px; line-height: 1.4; }
 .loop-error small { display: block; opacity: .85; margin-top: 4px; }
+.icon-btn:disabled { opacity: .45; cursor: default; }
