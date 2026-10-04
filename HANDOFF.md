@@ -84,7 +84,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 - Sheltering, warming up and sleeping give way to food only below hunger 8, while every other step gives way below 16. Raising them to 16 was tried and reverted: it cost 0.5 era and starved more.
 - A harvest step counts as already fetching food, so the hunger reflex never interrupts it. A chit at hunger 10 with a store 8 tiles off walked 20 tiles to an unripe farm and starved (seed 27).
 - Chits start long walks (20-30 tiles) to a store at hunger 0.
-- Tools break but are never mended or smelted. In instinct-only worlds invention, barter, voyages, fights and theft never fire.
+- Tool care exists (`instinct.tool_care_plan`, `actions._mend_tool`, `_do_smelt`) but did not fire in four 60-day instinct runs (seeds 42 24 7 99) while tools broke: find out why. In the same runs invention, barter, voyages, fights and theft did not fire either (invention needs a model).
 
 **Models.** Use the decision bench (`tools/decbench.py`) for prompt and model questions: about 2 minutes per model, against hours for an A/B. In-game versus runs (same culture, 22-25 days, 3 seeds):
 
