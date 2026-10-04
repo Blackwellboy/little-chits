@@ -265,6 +265,10 @@ class World:
         if pack is not None:
             self.apply_pack(pack)
         self.inventions: Dict[str, Dict[str, Any]] = {}
+        # another world's inventions that came here over the sea with a chit or its goods: this world's catalogue knows
+        # them while it runs, and they are saved so it still knows them after a restart (World.adopt_foreign)
+        self.foreign: Dict[str, Dict[str, Any]] = {}
+        self._strange: set = set()  # keys standing in for things this world cannot name (not saved)
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
@@ -402,13 +406,47 @@ class World:
                             "inventions": carried})
         self.emit("voyage", f"{a.name} sailed away over the sea", 5, a.id, a.x, a.y)
 
+    def adopt_foreign(self, key: str, inv: Dict[str, Any]) -> None:
+        """Another world's invention, here with a chit or its goods: this world's catalogue knows the thing (what it is,
+        what it is made from, what it does) and remembers it across a restart. It was registered in memory only, so
+        after a restart a chit carried a thing its world could not name, and the first rule that looked at it (what
+        to put down when hands are full) raised and ended the world's loop without a word."""
+        from .invent import register_invention
+
+        rec = {"name": inv["name"], "inputs": dict(inv["inputs"]), "props": list(inv.get("props") or ()),
+               "effect": dict(inv.get("effect") or {})}
+        register_invention(self, key, rec["name"], rec["inputs"], tuple(rec["props"]), rec["effect"])
+        self.foreign[key] = rec
+        self._strange.discard(key)
+
+    def unknown_things(self) -> List[str]:
+        """Things that exist in this world (in hands, in stores, on the ground) that its catalogue cannot name."""
+        keys = set()
+        for a in self.agents.values():
+            keys |= {k for k, n in a.inventory.items() if n > 0}
+        for s in self.structures.values():
+            keys |= set(s.storage)
+        for pile in self.ground.values():
+            keys |= {k for k in pile if k != "_t"}
+        return sorted(k for k in keys if self.catalog.item(k) is None)
+
+    def name_unknown_things(self) -> List[str]:
+        """Give every thing the catalogue cannot name a plain stand-in (a 'strange thing': no use, no effect), so no
+        rule that looks at what a chit carries can fail on it. The runtime swaps the stand-in for the real thing when
+        another world of the game still knows it (Runtime.mend_foreign)."""
+        out = self.unknown_things()
+        for k in out:
+            self.catalog.items[k] = Item(k, "strange thing", ("strange", "made elsewhere"), icon="\u2754")
+            self._strange.add(k)
+        return out
+
     def arrive(self, agent_dict: Dict[str, Any], from_world_id: str, from_name: str = "",
                inventions: Optional[Dict[str, Any]] = None) -> Agent:
         from .invent import register_invention
 
         for key, inv in (inventions or {}).items():  # foreign inventions travel with the chit
-            if self.catalog.item(key) is None:
-                register_invention(self, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {})
+            if self.catalog.item(key) is None or key in self._strange:
+                self.adopt_foreign(key, inv)
         a = Agent.from_dict(agent_dict)
         home_again = getattr(a, "homeland", "") == self.id
         if home_again and a.home_id and a.home_id not in self.agents and a.home_id not in self.dead:
@@ -1937,6 +1975,8 @@ class World:
             d["pack"] = self.pack
         if self.cap:  # (likewise)
             d["cap"] = self.cap
+        if self.foreign:  # (likewise)
+            d["foreign"] = self.foreign
         return d
 
     def _to_dict(self) -> Dict[str, Any]:
@@ -2032,6 +2072,9 @@ class World:
 
         for key, inv in w.inventions.items():  # the world must know its own items again after a restart
             register_invention(w, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {})
+        w.foreign, w._strange = {}, set()
+        for key, inv in (d.get("foreign") or {}).items():  # ...and the ones that came over the sea
+            w.adopt_foreign(key, inv)
         w.signs = dict(d.get("signs") or {})
         w.weather = d.get("weather", "clear")
         w.settlements = dict(d.get("settlements") or {})
@@ -2107,6 +2150,7 @@ class World:
             a.thinking = False
             a.pending_plan = None
         PROJECTS.load(w, d)
+        w.name_unknown_things()
         return w
 
 
