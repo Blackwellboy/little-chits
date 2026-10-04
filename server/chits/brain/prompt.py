@@ -587,19 +587,27 @@ def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bo
              + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
 
 
+FOOD_REFLEXES = ("eat", "harvest", "gather", "pickup")  # the steps a hunger reflex runs
+
+
 def body_line(world, a: Agent) -> str:
     """The chit's needs in words, just before its options. The choice scene shows them as numbers ("Hunger 4 energy
     66 ..."), and "hunger" counts fullness: on a bench of 216 of the game's own choices (tools/decbench.py), Gemma 4
     12B, JevK5 4B and Ornith 35B all chose about at chance when the answer was plain (a chit at hunger 4 with food in
     hand picked "experiment" at 96%). With this line they chose to eat or sleep 99-100% of the time."""
+    # a body reflex already seeing to it (the mind asks for the next plan while the reflex runs): say so, not "now",
+    # or the model chose the same meal again and it was eaten after the reflex had fed the chit (Codex, #89)
+    reflex = (a.plan[0].get("do") if a.plan and a.plan[0].get("_reflex") else None)
     words = []
     if a.hunger < 15:
-        words.append(f"You are starving: your belly is nearly empty (fullness {a.hunger:.0f} of 100). Eat now.")
+        then = " You are already getting food." if reflex in FOOD_REFLEXES else " Eat now."
+        words.append(f"You are starving: your belly is nearly empty (fullness {a.hunger:.0f} of 100).{then}")
     elif a.hunger < 45:
         words.append(f"You are hungry (fullness {a.hunger:.0f} of 100).")
     if a.energy < 15:
         night = ", and it is night" if world.is_night else ""
-        words.append(f"You are exhausted (energy {a.energy:.0f} of 100){night}. Sleep now.")
+        then = " You are already going to sleep." if reflex == "sleep" else " Sleep now."
+        words.append(f"You are exhausted (energy {a.energy:.0f} of 100){night}.{then}")
     elif a.energy < 35:
         words.append(f"You are tired (energy {a.energy:.0f} of 100).")
     if a.warmth < 15:
