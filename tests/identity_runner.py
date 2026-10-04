@@ -49,9 +49,13 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
+    from chits.brain import instinct as instinct_rules
     from chits.sim import actions
 
-    if hasattr(actions, "STARVING_FETCH"):  # a later change to what a one-village world does, switched off
+    # later changes to what a one-village world does, switched off
+    if hasattr(instinct_rules, "HUNGER_REACH"):
+        instinct_rules.HUNGER_REACH = False
+    if hasattr(actions, "STARVING_FETCH"):
         actions.STARVING_FETCH = False
     if hasattr(actions, "PLENTY"):  # the readings of the village's stock (F33) change a one-village world too: off
         actions.PLENTY = bool(make_first)  # with MAKE_FIRST, for the comparison with the tree before either

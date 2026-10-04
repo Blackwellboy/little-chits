@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.3"
+PROMPT_VERSION = "2026-10-04.7"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -60,7 +60,7 @@ def verb_guide(world) -> str:
         '{"do":"craft","what":"<item you know how to make>","qty":1}',
         '{"do":"work","at":"kiln"}  (work a shift at a kiln, furnace, workshop, forge, factory, mill, loom or fire: it turns stored materials into goods; add "what" to choose which)',
         '{"do":"experiment","with":["item","item"],"at":"fire|kiln|furnace|workshop|forge|factory|mill|loom","name":"<what you would call it>"}  (try combining 1-5 carried items, one on its own only at a station; the same item twice counts, and amounts matter; "at" and "name" optional; this is how new things are discovered, and the first to discover something names it)',
-        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>"}  (imagine something new from 2-4 carried items of up to 3 kinds; the world decides if their properties suit the purpose. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
+        '{"do":"invent","with":["item","item"],"name":"<your name for it>","purpose":"<what it is for>","at":"fire|workshop"}  (imagine something new from 2-4 carried items of up to 3 kinds. What the parts can do decides what it can be, each part doing one job: an edge or a hard head on something long is a tool, things that bind make a net, a sack or a wrap, something that burns in or on a holder is a light, edible parts are a dish, something that rolls under a frame carries or speeds. Better material makes it stronger. "at" is optional: at a workshop metal can be worked into a head, over a fire a dish or a remedy is cooked, and a thing made that way needs that station to be made again. Your purpose chooses among what the parts allow; if they cannot do it, nothing is used up and you are told what they could make. It understands purposes like catching fish, cutting, digging, carrying, keeping warm, light, food, defence against wolves, farming, healing, speed, or joy)',
         '{"do":"build","what":"<structure you know>"}  (starts a site or joins one nearby; delivers your materials and works on it)',
         '{"do":"help","site":"<site id>"}  (bring materials / labour to someone\'s construction)',
         '{"do":"upgrade","to":"longhouse|brick house|two-storey house"}  (rebuild your own home bigger where it stands: a hut becomes a longhouse or brick house, either of those a two-storey house; everyone living there stays, and a crowded home has fewer children)',
@@ -354,7 +354,7 @@ def scene(world, a: Agent) -> str:
         f"energy {a.energy:.0f} ({_level(a.energy, ('exhausted!', 'tired', 'ok', 'rested'))}), "
         f"warmth {a.warmth:.0f} ({_level(a.warmth, ('freezing!', 'cold', 'ok', 'warm'))}), health {a.health:.0f}."
     )
-    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k, world)}" for k, n in sorted(a.inventory.items())) or "nothing"
     full = " — your hands are FULL: store or drop something before gathering more" if a.free_space() <= 0 else ""
     lines.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}.{full}")
     tools = [f"{world.item_name(k)} ({item_use(world.item(k))})" for k in a.inventory
@@ -386,10 +386,11 @@ def scene(world, a: Agent) -> str:
     lines.append("")
     lines.append("YOU KNOW HOW TO MAKE: " + ("; ".join(recipes) if recipes else "nothing yet — experiment!"))
     lines.append("YOU KNOW HOW TO BUILD: " + "; ".join(designs))
-    mine = [inv for k, inv in getattr(world, "inventions", {}).items() if f"recipe:{k}" in a.knows][:6]
+    mine = [inv for known in (getattr(world, "inventions", {}), getattr(world, "foreign", {}))  # (its own world's, and
+            for k, inv in known.items() if f"recipe:{k}" in a.knows][:6]  # what it brought over the sea)
     if mine:
         lines.append("- Inventions you know: " + "; ".join(
-            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}, for {inv['purpose']})"
+            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}{' at a ' + inv['station'] if inv.get('station') else ''}, for {inv['purpose']}{_does(inv)})"
             for inv in mine))
     fam = sorted(a.familiar)[:16]
     if fam:
@@ -582,8 +583,38 @@ def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bo
         rows.append(f"{LETTERS[len(options)]}) {OWN_IDEA}")
     head = f"You are {a.name}. Your nature: {a.personality()}.\n"
     return [{"role": "system", "content": CHOICE_SYSTEM},
-            {"role": "user", "content": head + choice_scene(world, a) + "\n\nYOUR OPTIONS:\n" + "\n".join(rows)
-             + "\n\nAnswer with one letter only."}]
+            {"role": "user", "content": head + choice_scene(world, a) + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
+             + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
+
+
+FOOD_REFLEXES = ("eat", "harvest", "gather", "pickup")  # the steps a hunger reflex runs
+
+
+def body_line(world, a: Agent) -> str:
+    """The chit's needs in words, just before its options. The choice scene shows them as numbers ("Hunger 4 energy
+    66 ..."), and "hunger" counts fullness: on a bench of 216 of the game's own choices (tools/decbench.py), Gemma 4
+    12B, JevK5 4B and Ornith 35B all chose about at chance when the answer was plain (a chit at hunger 4 with food in
+    hand picked "experiment" at 96%). With this line they chose to eat or sleep 99-100% of the time."""
+    # a body reflex already seeing to it (the mind asks for the next plan while the reflex runs): say so, not "now",
+    # or the model chose the same meal again and it was eaten after the reflex had fed the chit (Codex, #89)
+    reflex = (a.plan[0].get("do") if a.plan and a.plan[0].get("_reflex") else None)
+    words = []
+    if a.hunger < 15:
+        then = " You are already getting food." if reflex in FOOD_REFLEXES else " Eat now."
+        words.append(f"You are starving: your belly is nearly empty (fullness {a.hunger:.0f} of 100).{then}")
+    elif a.hunger < 45:
+        words.append(f"You are hungry (fullness {a.hunger:.0f} of 100).")
+    if a.energy < 15:
+        night = ", and it is night" if world.is_night else ""
+        then = " You are already going to sleep." if reflex == "sleep" else " Sleep now."
+        words.append(f"You are exhausted (energy {a.energy:.0f} of 100){night}.{then}")
+    elif a.energy < 35:
+        words.append(f"You are tired (energy {a.energy:.0f} of 100).")
+    if a.warmth < 15:
+        words.append(f"You are freezing (warmth {a.warmth:.0f} of 100).")
+    if a.health < 30:
+        words.append(f"You are badly hurt (health {a.health:.0f} of 100).")
+    return " ".join(words) or "Your body is fine: no urgent needs."
 
 
 def messages(world, a: Agent, style: str = "full") -> List[Dict[str, str]]:
@@ -605,11 +636,20 @@ def with_repair(msgs: List[Dict[str, str]], rep: Dict[str, Any]) -> List[Dict[st
     return out
 
 
-def _worn(a: Agent, k: str) -> str:
-    """" (worn)" on a metal tool past half its life, so a model knows to mend it (issue #5)."""
-    from ..sim.actions import METAL_OF, tool_wear_limit
+def _does(inv) -> str:
+    """": what an invention does, with its strength" (the models saw the purpose and never how good the thing was)."""
+    from ..sim.invent import effect_words
 
-    return " (worn)" if k in METAL_OF and a.tool_wear.get(k, 0) >= tool_wear_limit(k) // 2 else ""
+    words = effect_words(inv.get("effect"))
+    return ": " + ", ".join(words) if words else ""
+
+
+def _worn(a: Agent, k: str, world=None) -> str:
+    """" (worn)" on a metal tool past half its life, so a model knows to mend it (issue #5)."""
+    from ..sim.actions import METAL_OF, metal_of, tool_wear_limit
+
+    metal = k in METAL_OF or (world is not None and metal_of(world, k))  # (an invented metal tool too, F34)
+    return " (worn)" if metal and a.tool_wear.get(k, 0) >= tool_wear_limit(k, world) // 2 else ""
 
 
 _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
@@ -627,6 +667,8 @@ def compact_system_prompt(world, a: Agent) -> str:
     return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
             "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
             "kiln, furnace, workshop, forge, factory, mill or loom). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
+            "You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts can do "
+            "decides what it can be, and the purpose chooses among that.\n"
             'Reply with ONE JSON object only: {"thought":"...","goal":"...","plan":[{"do":"gather","what":"wood","qty":4},...]}\n'
             "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, site, near, dir, text, name, purpose, "
             "give and get (trade), intent (sail).\n"
@@ -639,7 +681,7 @@ def compact_scene(world, a: Agent) -> str:
     hh = int(c["hour"])
     L: List[str] = [f"Day {c['day']} {c['season']} {hh:02d}h{' night' if c['night'] else ''}. You: {a.name} at ({a.x},{a.y})."]
     L.append(f"Hunger {a.hunger:.0f} energy {a.energy:.0f} warmth {a.warmth:.0f} health {a.health:.0f} (of 100).")
-    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k, world)}" for k, n in sorted(a.inventory.items())) or "nothing"
     L.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}{' FULL' if a.free_space() <= 0 else ''}.")
     rec = [world.item_name(k.split(':', 1)[1]) for k in a.knows if k.startswith("recipe:")]
     des = [DESIGNS[k.split(':', 1)[1]].name for k in a.knows if k.startswith("design:")]

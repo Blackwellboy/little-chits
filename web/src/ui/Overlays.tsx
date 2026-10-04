@@ -53,6 +53,20 @@ export function Banner() {
   );
 }
 
+/** The game stopped itself: a world's step failed. Said plainly and kept up until it runs again (it used to stand
+ *  still with no word). */
+export function LoopError() {
+  const control = useUI((s) => s.control);
+  if (!control?.loop_error) return null;
+  return (
+    <div className="loop-error" role="alert">
+      <b>The game stopped on an error and is paused.</b> {control.loop_error}
+      <small>{control.invalid_reason ? "This experiment run is no longer valid: start a new one."
+        : "Press play to try again. If it stops again, the same step is failing: see the server log."}</small>
+    </div>
+  );
+}
+
 export function Minimap({ worldId }: { worldId: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const base = useRef<HTMLCanvasElement | null>(null);

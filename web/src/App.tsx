@@ -9,7 +9,7 @@ import { SavesModal } from "./ui/SavesModal";
 import { Welcome } from "./ui/Welcome";
 import { NewWorldModal } from "./ui/NewWorldModal";
 import { Inspector } from "./ui/Inspector";
-import { Minimap, Toasts, Banner } from "./ui/Overlays";
+import { Minimap, Toasts, Banner, LoopError } from "./ui/Overlays";
 import { SidePanel } from "./ui/SidePanel";
 import { TopBar } from "./ui/TopBar";
 import { BrandMark } from "./ui/BrandMark";
@@ -122,6 +122,7 @@ export default function App() {
       <Inspector />
       <Toasts />
       <Banner />
+      <LoopError />
       <BrainsModal />
       <NewWorldModal />
       <GodModal />
