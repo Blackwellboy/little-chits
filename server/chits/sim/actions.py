@@ -537,7 +537,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
         n = min(world.res_amt[i], max(1, int(round(power))))
         world.res_amt[i] -= n
         world.dirty_res.add(i)
-        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y):
+        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y, a):
             a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
         if kind == "wood" and n and BLD.sawn(world, a.x, a.y):
             n *= 2  # (the sawmill cuts each log into twice the wood: the forest isn't felled any faster)
@@ -947,12 +947,18 @@ WORK_REACH = STATION_REACH  # how far a chit goes to reach a station it was aske
 # raw materials a shift never takes the stores below: builders and experimenters need them too (without it pots and
 # tablets emptied the stores of clay by day 25, where 30 or more lay in them without shifts)
 SEED_PLENTY = 60  # seeds the stores near a picker hold before it stops keeping the pips from berries
+PLENTY = True  # read what the village already holds before fetching more (issue #7, brain/surplus.py; False: as before F33)
 
 
-def seeds_plenty(world, x: int, y: int) -> bool:
+def seeds_plenty(world, x: int, y: int, a: Optional[Agent] = None) -> bool:
     """The stores here hold all the seed anyone will sow. Berry pips were the only seeds that never got used up:
-    one live world held 20,311 seeds by day 2,900, 62% of everything in its stores (issue #7)."""
-    return sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY
+    one live world held 20,311 seeds by day 2,900, 62% of everything in its stores (issue #7). For a picker `a`,
+    the stores around its home count too: berries are picked a long walk from the stores, where there never is any
+    seed, and the pips were carried home to villages that held 200."""
+    if sum(p.storage.get("seeds", 0) for p in village_stores(world, x, y, 30)) >= SEED_PLENTY:
+        return True
+    home = world.structures.get(a.home or "") if a is not None and PLENTY else None
+    return home is not None and sum(p.storage.get("seeds", 0) for p in village_stores(world, home.x, home.y, 30)) >= SEED_PLENTY
 
 
 KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 4, "iron_ore": 4}
