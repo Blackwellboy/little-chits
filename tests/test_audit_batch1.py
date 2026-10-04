@@ -87,7 +87,7 @@ def _chief(monkeypatch, cands):
     a = next(iter(w.agents.values()))
     w.leader = a.id
     w.flags["say"] = True
-    monkeypatch.setattr(projects, "candidates", lambda world: cands)
+    monkeypatch.setattr(projects, "candidates", lambda world, sc=None: cands)
     return w, a
 
 
@@ -98,7 +98,7 @@ def test_a_chief_cannot_name_an_undiscovered_thing_by_its_real_name(monkeypatch)
     assert not projects.name_project(w, a, "Copper")
     riddle = projects._heard({"kind": "discover", "key": "copper"})
     assert "copper" not in riddle.lower()
-    assert projects.name_project(w, a, riddle) and w.civic["project"]["key"] == "copper"
+    assert projects.name_project(w, a, riddle) and projects.of(w)["key"] == "copper"
 
 
 def test_what_is_made_or_built_can_still_be_named(monkeypatch):

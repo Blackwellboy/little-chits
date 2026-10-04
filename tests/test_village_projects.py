@@ -51,7 +51,7 @@ def test_the_village_picks_the_next_ages_first_step_by_need_or_by_its_chief():
     p = projects.pick(w)
     # a stone axe needs cord and a sharp stone, which nobody can make yet: the first of them is the project
     assert (p["kind"], p["key"], p["chosen_by"]) == ("discover", "cord", "need")
-    w.civic["project"] = None
+    w.civic["projects"].clear()
     w.leader = a.id
     p = projects.pick(w)
     # with a chief too: the world's own pick is never announced as anyone's call (a model chief names one itself)
@@ -67,6 +67,10 @@ def test_the_village_picks_the_next_ages_first_step_by_need_or_by_its_chief():
     # a structure the village lacks is a project too, once someone knows how to build it
     w.agents[a.id].learn("recipe:cord", "discovered", w.tick)
     w.agents[a.id].learn("design:stockpile", "insight", w.tick)
+    # (a stockpile takes cord: with none made yet the project is the cord for it, then the stockpile itself)
+    cord = next(c for c in projects.candidates(w) if (c[1], c[2]) == ("make", "cord"))
+    assert cord[4]["for"] == "stockpile" and ("build", "stockpile") not in {(c[1], c[2]) for c in projects.candidates(w)}
+    a.inventory["cord"] = cord[4]["n"]
     assert ("build", "stockpile") in {(c[1], c[2]) for c in projects.candidates(w)}
 
 
@@ -117,7 +121,7 @@ def test_a_project_makes_enough_of_a_material_before_the_building():
     w.tick = 10
     projects.tick(w)
     assert "4 iron are ready for the forge" in _events(w, "project_done")[-1].text
-    nxt = w.civic["project"]
+    nxt = projects.of(w)
     assert (nxt["kind"], nxt["key"]) == ("build", "forge")
 
 
@@ -147,7 +151,7 @@ def test_a_building_project_tracks_its_site_and_completes_as_a_big_event():
     assert done and done[-1].importance == 5 and "built the kiln" in done[-1].text
     assert w.civic["done"][-1]["key"] == "kiln"
     assert a.renown > before[0] and b.renown > before[1] + 1  # b did most of the work
-    assert (w.civic.get("project") or {}).get("key") != "kiln"  # a new project is picked straight away (if any)
+    assert (projects.of(w) or {}).get("key") != "kiln"  # a new project is picked straight away (if any)
 
 
 def test_a_discovery_project_counts_attempts_and_ends_with_the_discovery():
@@ -197,7 +201,7 @@ def test_a_project_can_be_to_find_what_nobody_has_handled():
     w.tick = 10
     projects.tick(w)
     assert f"{a.name} found copper ore" in _events(w, "project_done")[-1].text
-    nxt = w.civic["project"]
+    nxt = projects.of(w)
     assert (nxt["kind"], nxt["key"], nxt["for"]) == ("make", "brick", "furnace")
 
 
@@ -250,7 +254,7 @@ def test_the_world_runs_the_village_each_day_and_tick():
     a = next(iter(w.agents.values()))
     for _ in range(240):
         w.step()
-    p = w.civic["project"]
+    p = projects.of(w)
     assert p and p["kind"] == "build" and p["key"] == "campfire"  # a village with no fire: the Firekeepers are next
     assert all(o.want for o in w.agents.values() if not o.is_child(w.tick))
     a.bump("experiments", 2)
@@ -269,10 +273,10 @@ def test_a_chief_can_name_the_project_in_its_reflection():
     msgs = P.reflection_messages(w, a)
     assert '"project"' in msgs[1]["content"] and "build a kiln" in msgs[1]["content"]
     apply_reflection(w, b, json.dumps({"lessons": [], "project": "build a kiln"}))
-    assert (w.civic.get("project") or {}).get("key") != "kiln" or w.civic["project"]["chosen_by"] != "chief"
+    assert (projects.of(w) or {}).get("key") != "kiln" or projects.of(w)["chosen_by"] != "chief"
     apply_reflection(w, a, json.dumps({"lessons": [], "project": "a spaceship"}))  # not something the village can do
     apply_reflection(w, a, json.dumps({"lessons": [], "project": "Build a kiln!"}))
-    p = w.civic["project"]
+    p = projects.of(w)
     assert (p["kind"], p["key"], p["chosen_by"], p["by"]) == ("build", "kiln", "chief", a.id)
 
 
@@ -287,7 +291,7 @@ def test_projects_are_in_the_api_and_survive_a_restart():
     d = views.agent_detail(w, a)
     assert d["want"] == "to be the first to discover something" and d["renown"] == 7.5 and d["famous"]
     w2 = World.from_dict(json.loads(json.dumps(w.to_dict())))
-    assert w2.civic["project"]["key"] == "cord" and w2.agents[a.id].renown == 7.5
+    assert projects.of(w2)["key"] == "cord" and w2.agents[a.id].renown == 7.5
     assert w2.agents[a.id].want["text"] == a.want["text"]
 
 

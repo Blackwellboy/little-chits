@@ -158,6 +158,9 @@ def test_a_village_takes_on_a_steam_pump_as_a_project_once_it_can_make_what_it_n
     assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
     farms = [put(w, "farm", a, (a.x + dx, a.y + 4)) for dx in (-4, 4)]
     w.tick += 1  # (the villages are looked up once a tick)
+    # with none of its made materials at hand (and no forge to make them at), it is not the project: nobody could act
+    assert not any(c[1] == "build" and c[2] == "steam_pump" for c in PJ.candidates(w))
+    a.inventory.update(DESIGNS["steam_pump"].material_map)
     pump = next(c for c in PJ.candidates(w) if c[1] == "build" and c[2] == "steam_pump")
     x, y = map(int, pump[4]["near"].split(","))
     assert all(max(abs(f.x - x), abs(f.y - y)) <= 10 for f in farms)  # among the fields it waters

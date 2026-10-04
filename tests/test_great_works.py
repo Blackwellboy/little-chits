@@ -77,8 +77,15 @@ def test_a_big_village_can_take_on_a_great_work_as_its_project():
     w, a = _village()
     for k in ("recipe:brick", "recipe:clay_tablet", "design:great_library"):  # (its materials must be makeable)
         a.learn(k, "insight", w.tick)
+    # with none of its made materials at hand the project is the next step towards it, never the bare building
+    towards = lambda world: [c for c in projects.candidates(world) if "great library" in c[3]]
+    assert towards(w) and ("build", "great_library") not in {(c[1], c[2]) for c in projects.candidates(w)}
+    for m, n in DESIGNS["great_library"].materials:
+        a.inventory[m] = n
     assert ("build", "great_library") in {(c[1], c[2]) for c in projects.candidates(w)}
     w2, b = _village(10)
     for k in ("recipe:brick", "recipe:clay_tablet", "design:great_library"):
         b.learn(k, "insight", w2.tick)
-    assert ("build", "great_library") not in {(c[1], c[2]) for c in projects.candidates(w2)}
+    for m, n in DESIGNS["great_library"].materials:
+        b.inventory[m] = n
+    assert ("build", "great_library") not in {(c[1], c[2]) for c in projects.candidates(w2)} and not towards(w2)

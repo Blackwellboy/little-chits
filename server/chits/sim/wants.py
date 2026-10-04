@@ -81,9 +81,9 @@ def options(world, a: Agent) -> List[Tuple[float, Dict[str, Any]]]:
             and _heard_of(world, a, "pen"):
         out.append((0.4 + 0.5 * tr.get("generosity", 0.5),
                     {"kind": "stat", "key": "tamed", "n": 1, "text": "a pet sheep"}))
-    p = (getattr(world, "civic", None) or {}).get("project")
-    from .projects import knows
+    from .projects import current, knows
 
+    p = current(world, a)  # (its own village's project, never another's)
     if p and p["kind"] == "build" and knows(world, a, p):
         out.append((0.6 + tr.get("diligence", 0.5),
                     {"kind": "build", "key": p["key"], "text": f"to help raise the village's {DESIGNS[p['key']].name}"}))

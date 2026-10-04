@@ -1,7 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, authedUrl } from "../net/socket";
-import { nextStep, stepLabel, type Checklist } from "../state/milestones";
+import { nextStep, stepLabel, villageOrder, type Checklist, type VillageRow } from "../state/milestones";
 import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
 import { entryLines, type Entry } from "./encyclopedia";
@@ -73,7 +73,7 @@ type Project = {
 };
 type RoadStep = { kind: string; key: string; name: string; done: boolean; needs: string };
 type ProgressData = {
-  project?: { active: Project | null; done: { id: string; day: number; text: string }[] };
+  project?: { active: Project | null; done: { id: string; day: number; text: string }[]; villages?: VillageRow<Project>[] };
   road?: { age: string; steps: RoadStep[]; text: string } | null;
   milestones?: Checklist | null;
   research?: { insight: number; next_idea: number; hints: { text: string; day: number; by: string; found: boolean }[] };
@@ -115,7 +115,7 @@ function Progress({ world, name }: { world: string; name: string }) {
         👥 {p.counts.population} chits · ✦ {p.counts.discoveries} discoveries · 🏠 {p.counts.structures} buildings · 🕯 {p.counts.beliefs} beliefs
         {p.food_days != null && <> · <span className={p.food_days < 3 ? "food-low" : ""} title="How long the food in the stores would feed the village; below 3 days, chits put the project aside and fill the stores">🍞 {p.food_days} days of food in store</span></>}
       </small></div>
-      <VillageProject p={p} plain={plain} />
+      <VillageProject p={p} plain={plain} world={world} />
       {p.at_risk && p.at_risk.length > 0 && (
         <div className="prog-risk" title="Things only one living chit knows how to make: if it dies without passing them on, the village forgets them">
           <h4>⏳ Knowledge at risk</h4>
@@ -158,21 +158,39 @@ function RoadChecklist({ c }: { c: Checklist }) {
   );
 }
 
-/** 🏗 The one thing the whole village is working towards now, its scholars' ideas, and who everyone looks up to. */
-function VillageProject({ p, plain }: { p: ProgressData; plain: (s: string) => string }) {
+/** One project: its name, whose call it was, how far along it is. */
+function ProjectLine({ cur }: { cur: Project }) {
+  const call = cur.chosen_by === "need" ? "chosen by need" : `${cur.chosen_by} ${cur.by}'s call`;
+  return (<>
+    <b>{cur.title.charAt(0).toUpperCase() + cur.title.slice(1)}</b> <small className="muted">{call} · since day {cur.since_day}</small>
+    <div className="prog-bar" title={`${Math.round(cur.progress * 100)}%`}><span style={{ width: `${Math.max(3, Math.round(cur.progress * 100))}%` }} /></div>
+    <small>{cur.status} · {cur.helpers} helping <span className="muted">({cur.why})</span></small>
+  </>);
+}
+
+/** 🏗 What each village is working towards now (one project a village; the village in view first), its scholars'
+ *  ideas, and who everyone looks up to. */
+function VillageProject({ p, plain, world }: { p: ProgressData; plain: (s: string) => string; world: string }) {
+  const focus = useUI((s) => s.focus);
   const cur = p.project?.active;
   const done = p.project?.done ?? [];
   const hints = p.research?.hints ?? [];
-  if (!cur && !done.length && !hints.length && !p.famous) return null;
-  const call = cur && (cur.chosen_by === "need" ? "chosen by need" : `${cur.chosen_by} ${cur.by}'s call`);
+  const rows = villageOrder(p.project?.villages ?? [], focus && focus.world === world ? focus : null);
+  const many = rows.length > 1;
+  if (!cur && !done.length && !hints.length && !p.famous && !rows.some((r) => r.active)) return null;
+  const go = (r: VillageRow<Project>) => r.x != null && r.y != null && useUI.getState().set({ focus: { world, x: r.x + 0.5, y: r.y + 0.5, t: Date.now() } });
   return (
     <div className="prog-project">
-      <h4>🏗 Village project</h4>
-      {cur ? (<>
-        <b>{cur.title.charAt(0).toUpperCase() + cur.title.slice(1)}</b> <small className="muted">{call} · since day {cur.since_day}</small>
-        <div className="prog-bar" title={`${Math.round(cur.progress * 100)}%`}><span style={{ width: `${Math.max(3, Math.round(cur.progress * 100))}%` }} /></div>
-        <small>{cur.status} · {cur.helpers} helping <span className="muted">({cur.why})</span></small>
-      </>) : <p className="small muted">No project right now.</p>}
+      <h4>🏗 Village project{many ? "s" : ""}</h4>
+      {many ? (
+        <ul className="prog-villages">{rows.map((r) => (
+          <li key={r.id}>
+            <button className="link" onClick={() => go(r)} title="Show this village">{r.name}</button> <small className="muted">{r.population} chits</small>
+            <div>{r.active ? <ProjectLine cur={r.active} />
+              : <small className="muted">{r.with ? `Too small for a project of its own: works on ${r.with}'s.` : "No project right now."}</small>}</div>
+          </li>
+        ))}</ul>
+      ) : cur ? <ProjectLine cur={cur} /> : <p className="small muted">No project right now.</p>}
       {done.length > 0 && <ul className="prog-list">{done.slice(0, 3).map((d) => <li key={d.id}>day {d.day}: {plain(d.text)}</li>)}</ul>}
       {hints.length > 0 && (<>
         <h4>📚 Scholars' ideas <small className="muted">{p.research!.insight}/{p.research!.next_idea} insight to the next</small></h4>
