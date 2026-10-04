@@ -185,6 +185,53 @@ def test_a_made_material_is_counted_in_the_stores_a_village_can_reach():
     assert projects.of(w, daughter.id) is p  # the mother's nine bricks, 50 tiles away, don't finish it
 
 
+def test_a_villages_own_store_beyond_its_houses_counts_towards_its_stock():
+    """A stockpile the village raised out by its fields, or one in a hamlet that works with it, is a store its
+    project's chits take from: its goods were left out, so a make project stayed open (or asked for the same again)."""
+    w, A, B, H = _two(n=14, hamlet=2)
+    b, h = B[0], H[0]
+    sb = _sc(w, b)
+    near = _sc(w, h)
+    mine = b if near.id == sb.id else A[0]  # a chit of the village the hamlet works with
+    sc = _sc(w, mine)
+    out = _spot(w, mine, [(sc.x, sc.y)], projects.STORE_USE + 4, projects.JOIN_REACH - 6)
+    pile = _put(w, mine, "stockpile", out, 2)
+    w.tick += 1
+    sc = _sc(w, mine)
+    owner = projects.scope_of(w, mine)
+    if not projects._owns(w, owner, pile):  # (nearer the other village on this island: then it is that one's)
+        sc = next(s for s in projects.scopes(w) if projects._owns(w, s, pile))
+    assert pile.id not in sc.village.structures and pile.dist(sc.x, sc.y) > projects.STORE_USE
+    pile.storage["brick"] = 3
+    assert projects.stock(w, "brick", sc=sc) == 3
+    p = projects.start(w, "make", "brick", "test", None, "need", {"n": 3, "for": "kiln"}, sc=sc)
+    w.tick += 10 - w.tick % 10
+    projects.tick(w)
+    assert [d["id"] for d in w.civic["done"]] == [p["id"]]  # three bricks in its own store: the project is done
+    # a hamlet's store: counted while the village's chits could take from it (within JOIN_REACH of its middle)...
+    hs = _sc(w, h)
+    hut = w.structures[h.home]
+    hpile = _put(w, h, "stockpile", (hut.x, hut.y + 4), 4)
+    hpile.storage["iron"] = 5
+    w.tick += 1
+    hs = _sc(w, h)
+    assert projects._owns(w, hs, hpile)
+    reachable = hpile.dist(hs.x, hs.y) <= projects.JOIN_REACH
+    assert projects.stock(w, "iron", sc=hs) == (5 if reachable else 0)
+    assert (hpile in projects.stores(w, hs)) is reachable
+    # ...and not from farther off: the chits who would build with it take from stores about where they stand
+    real = projects.JOIN_REACH
+    try:
+        projects.JOIN_REACH = max(projects.STORE_USE, hpile.dist(hs.x, hs.y) - 1)
+        w.__dict__.pop("_scopes", None)
+        assert hpile not in projects.stores(w, projects.village(w, village_id=hs.id))
+        projects.JOIN_REACH = hpile.dist(hs.x, hs.y) + 1
+        w.__dict__.pop("_scopes", None)
+        assert hpile in projects.stores(w, projects.village(w, village_id=hs.id))
+    finally:
+        projects.JOIN_REACH = real
+
+
 # ---------------------------------------------------------------------------------------------- two at once
 def test_two_villages_hold_two_projects_and_each_completes_its_own():
     w, A, B, _ = _two()

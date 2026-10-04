@@ -251,9 +251,13 @@ def _usable(world, sc: Scope) -> List:
 
 
 def _stores(world, sc: Scope) -> List:
-    """The stores a village's chits can reach (actions.village_stores, about the village's middle), and its own."""
+    """The stores whose goods count as a village's: its settlement's, any within STORE_USE of its middle
+    (actions.village_stores), and one that is its own farther out (raised beyond its houses, or in a hamlet that
+    works with it) as far as JOIN_REACH. Farther than that, a hamlet's store is not counted: the chits who would
+    build with the goods take from stores about where they stand, and could not take from it."""
     own = set(sc.village.structures)
-    return [s for s in _usable(world, sc) if s.design in HOME_STORES and (s.id in own or s.dist(sc.x, sc.y) <= STORE_USE)]
+    return [s for s in _usable(world, sc) if s.design in HOME_STORES and (
+        s.id in own or s.dist(sc.x, sc.y) <= STORE_USE or (s.dist(sc.x, sc.y) <= JOIN_REACH and _owns(world, sc, s)))]
 
 
 def _sites(world, sc: Optional[Scope] = None) -> List:
