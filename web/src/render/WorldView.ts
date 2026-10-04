@@ -1122,8 +1122,8 @@ export class WorldView {
       // work dust
       if (working && Math.random() < 0.03 * dt) this.puff(x + 0.5 + (Math.random() - 0.5) * 0.6, y + 1, 0xd8c8a0, 1, -0.15);
       if (winter && moving && Math.random() < 0.02 * dt) this.puff(x + 0.5, y + 1, 0xffffff, 1, -0.05);
-      // lantern light
-      if (a.tool === "lantern") addLight(x + 0.5, y + 0.5, 3, 0xffe08a, 0.8);
+      // a lantern or light bulb carried lights the night round its holder (whatever other tool is shown in hand)
+      if (a.light || a.tool === "lantern") addLight(x + 0.5, y + 0.5, 3, 0xffe08a, 0.8);
     }
 
     for (let i = nLight; i < this.lightPool.length; i++) this.lightPool[i].visible = false;

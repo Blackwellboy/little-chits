@@ -22,6 +22,7 @@ from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
 from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item, ORE_KINDS, IRON_ORE_SHARE
 from .items import LIBRARIES
+from . import items as ITEMS_MOD
 from .invent import HEAL_PER_STRENGTH, MOOD_PER_POINT
 from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
@@ -1757,6 +1758,7 @@ class World:
         return (a.y * self.w + a.x) in self._zones()[0]
 
     HUT_WARM_TO = -0.3  # a hut keeps its sleepers warm on ordinary winter nights (-0.21), not in a winter storm
+    LIGHT_COLD = 0.8  # a lantern or light bulb carried takes a fifth off the cold: a small flame, not a fire to stand by
 
     def _needs(self, a: Agent, temp: float) -> None:
         t = self.tick
@@ -1769,13 +1771,17 @@ class World:
         else:
             a.energy -= 0.2
         sheltered = self.in_home(a)
-        warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO)) or a.best_tool("light")
+        warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO))
+        if not ITEMS_MOD.ITEM_USES:
+            warm_src = warm_src or a.best_tool("light")  # (before F35 a carried light counted as a fire)
         cloak = (self.invention_effect(a, "warmth") if self.catalog.items else 0.0) or 1.0  # (the share of the cold let through)
         if cloak > 0.5 and any(n > 0 and (it := self.item(k)) and "wearable" in it.props and "warm" in it.props
                                 for k, n in a.inventory.items()):
             cloak = 0.5  # a warm thing to wear (T31)
         if temp < 0.42 and not warm_src:
-            a.warmth -= (0.42 - temp) * 1.6 * (0.7 if sheltered else 1.0) * cloak
+            # (a carried light counted as standing by a fire: with a lantern in the bag no winter could chill)
+            lamp = self.LIGHT_COLD if ITEMS_MOD.ITEM_USES and a.best_tool("light") else 1.0
+            a.warmth -= (0.42 - temp) * 1.6 * (0.7 if sheltered else 1.0) * cloak * lamp
         else:
             a.warmth += 0.8
         if self.weather != "clear":

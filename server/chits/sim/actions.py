@@ -13,6 +13,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from .. import diag
+from . import items as IT
 from . import buildings as BLD
 from . import terrain as T
 from .agent import Agent, TICKS_PER_DAY
@@ -21,6 +22,7 @@ from .items import (
     HOME_STORES,
     ACTION_USES, DESIGNS, GATHER_RULES, ITEMS, RECIPES, STATIONS, STORES, item_name, match_recipe, normalize_design,
     normalize_item,
+    FUEL_VALUE, MEND_WITH, SHARP_FIBER, SIDE_USES, hand_tool,
 )
 
 RUNNING = "running"
@@ -86,6 +88,11 @@ SCARCE_RADIUS = 72  # tiles a chit will walk for a scarce material its mind aske
 CAMP_SLEEP, CAMP_FAR = 12, 30  # a chit this far from home sleeps at an outpost camp this close
 
 FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "fish", "berries", "grain")
+# cooked or baked: eating one lifts the spirits (a loaf and cooked meat did not, though bread and cooked fish did;
+# ale is not eaten: it is drunk at the tavern, which has its own cheer, buildings.ALE_MOOD)
+PREPARED_FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish")
+OLD_PREPARED = ("bread", "berry_tart", "cooked_fish")  # (with items.ITEM_USES off)
+MEAL_MOOD = 4  # mood gained from a prepared meal
 
 
 def is_food(key: str, catalog=None) -> bool:
@@ -303,8 +310,9 @@ def _reflexes(world, a: Agent) -> None:
         if pile:
             a.plan.insert(0, {"do": "store", "what": "all", "target": pile.id, "_reflex": True})
         else:
-            junk = max((k for k in a.inventory if a.inventory[k] > 0 and not world.item(k).tool and not world.item(k).carry_bonus
-                        and k not in FOODS and not (world.catalog.items and (world.invention_carried(k) or world.item(k).food))),
+            junk = max((k for k in a.inventory if a.inventory[k] > 0 and not hand_tool(world.item(k))
+                        and not world.item(k).carry_bonus and k not in FOODS
+                        and not (world.catalog.items and (world.invention_carried(k) or world.item(k).food))),
                        key=lambda k: a.inventory[k], default=None)
             if junk:
                 a.plan.insert(0, {"do": "drop", "what": junk, "qty": max(1, a.inventory[junk] // 2), "_reflex": True})
@@ -578,6 +586,9 @@ def _do_gather(world, a: Agent, step, s) -> str:
         return RUNNING
     a.activity = f"gathering {world.item_name(kind)}"
     power = world.item(tool).tool_power if tool else 1.0
+    sharp = IT.ITEM_USES and kind == "fiber" and a.has("sharp_stone")
+    if sharp:
+        power = float(SHARP_FIBER)  # (a flake in hand cuts the stalks: by hand they are pulled one at a time)
     if not _work(a, a.skill_speed("gathering") * (1.1 if a.mood > 70 else 1.0), float(rule["work"])):
         return RUNNING
     i = tgt
@@ -603,6 +614,8 @@ def _do_gather(world, a: Agent, step, s) -> str:
     a.bump(f"gathered_{kind}", added)
     if kind == "fish":
         a.bump("fish", added)
+    if sharp and n > 1:
+        a.bump("fiber_cut_sharp")
     if tool:
         _wear(world, a, tool)
     world.notice_items(a)
@@ -661,7 +674,7 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
     order = ["stone", "sand", "wood", "clay", "fiber", "ore", "iron_ore", "seeds"]
     kept = (lambda k: world.invention_carried(k)) if world.catalog.items else (lambda k: False)  # a coat, a hoe: like a tool
     order += sorted((k for k, n in a.inventory.items() if k not in order and k not in FOODS and (it := world.item(k))
-                     and not it.tool and not it.carry_bonus and not it.food and not ART.is_artifact(k) and not kept(k)),
+                     and not hand_tool(it) and not it.carry_bonus and not it.food and not ART.is_artifact(k) and not kept(k)),
                     key=lambda k: (-a.inventory[k], k))
     order += sorted(k for k, n in a.inventory.items() if n > 1 and world.item(k) and (world.item(k).tool or kept(k)))
     dropped = []
@@ -692,6 +705,16 @@ METAL_OF: Dict[str, str] = {k: m for k, r in RECIPES.items() if "metal" in (ITEM
                             and (ITEMS[k].tool or "tool" in ITEMS[k].props)  # (the plough too, Codex #18)
                             for m, _ in r.inputs if m in ("copper", "iron", "steel", "alloy")}
 MEND_AT, SMELT_AT = "workshop", "furnace"
+
+
+def wear_arms(world, a: Agent, tool: Optional[str]) -> None:
+    """A spear or weapon used on a deer, a wolf or another chit wears like any tool at its work (a spear wore only
+    when it fished). Not an artifact: nobody could make another."""
+    from . import artifacts as ART
+
+    if IT.ITEM_USES and tool and a.has(tool) and not ART.is_artifact(tool):
+        a.bump("arms_worn")
+        _wear(world, a, tool)
 
 
 def _wear(world, a: Agent, tool: str) -> None:
@@ -746,9 +769,16 @@ def _do_eat(world, a: Agent, step, s) -> str:
                 pick = f
                 break
     else:
-        st = _stockpile_with(world, a, foods_of(world), 30)
+        # the store it set out for, while it still holds food: picked again every tick, the nearest as the crow flies
+        # changed as it walked, and between two stores whose walks lead past each other (one behind a ridge) a chit
+        # turned back and forth on two tiles until it starved (74 in one 60-day run, tools/harness seed 2)
+        st = world.structures.get(s.get("store") or "") if STARVING_FETCH else None
+        if st is None or not st.functional or not any(st.storage.get(f, 0) > 0 for f in foods_of(world))                 or a.reflex_rest.get("unreach:" + st.id, 0) > world.tick:
+            st = _stockpile_with(world, a, foods_of(world), 30)
         if not st:
             return _forage(world, a, s)
+        if STARVING_FETCH:
+            s["store"] = st.id
         mv = _goto_structure(world, a, s, st)
         if mv == "moving" and _long_way(a, s, st.x, st.y):
             mv = "blocked"  # a store a long way round: forage closer instead
@@ -781,8 +811,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
     a.remove(pick, 1)
     a.hunger = min(100.0, a.hunger + world.item(pick).food)
     a.bump("meals")
-    if pick in ("bread", "berry_tart", "cooked_fish"):
-        a.mood = min(100.0, a.mood + 4)
+    if pick in (PREPARED_FOODS if IT.ITEM_USES else OLD_PREPARED):
+        a.mood = min(100.0, a.mood + MEAL_MOOD)
+        if IT.ITEM_USES:
+            a.bump("good_meals")
     if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
@@ -1062,7 +1094,7 @@ def _useful(world, key: str) -> bool:
     it = world.item(key)
     if it is None:
         return False
-    if it.food or it.tool or it.carry_bonus or key in ACTION_USES:
+    if it.food or it.tool or it.carry_bonus or (key in ACTION_USES and key not in SIDE_USES):
         return True
     for k in world.first:
         kind, _, x = k.partition(":")
@@ -1981,6 +2013,8 @@ def _do_fight(world, a: Agent, step, s) -> str:
         return RUNNING
     sa, sb = _strength(a), _strength(other)
     win, lose = (a, other) if world.rng_for("combat").random() * (sa + sb) < sa else (other, a)
+    for x in (a, other):  # (what each fought with is the worse for it)
+        wear_arms(world, x, x.best_tool("weapon") or x.best_tool("spear"))
     for x, dmg in ((lose, 20), (win, 5)):
         if x.health > 5:
             x.health = max(5.0, x.health - dmg)
@@ -2429,8 +2463,10 @@ def _do_store(world, a: Agent, step, s) -> str:
     items: Dict[str, int] = {}
     if str(what).lower() in ("all", "everything", "extra", "surplus", "materials"):
         for k, n in a.inventory.items():
-            if world.item(k).tool or world.item(k).carry_bonus:
-                continue
+            it = world.item(k)
+            if it is None or hand_tool(it) or it.carry_bonus:
+                continue  # (tools stay in hand: the plough too, which only works carried at harvest; and a thing this
+                # world's catalogue doesn't know is kept, not stored where nothing can read it)
             keep = kept_in_hand(world, k)  # (a bite stays in hand, and one of an invention that works while carried)
             if n > keep:
                 items[k] = n - keep
@@ -3054,8 +3090,9 @@ def _do_refuel(world, a: Agent, step, s) -> str:
     st = _find_structure(world, a, step.get("target"), 30, lambda x: x.design == "campfire" and x.functional and x.fuel < 80)
     if not st:
         return "no campfire nearby needs fuel"
-    if not a.has("wood"):
-        return "I need wood to feed the fire"
+    fuel = next((k for k in (FUEL_VALUE if IT.ITEM_USES else ("wood",)) if a.has(k)), None)  # wood first, then charcoal
+    if fuel is None:
+        return "I need wood (or charcoal) to feed the fire" if IT.ITEM_USES else "I need wood to feed the fire"
     mv = _goto_structure(world, a, s, st)
     if mv == "blocked":
         return "couldn't reach the fire"
@@ -3064,15 +3101,18 @@ def _do_refuel(world, a: Agent, step, s) -> str:
     a.activity = "tending the fire"
     if not _work(a, 1.0, 3.0):
         return RUNNING
-    n = min(a.inventory.get("wood", 0), max(1, int((100 - st.fuel) // 35) or 1), 3)
-    a.remove("wood", n)
+    per = FUEL_VALUE[fuel]
+    n = min(a.inventory.get(fuel, 0), max(1, int((100 - st.fuel) // per) or 1), 3)
+    a.remove(fuel, n)
     was_out = st.fuel <= 0
-    st.fuel = min(100.0, st.fuel + 35 * n)
+    st.fuel = min(100.0, st.fuel + per * n)
     world.dirty_struct.add(st.id)
     a.bump("refueled")
+    if fuel != "wood":
+        a.bump(f"refueled_{fuel}", n)
     if was_out:
         world.emit("fire_lit", f"{a.name} rekindled a campfire", 1, a.id, *st.center(), structure=st.id)
-    s["note"] = f"Fed {n} wood to the campfire (fuel {st.fuel:.0f}/100)"
+    s["note"] = f"Fed {n} {world.item_name(fuel)} to the campfire (fuel {st.fuel:.0f}/100)"
     return DONE
 
 
@@ -3258,6 +3298,21 @@ def _do_smelt(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def mend_materials(design: str) -> List[str]:
+    """What a building can be mended with: its first material (as ever), then any other of its materials that is
+    plain building stuff (MEND_WITH). A stockpile is re-lashed with cord, a furnace patched with stone as well as
+    brick; nobody mends a factory with a steam engine."""
+    mats = [m for m, _ in DESIGNS[design].materials]
+    if not IT.ITEM_USES:
+        return mats[:1]
+    return mats[:1] + [m for m in mats[1:] if m in MEND_WITH]
+
+
+def mend_material(a: Agent, design: str) -> Optional[str]:
+    """The first of those the chit is carrying."""
+    return next((m for m in mend_materials(design) if a.has(m)), None)
+
+
 def _do_repair(world, a: Agent, step, s) -> str:
     tool = world.norm_item(step.get("what")) if step.get("what") else None
     if metal_of(world, tool):  # a tool, not a building
@@ -3266,9 +3321,11 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not st:
         return "nothing nearby needs repair"
     d = DESIGNS[st.design]
-    mat = d.materials[0][0]
-    if not a.has(mat):
-        return f"I need {world.item_name(mat)} to repair the {d.name}"
+    mat = mend_material(a, st.design)
+    if mat is None:
+        first = d.materials[0][0]
+        others = [world.item_name(m) for m in mend_materials(st.design) if m != first]
+        return f"I need {world.item_name(first)}" + (f" (or {', '.join(others)})" if others else "") + f" to repair the {d.name}"
     mv = _goto_structure(world, a, s, st)
     if mv == "blocked":
         return "couldn't reach it"
@@ -3280,6 +3337,8 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("building"), 6.0):
         return RUNNING
     a.remove(mat, 1)
+    if mat != d.materials[0][0]:
+        a.bump(f"mended_with_{mat}")
     was_ruin = st.durability <= 0
     st.durability = min(100.0, st.durability + 45)
     st.ruined_at = -1
@@ -3368,6 +3427,7 @@ def _do_hunt(world, a: Agent, step, s) -> str:
     power = world.item(tool).tool_power if world.item(tool) else 1.0
     if AN._rng(world).random() < 0.35 + 0.15 * power:
         world.animals.pop(prey["id"], None)
+        wear_arms(world, a, tool)
         if kind == "deer":
             got = a.add("meat", 3)
             if got < 3:

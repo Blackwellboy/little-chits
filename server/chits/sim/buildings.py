@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent
-from .items import DESIGNS, HOME_STORES, STORES, normalize_design
+from .items import DESIGNS, HOME_STORES, STORES, hand_tool, normalize_design
 
 HOME_CAP: Dict[str, int] = {"hut": 3, "brick_house": 5, "longhouse": 6, "two_storey_house": 8, "apartment": 12}
 HOMES: Tuple[str, ...] = tuple(HOME_CAP)
@@ -786,7 +786,7 @@ def craft_speed(world, a: Agent, key: str) -> float:
     """Metal tools come quicker off a smithy's anvil; work at a station goes quicker with a power station near."""
     it = world.item(key)
     m = 1.0
-    if it is not None and it.tool and "metal" in it.props and any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]):
+    if hand_tool(it) and "metal" in it.props and any(sm.dist(a.x, a.y) <= 2 for sm in fx(world)["smithy"]):
         m = SMITHY_SPEED
     r = world.recipe(key)
     if r is not None and r.station in POWERED and powered(world, a.x, a.y):

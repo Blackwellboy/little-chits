@@ -63,6 +63,9 @@ def main(argv):
     for switch in ("NEED_SITING", "TOWN_GATE"):  # (F32's dead zones and town rank: off, as before them)
         if hasattr(buildings, switch):
             setattr(buildings, switch, False)
+    from chits.sim import items
+    if hasattr(items, "ITEM_USES"):
+        items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()
