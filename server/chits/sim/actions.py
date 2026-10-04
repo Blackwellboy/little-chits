@@ -2127,6 +2127,9 @@ def _do_build(world, a: Agent, step, s) -> str:
     if key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None:
         return (f"only a city can build a {DESIGNS[key].name}: a town of 40 or more with five kinds of public building "
                 f"around its hall and paved streets")
+    not_a_town = BLD.town_only(world, key, ox, oy)  # (a site already begun was joined above: it can be finished)
+    if not_a_town:
+        return not_a_town
     # models kept starting a second hut beside their own (53 huts for 26 chits); a pioneer's new home is the exception
     from . import pioneers as PI
 
@@ -2136,12 +2139,20 @@ def _do_build(world, a: Agent, step, s) -> str:
             and not (crowded and home.founder != a.id) and not PI.builds_home_at(world, a, ox, oy):
         return (f"I already have a home ({DESIGNS[home.design].name} {home.id}): repair it if it's damaged, or help "
                 f"build someone else's instead of a second one")
-    pos = world.find_site(key, ox, oy, 8 if key != "road" else 3, reach=(a.x, a.y))
+    # "_within": instinct sited it to serve something at that place (a field, a store, a home): any farther off it
+    # would not reach it, and the same plan would be made again tomorrow
+    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
     # (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
-    for radius in ((16, 28) if key not in ("road", "boat", "lighthouse", "mine") else ()):
+    radii = (3,) if key == "road" else (8,) if key in ("boat", "lighthouse", "mine") else (8, 16, 28)
+    if within:
+        radii = tuple(r for r in radii if r < within) + (within,)
+    pos = None
+    for radius in radii:
         pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y))
     if not pos:
         a.reflex_rest["nobuild:" + key] = world.tick + TICKS_PER_DAY  # a crowded village: don't retry every plan
+        if within:
+            return f"there's no clear ground within {within} tiles of there"
         return "there's no clear ground within 28 tiles: go somewhere open, or add \"near\":\"x,y\""
 
     st = world.place_site(key, pos[0], pos[1], a)

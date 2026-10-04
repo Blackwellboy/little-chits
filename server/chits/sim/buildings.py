@@ -50,6 +50,10 @@ _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great
        "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade")
 PALISADE_RADIUS = 22  # a palisade keeps wolves out of this much of the town round its gate
 CITY_ONLY = ("university", "theatre")  # the build verb refuses them outside a city
+# town life: the build verb refuses these outside a town (a village of settlements.TOWN_POP with a working hall).
+# Knowing the idea of a town hall was all they asked, so a tavern could go up in a hamlet and rank meant nothing.
+# One already standing keeps working wherever it is, and a site already begun can be finished.
+TOWN_ONLY = ("tavern", "bakery", "healer", "tailor", "park", "plaza", "palisade", "apartment")
 UNI_RADIUS, UNI_EVERY, UNI_P = 20, 30, 0.08
 THEATRE_RADIUS, THEATRE_TICK, THEATRE_MOOD = 15, 200, 8.0  # 20:00
 HARBOUR_RADIUS = 12
@@ -70,16 +74,19 @@ LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 # The town hall's reuse (30) was farther than the builder looked for one (settlements.HALL_REACH, 25): a daughter
 # village 26-30 tiles from its mother's hall proposed a hall every tick and the build refused it every tick, and the
 # palisade, university and theatre likewise. Those four are reused from no farther than their effect reaches.
-# Several others are still reused from farther than they reach (a store 11 tiles from a granary rots, and a granary
-# for it is refused as "one close by already"). Capping them all the same way made villages raise more of each: over
-# 24 seeds and 60 days it cost 2-3 discoveries, 0.3-0.4 of an age and a quarter of the stored food. Each needs a builder
-# that asks "is this pile, field or home served?" first; tests/test_review_step2a.py lists them until then.
+# Ten others were reused from farther than they reach (a store 11 tiles from a granary rots, and a granary for it was
+# refused as "one close by already"). Capping them all the same way made villages raise more of each: over 24 seeds
+# and 60 days it cost 2-3 discoveries, 0.3-0.4 of an age and a quarter of the stored food. So each is capped only once
+# its builder asks "is this pile, field, child or home served?" first and sites it to serve what is not
+# (brain/builder.py: NEED); tests/test_review_step2a.py lists any still waiting for that.
 EFFECT_RADIUS = {"well": WELL_RADIUS, "granary": GRANARY_RADIUS, "watchtower": TOWER_RADIUS, "school": SCHOOL_RADIUS,
                  "bell_tower": BELL_RADIUS, "steam_pump": PUMP_RADIUS, "sawmill": SAW_RADIUS, "power_station": POWER_RADIUS,
                  "street_lamp": LAMP_RADIUS, "plaza": PLAZA_RADIUS, "tavern": TAVERN_RADIUS, "healer": HEALER_RADIUS,
                  "park": PARK_RADIUS, "university": UNI_RADIUS, "theatre": THEATRE_RADIUS, "harbour": HARBOUR_RADIUS,
                  "palisade": PALISADE_RADIUS, "town_hall": 25}  # (town_hall: settlements.HALL_REACH, which imports this module)
-REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre")
+REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre",
+                # each of these has a builder that asks what is unserved (brain/builder.py)
+                "well", "granary", "school", "bell_tower", "sawmill", "plaza", "tavern", "healer", "park", "harbour")
 for _d in REUSE_CAPPED:
     REUSE_WITHIN[_d] = min(REUSE_WITHIN[_d], EFFECT_RADIUS[_d])
 PRESS_REACH = 15  # a printing press takes its paper from stores this near, and shelves in a library within 30
@@ -265,6 +272,9 @@ def do_upgrade(world, a: Agent, step: Dict[str, Any], s: Dict[str, Any]) -> str:
     if not st.upgrade:
         key, why = upgrade_target(world, a, st, step.get("to") or step.get("what"))
         if key is None:
+            return why
+        why = town_only(world, key, st.x, st.y)  # (an apartment block; one already being rebuilt carries on, above)
+        if why:
             return why
         if upgrade_spot(world, st, key) is None:
             return f"there's no clear ground beside the {old} to make it a {DESIGNS[key].name}"
@@ -916,15 +926,34 @@ def _tavern(world) -> None:
                    1, None, *tv.center(), structure=tv.id, gathered=len(near), ale=len(drank))
 
 
-def city_of(world, x: int, y: int):
-    """The city whose town hall stands within reach of (x, y), if any."""
+def _ranked(world, x: int, y: int, ranks: Tuple[str, ...]):
     from . import pioneers as PIs
     from .settlements import HALL_REACH
 
     for v in PIs.villages(world):
-        if v.rank == "city" and v.hall in world.structures and world.structures[v.hall].dist(x, y) <= HALL_REACH + 5:
+        if v.rank in ranks and v.hall in world.structures and world.structures[v.hall].dist(x, y) <= HALL_REACH + 5:
             return v
     return None
+
+
+def city_of(world, x: int, y: int):
+    """The city whose town hall stands within reach of (x, y), if any."""
+    return _ranked(world, x, y, ("city",))
+
+
+def town_of(world, x: int, y: int):
+    """The town (or city) whose town hall stands within reach of (x, y), if any."""
+    return _ranked(world, x, y, ("town", "city"))
+
+
+def town_only(world, key: str, x: int, y: int) -> str:
+    """Why a town-life building can't go up at (x, y), in words a chit can act on; "" when it can."""
+    from .settlements import TOWN_POP
+
+    if key not in TOWN_ONLY or town_of(world, x, y) is not None:
+        return ""
+    return (f"only a town can build a {DESIGNS[key].name}: a village of {TOWN_POP} or more people with a town hall, "
+            f"and the {DESIGNS[key].name} within reach of the hall")
 
 
 def fished(world, x: int, y: int) -> bool:
