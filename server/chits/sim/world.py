@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from . import terrain as T
-from .agent import TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
+from .agent import HUNGER_PER_TICK, TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
 from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item, ORE_KINDS, IRON_ORE_SHARE
 from .items import LIBRARIES
 from . import items as ITEMS_MOD
@@ -1771,7 +1771,7 @@ class World:
         t = self.tick
         sleeping = a.activity == "sleeping"
         child = a.is_child(t)
-        a.hunger -= 0.22 * (0.7 if sleeping else 1.0) * (0.8 if child else 1.0)
+        a.hunger -= HUNGER_PER_TICK * (0.7 if sleeping else 1.0) * (0.8 if child else 1.0)
         if sleeping:
             home = self.in_home(a)
             a.energy += (1.7 if home else 0.9) * BLD.rest_mult(self, a)  # a well nearby: fresh water, better rest

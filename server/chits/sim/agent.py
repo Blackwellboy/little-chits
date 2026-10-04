@@ -10,6 +10,7 @@ from .. import theme
 from .items import BASE, DESIGNS, ITEMS, STARTING_DESIGNS, STARTING_RECIPES
 
 TICKS_PER_DAY = 240
+HUNGER_PER_TICK = 0.22  # an awake adult's hunger falls this much a tick (World._needs: asleep 0.7 of it, a child 0.8)
 BASE_CAPACITY = 12
 MEMORY_CAP = 60
 LESSON_CAP = 6
