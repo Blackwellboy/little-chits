@@ -203,6 +203,9 @@ NEED = {"school": (BLD.SCHOOL_RADIUS, "children", SCHOOL_MIN_CHILDREN),
         "tavern": (BLD.TAVERN_RADIUS, "adults", TAVERN_MIN_PEOPLE),
         "healer": (BLD.HEALER_RADIUS, "all", HEALER_MIN_PEOPLE),
         "park": (BLD.PARK_RADIUS, "all", PARK_MIN_PEOPLE)}
+# False restores the builder's questions from before this (one near me? to anyone, sited where the builder stands),
+# for tests/identity_runner.py only: a one-village world must still run as it did before projects belonged to villages
+NEED_SITING = True
 
 
 def _standing(world, design: str) -> List:
@@ -276,7 +279,7 @@ def _food_pile(world, a: Agent):
     the clay pots stored with it hold (buildings._spoil)."""
     for p in world.structures_near(a.x, a.y, GRANARY_LOOK, "stockpile"):
         if p.functional and not BLD.keeps_fresh(world, p) and \
-                sum(n for k, n in p.storage.items() if k in FOODS) - BLD.POT_KEEPS * p.storage.get("pot", 0) \
+                sum(n for k, n in p.storage.items() if k in FOODS) - BLD.POT_KEEPS * p.storage.get("pot", 0) * NEED_SITING \
                 >= GRANARY_MIN_FOOD:
             return p
     return None
@@ -372,7 +375,10 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         # (it just found no sand within reach: dig a pit by the nearest water)
         add(2.0, _build(world, a, "sand_pit", max(1, pop // 20), "There's no sand left near home. A pit by the water would give some every day."))
     # (each of these asks what is unserved, and stands where it serves it: see NEED above)
-    if a.knows_design("well") and _may_build(world, a, "well", max(1, pop // 10)):
+    if not NEED_SITING:
+        if a.knows_design("well") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "well", 10):
+            add(2.0, _build(world, a, "well", max(1, pop // 10), "Our fields are thirsty. A well would water them."))
+    elif a.knows_design("well") and _may_build(world, a, "well", max(1, pop // 10)):
         field, _ = _dry_fields(world, a)
         if field is not None:
             add(2.0, _build(world, a, "well", max(1, pop // 10), "Our fields are thirsty. A well would water them.",
@@ -382,7 +388,7 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         if pile is not None:
             add(2.5 if world.season in ("summer", "autumn") else 1.5,
                 _build(world, a, "granary", max(1, pop // 12), "The stored food is going bad. A granary would keep it.",
-                       near=(pile.x, pile.y), within=BLD.GRANARY_RADIUS))
+                       near=(pile.x, pile.y), within=BLD.GRANARY_RADIUS if NEED_SITING else None))
     if a.knows_design("mill") and len(_farms(world, a, 20)) >= 2 and _none_near(world, a.x, a.y, "mill", 20):
         add(1.5, _build(world, a, "mill", max(1, pop // 15), "All this grain... a millstone could grind it finer."))
     if a.knows_design("smithy") and any(a.knows_recipe(t) for t, _ in METAL_TOOLS) \
@@ -392,12 +398,18 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
         add(2.5, _build(world, a, "watchtower", max(1, pop // 10), "Wolves prowl at night. A lookout would keep them off."))
     hall = BLD.hall_near(world, a) if a.knows_design("school") or a.knows_design("bell_tower") else None
     by_hall = (hall.x + hall.w // 2, hall.y + hall.h // 2) if hall is not None else None  # (where the build puts them)
-    if a.knows_design("school") and _may_build(world, a, "school", max(1, pop // 15)):
+    if not NEED_SITING:
+        if a.knows_design("school") and _none_near(world, a.x, a.y, "school", 20) \
+                and sum(1 for o in world.agents_near(a.x, a.y, 12) if o.is_child(world.tick)) >= 2:
+            add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know."))
+        if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop:
+            add(1.0, _build(world, a, "bell_tower", max(1, pop // 30), "A bell to call everyone together each morning."))
+    if NEED_SITING and a.knows_design("school") and _may_build(world, a, "school", max(1, pop // 15)):
         spot = need_spot(world, "school", a.x, a.y, SCHOOL_LOOK, first=by_hall)
         if spot is not None:
             add(1.5, _build(world, a, "school", max(1, pop // 15), "The little ones should learn what we know.",
                             near=spot, within=BLD.SCHOOL_RADIUS))
-    if a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop \
+    if NEED_SITING and a.knows_design("bell_tower") and pop >= DESIGNS["bell_tower"].min_pop \
             and _may_build(world, a, "bell_tower", max(1, pop // 30)):
         spot = need_spot(world, "bell_tower", a.x, a.y, BELL_LOOK, first=by_hall)
         if spot is not None:
@@ -419,7 +431,11 @@ def building_options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
     # the Machine and Electric Ages
     if a.knows_design("steam_pump") and len(_farms(world, a, 12)) >= 2 and _none_near(world, a.x, a.y, "steam_pump", 12):
         add(2.0, _build(world, a, "steam_pump", max(1, pop // 15), "An engine could lift water to every field at once."))
-    if a.knows_design("sawmill") and _may_build(world, a, "sawmill", max(1, pop // 25)):
+    if not NEED_SITING:
+        if a.knows_design("sawmill") and _none_near(world, a.x, a.y, "sawmill", 20) \
+                and world.nearest_resource(a.x, a.y, "wood", 12) is not None:
+            add(1.5, _build(world, a, "sawmill", max(1, pop // 25), "An engine could drive a saw. Every log would go twice as far."))
+    elif a.knows_design("sawmill") and _may_build(world, a, "sawmill", max(1, pop // 25)):
         stand = _uncut_stand(world, a)
         if stand is not None:
             add(1.5, _build(world, a, "sawmill", max(1, pop // 25), "An engine could drive a saw. Every log would go twice as far.",
@@ -483,9 +499,14 @@ def town_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     cap = max(1, len(world.agents) // SE.TOWN_POP)
     if a.knows_design("plaza") and _may_build(world, a, "plaza", cap) and _town(world, hall):
         # by the hall while those living round it have no square; then where the most grown-ups live out of reach of one
-        spot = need_spot(world, "plaza", hall.x, hall.y, SE.HALL_REACH, first=(hall.x + hall.w // 2, hall.y + hall.h + 2))
-        plan = _build(world, a, "plaza", cap, "The town needs a square by its hall.", near=spot,
-                      within=BLD.PLAZA_RADIUS) if spot is not None else None
+        by = (hall.x + hall.w // 2, hall.y + hall.h + 2)
+        if NEED_SITING:
+            spot = need_spot(world, "plaza", hall.x, hall.y, SE.HALL_REACH, first=by)
+            plan = _build(world, a, "plaza", cap, "The town needs a square by its hall.", near=spot,
+                          within=BLD.PLAZA_RADIUS) if spot is not None else None
+        else:
+            plan = _build(world, a, "plaza", cap, "The town needs a square by its hall.",
+                          near=by) if _none_near(world, hall.x, hall.y, "plaza", 15) else None
         if plan:
             out.append((1.5, plan))
     street = _street_to_pave(world, hall) if a.knows_design("road") else None
@@ -554,7 +575,7 @@ def town_life_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     for d, w, cap, _, thought in wants:
         if not town or not a.knows_design(d) or not _may_build(world, a, d, cap):
             continue
-        if d in NEED:  # by the hall while those living round it have none in reach, then where the most do without
+        if d in NEED and NEED_SITING:  # by the hall while those living round it have none in reach, then where the most do without
             spot = need_spot(world, d, centre[0], centre[1], SE.HALL_REACH, first=centre)
             plan = _build(world, a, d, cap, thought, near=spot, within=NEED[d][0]) if spot is not None else None
         else:  # (a bakery's oven and a tailor's loom are walked to: one in the town)
@@ -650,6 +671,9 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
     # share of the world's harbours kept a second town from its own)
     mine = len([s for s in world.structures_near(hall.x, hall.y, HARBOUR_TOWN, "harbour") if not s.ruined])
     fish = _open_fish(world, hall) if a.knows_design("harbour") and mine < max(1, pop // HARBOUR_PEOPLE) else None
+    if not NEED_SITING:
+        fish = world.nearest_resource(hall.x, hall.y, "fish", 20) if a.knows_design("harbour") \
+            and _none_near(world, hall.x, hall.y, "harbour", 40) else None
     if fish is not None:
         plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
                       near=fish)

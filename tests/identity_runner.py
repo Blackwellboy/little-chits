@@ -49,6 +49,10 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
+    from chits.brain import builder
+
+    if hasattr(builder, "NEED_SITING"):  # (the builder's questions from before the dead zones were closed, F32)
+        builder.NEED_SITING = False
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()
