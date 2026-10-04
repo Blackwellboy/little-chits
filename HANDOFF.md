@@ -79,11 +79,10 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | Items (F35) | 74.1 > 72.8 / 74.4 > 71.4 | +1 on two seeds | Slightly negative |
 | Zones | 74.1 > 70.3 / 74.4 > 67.0 | seed 2: 74 | Caused by the eat-step flip; #96 fixed it. Re-run |
 
-**Found and not yet fixed.** Every starvation found so far has one root: a chit lets hunger run too low before it acts, then can't make the walk. A single proper fix is worth more than more patches.
+**Hunger margin (`dev/hunger-margin`, `actions.HUNGER_MARGIN`).** Every starvation found had one root: a chit let hunger run too low before it acted, then couldn't make the walk. A chit now sets out for food when the ticks its hunger (and the food in its hands) has left fall below `FOOD_SAFETY` walks to the nearest food, as the crow flies times `WALK_COST`, at its walking speed. This applies to sheltering, warming up, sleeping, storing and (`MARGIN_STEPS`) a plan's own steps. A hungry chit's harvest step that turned to sowing, or with other food nearer, gives way. A starving chit picking berries eats the one in hand and picks on. An eat step takes food from a store it passes. 48-seed A/B: starved 6 > 1, preventable 2 > 0, no seed worse; discoveries 73.4 > 73.3, era 8.1 > 8.1. Bigger store meals were tried and starved more. What is left: crow-flies distance can't see a walk round water, so a store or berries "near" across a lake still mislead it (seeds 4, 12, 45 in the variants).
 
-- Sheltering, warming up and sleeping give way to food only below hunger 8, while every other step gives way below 16. Raising them to 16 was tried and reverted: it cost 0.5 era and starved more.
-- A harvest step counts as already fetching food, so the hunger reflex never interrupts it. A chit at hunger 10 with a store 8 tiles off walked 20 tiles to an unripe farm and starved (seed 27).
-- Chits start long walks (20-30 tiles) to a store at hunger 0.
+**Found and not yet fixed.**
+
 - Tool care exists (`instinct.tool_care_plan`, `actions._mend_tool`, `_do_smelt`) but did not fire in four 60-day instinct runs (seeds 42 24 7 99) while tools broke: find out why. In the same runs invention, barter, voyages, fights and theft did not fire either (invention needs a model).
 
 **Models.** Use the decision bench (`tools/decbench.py`) for prompt and model questions: about 2 minutes per model, against hours for an A/B. In-game versus runs (same culture, 22-25 days, 3 seeds):

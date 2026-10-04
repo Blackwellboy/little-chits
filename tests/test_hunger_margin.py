@@ -1,8 +1,8 @@
 """The hunger margin (actions.HUNGER_MARGIN). Every starvation the harness found had one shape: a chit let its hunger
 run low under another step, then could not make the walk to food. Sheltering, warming up, sleeping and storing gave
-way to food only below hunger 8, a harvest step counted as fetching food even when it had turned to sowing, and a
-meal from the store was three items. Now a chit weighs the ticks its hunger has left against the walk to the nearest
-food, and eats a meal when it gets there."""
+way to food only below hunger 8, a harvest step counted as fetching food even when it had turned to sowing, a starving
+chit picking berries ate the first one and went back to what it was doing, and an eat step walked past a store on its
+way to another. Now a chit weighs the ticks its hunger has left against the walk to the nearest food."""
 
 import pytest
 
@@ -44,6 +44,19 @@ def test_a_chit_far_from_food_leaves_its_reflex_while_it_can_still_make_the_walk
     monkeypatch.setattr(A, "HUNGER_MARGIN", False)  # switched off: hunger 8, as before
     A.reflexes(w, a)
     assert a.plan[0]["do"] == verb
+
+
+def test_a_chit_far_from_food_leaves_its_plan_for_food_before_hunger_16():
+    w, (a, _) = village()
+    _only_store(w, a, 24)
+    a.hunger = 20.0
+    a.plan = [{"do": "explore"}]
+    A.reflexes(w, a)
+    assert a.plan[0] == {"do": "eat", "_reflex": True} and a.plan[1]["do"] == "explore"
+    a.plan = [{"do": "explore"}]
+    a.hunger = 30.0  # ample for a walk of 24 tiles
+    A.reflexes(w, a)
+    assert a.plan[0]["do"] == "explore"
 
 
 def test_a_chit_beside_food_keeps_to_its_reflex_longer_than_one_far_from_it():
@@ -110,14 +123,34 @@ def test_a_hungry_chit_harvests_on_when_the_farm_is_the_nearest_food():
     assert a.plan[0]["do"] == "eat"
 
 
-def test_a_starving_chit_eats_a_meal_at_the_store_not_a_bite():
+def test_a_starving_chit_picking_berries_eats_the_one_in_hand_and_picks_on():
+    # replaced by the eat, the fetch ended at one berry (+18) each time: warm up to hunger 8, eat one, warm up again,
+    # until the bushes ran out and the walk to the store was too long (seed 27)
     w, (a, _) = village()
-    pile, _ = _only_store(w, a, 3)
     a.hunger = 5.0
-    step, s = {"do": "eat", "_reflex": True}, {}
-    for _ in range(400):
-        w.tick += 1
-        if A._do_eat(w, a, step, s) != A.RUNNING:
-            break
-    # three grain (+36) took it to 41, and it was back in danger soon after
-    assert a.hunger >= A.EAT_TO and pile.storage["grain"] == 30 - 6
+    a.add("berries", 1)
+    fetch = {"do": "gather", "what": "berries", "qty": 3, "_reflex": True, "_s": {"got": 1, "want": 3}}
+    a.plan = [fetch]
+    A.reflexes(w, a)
+    assert a.plan == [{"do": "eat", "_reflex": True}, fetch]
+
+
+def test_an_eat_step_takes_food_from_a_store_it_passes_once():
+    # kept to the store it set out for, 30 tiles round a lake, a child walked by a store 2 tiles off with 114 food in
+    # it and starved a few tiles short of the first (seed 42)
+    w, (a, _) = village()
+    a.hunger = 5.0
+    far = put(w, "stockpile", a, near=(a.x + 12, a.y))
+    near = put(w, "stockpile", a, near=(a.x, a.y), radius=2)
+    other = put(w, "stockpile", a, near=(a.x, a.y), radius=3)
+    for st in (far, near, other):
+        st.storage["grain"] = 20
+    assert near.dist(a.x, a.y) <= A.PASSING_STORE < far.dist(a.x, a.y)
+    s = {"store": far.id}
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s["store"] == near.id
+    a.inventory.clear()
+    s["store"] = other.id  # once: two stores can't take turns
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s["store"] == other.id
+

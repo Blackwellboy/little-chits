@@ -244,15 +244,16 @@ STARVING_FETCH = True  # a starving chit's food fetch gives way to eating (False
 # The hunger margin. Every starvation the harness found had one shape: a chit let its hunger run low under some other
 # step, then could not make the walk to food. A fixed hunger number can't fit both a chit beside a store and one 30
 # tiles from it, so a chit compares the ticks its hunger has left with the walk to the nearest food it knows of.
+# (A bigger meal from the store for a starving chit, up to hunger 70, was tried with it: in 48-seed A/Bs it starved
+# more, not less, so a meal from the store is still three items.)
 HUNGER_MARGIN = True  # (False: the fixed thresholds before it, for the identity test)
 WALK_COST = 1.5  # movement points per tile as the crow flies: terrain costs 1.0-1.8, a diagonal 1.41, paths bend
 FOOD_SAFETY = 1.5  # food comes first once the ticks left are under this many walks there...
 FOOD_SLACK = 12  # ...plus this many ticks to take, pick or harvest it and start eating
 MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is looked up (SNACK_BELOW)
 MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
-EAT_TO = 70  # a chit eating from a store takes enough for a meal to here (the eat step's own "fed")...
-MEAL_MAX = 6  # ...up to this many items: 3 grain (+36) left a chit hungry again soon after
-MARGIN_STEPS = False  # the margin also for a plan's own steps (otherwise these give way to food below hunger 16)
+MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise give way to food below hunger 16
+PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
 
 
 def reflexes(world, a: Agent) -> None:
@@ -271,6 +272,12 @@ def _reflexes(world, a: Agent) -> None:
         # they had caught (the step wanted 3), or walking between spent fish tiles with 550 food in a store 25
         # tiles off. Eat what is in hand; after FETCH_PATIENCE with nothing, go and eat from the stores. The eat
         # takes the fetch's place (left behind it, the fetch walked the fed chit straight back out to the water)
+        if HUNGER_MARGIN and food_items(a) and head.get("what") == "berries":
+            # ...but a berry in hand is a bite (+18), not a meal: the bush is right there, so eat and pick on. Replaced
+            # by the eat, the fetch ended at one berry each time, and a chit warmed up down to hunger 8, ate one, warmed
+            # up again, and starved on its walk to the store when the bushes ran out (tools/harness, seed 27)
+            a.plan.insert(0, {"do": "eat", "_reflex": True})
+            return
         if food_items(a) or (head.get("_s", {}).get("ticks", 0) > FETCH_PATIENCE and _stockpile_with(world, a, FOODS, 30)):
             a.plan[0] = {"do": "eat", "_reflex": True}
             return
@@ -292,6 +299,7 @@ def _reflexes(world, a: Agent) -> None:
     # already fetching food is fine, unless it's nearly too late and there's food in hand: chits starved at
     # hunger 8 carrying berries while they gathered more
     fetching = hv == "gather" and head.get("what") in ("berries", "fish") and not (a.hunger < 10 and food_items(a))
+    # hungry: below 16, or (MARGIN_STEPS) with too few ticks left for the walk to food, as for the reflexes above
     hungry = a.hunger < 16 or (MARGIN_STEPS and a.plan and hv != "eat" and not fetching
                                and a.reflex_rest.get("food", 0) <= world.tick and _margin_short(world, a, head))
     if hv == "harvest" and hungry and _far_harvest(world, a, head):
@@ -834,6 +842,13 @@ def _do_eat(world, a: Agent, step, s) -> str:
         st = world.structures.get(s.get("store") or "") if STARVING_FETCH else None
         if st is None or not st.functional or not any(st.storage.get(f, 0) > 0 for f in foods_of(world))                 or a.reflex_rest.get("unreach:" + st.id, 0) > world.tick:
             st = _stockpile_with(world, a, foods_of(world), 30)
+        elif HUNGER_MARGIN and not s.get("passing"):
+            # ...but not past another store with food right beside the way (once, so two can't take turns): kept to
+            # one 30 tiles round a lake, a child walked by a store 2 tiles off with 114 food and starved short of the
+            # first (tools/harness, seed 42)
+            near = _stockpile_with(world, a, foods_of(world), PASSING_STORE)
+            if near is not None and near is not st:
+                st, s["passing"] = near, True
         if not st:
             return _forage(world, a, s)
         if STARVING_FETCH:
@@ -854,10 +869,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
             if st.storage.get(f, 0) > 0:
                 if a.free_space() < world.item(f).weight:
                     _drop_for_room(world, a, world.item(f).weight)
-                n = 3
-                if HUNGER_MARGIN:  # enough for a meal: one small one sent the chit back into danger soon after
-                    n = max(3, min(MEAL_MAX, math.ceil((EAT_TO - a.hunger) / max(1.0, world.item(f).food))))
-                took = a.add(f, min(st.storage[f], n))
+                took = a.add(f, min(st.storage[f], 3))
                 st.storage[f] -= took
                 if st.storage[f] <= 0:
                     st.storage.pop(f)
@@ -877,7 +889,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
         a.mood = min(100.0, a.mood + MEAL_MOOD)
         if IT.ITEM_USES:
             a.bump("good_meals")
-    if a.hunger < EAT_TO and food_items(a) and s.get("ate", 0) < (MEAL_MAX - 1 if HUNGER_MARGIN else 4):
+    if a.hunger < 70 and food_items(a) and s.get("ate", 0) < 4:
         s["ate"] = s.get("ate", 0) + 1
         return RUNNING
     s["note"] = f"Ate {world.item_name(pick)}; hunger now {a.hunger:.0f}/100"
