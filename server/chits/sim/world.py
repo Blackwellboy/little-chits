@@ -270,6 +270,7 @@ class World:
         # do here what they did at home, and they are saved (World.adopt_foreign). Never mixed into `inventions`:
         # those are what this world thought of itself.
         self.foreign: Dict[str, Dict[str, Any]] = {}
+        self._strange: set = set()  # keys standing in for things this world cannot name (not saved)
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
@@ -392,6 +393,7 @@ class World:
                "by_name": inv.get("by_name", ""), "tick": inv.get("tick", 0), "from": inv.get("from") or from_world}
         register_invention(self, key, rec["name"], rec["inputs"], tuple(rec["props"]), rec["effect"], rec["station"])
         self.foreign[key] = rec
+        self._strange.discard(key)  # no longer a stand-in: the world can name it
 
     def norm_item(self, raw: Any) -> Optional[str]:
         """Free text -> an item key: this world's inventions, then its local names for things ("stoneaxe"
@@ -429,12 +431,33 @@ class World:
                             "inventions": carried})
         self.emit("voyage", f"{a.name} sailed away over the sea", 5, a.id, a.x, a.y)
 
+    def unknown_things(self) -> List[str]:
+        """Things that exist in this world (in hands, in stores, on the ground) that its catalogue cannot name."""
+        keys = set()
+        for a in self.agents.values():
+            keys |= {k for k, n in a.inventory.items() if n > 0}
+        for s in self.structures.values():
+            keys |= set(s.storage)
+        for pile in self.ground.values():
+            keys |= {k for k in pile if k != "_t"}
+        return sorted(k for k in keys if self.catalog.item(k) is None)
+
+    def name_unknown_things(self) -> List[str]:
+        """Give every thing the catalogue cannot name a plain stand-in (a 'strange thing': no use, no effect), so no
+        rule that looks at what a chit carries can fail on it. The runtime swaps the stand-in for the real thing when
+        another world of the game still knows it (Runtime.mend_foreign)."""
+        out = self.unknown_things()
+        for k in out:
+            self.catalog.items[k] = Item(k, "strange thing", ("strange", "made elsewhere"), icon="\u2754")
+            self._strange.add(k)
+        return out
+
     def arrive(self, agent_dict: Dict[str, Any], from_world_id: str, from_name: str = "",
                inventions: Optional[Dict[str, Any]] = None) -> Agent:
         from .invent import register_invention
 
         for key, inv in (inventions or {}).items():  # foreign inventions travel with the chit
-            if self.catalog.item(key) is None:
+            if self.catalog.item(key) is None or key in self._strange:
                 self.adopt_foreign(key, inv, from_world_id)
         a = Agent.from_dict(agent_dict)
         home_again = getattr(a, "homeland", "") == self.id
@@ -2071,7 +2094,7 @@ class World:
             # it was, needing no station and with the numbers it had)
             register_invention(w, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {},
                                inv.get("station"))
-        w.foreign = {}
+        w.foreign, w._strange = {}, set()
         for key, inv in (d.get("foreign") or {}).items():  # ...and the ones that came over the sea
             w.adopt_foreign(key, inv)
         w.signs = dict(d.get("signs") or {})
@@ -2149,6 +2172,7 @@ class World:
             a.thinking = False
             a.pending_plan = None
         PROJECTS.load(w, d)
+        w.name_unknown_things()
         return w
 
 

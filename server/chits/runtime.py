@@ -140,6 +140,7 @@ class Runtime:
         self._last_save_day: Dict[str, int] = {}
         self.save_errors: Dict[str, str] = {}  # F19: a failed durable checkpoint freezes the sim until an explicit retry
         self.invalid_reason = ""  # experiment runs stay invalid once durability was lost, even if a later retry succeeds
+        self.loop_error = ""  # a world's step raised: the game is paused and says why (it used to stop without a word)
         self._resetting = False  # while a new match is built (in a worker thread), the loop doesn't step
         self._recorded_day: Optional[int] = None  # the last day handed to the recorder
         self.recorder = Recorder(self)
@@ -216,7 +217,25 @@ class Runtime:
             raise ValueError("a content pack is not allowed in an experiment run: start the experiment without a pack")
         return new
 
+    def mend_foreign(self) -> List[str]:
+        """A thing made in one world of this game and carried to another: where the other world has only a stand-in
+        for it (a save from before such things were kept), take what it is from the world that invented it."""
+        mended = []
+        for w in self.worlds.values():
+            for k in sorted(getattr(w, "_strange", ())):
+                src = next((o.inventions[k] for o in self.worlds.values() if o is not w and k in o.inventions), None)
+                if src is not None:
+                    w.adopt_foreign(k, src)
+                    mended.append(f"{w.id}:{k}")
+        if mended:
+            log.info("things from another world named again: %s", ", ".join(mended))
+        return mended
+
     def load_or_create(self) -> None:
+        self._load_or_create()
+        self.mend_foreign()
+
+    def _load_or_create(self) -> None:
         for wid in MODES[self.mode]["worlds"]:
             try:
                 snap = self.store.load_world(wid)
@@ -329,6 +348,7 @@ class Runtime:
         self.store.wipe()
         self.save_errors = {}
         self.invalid_reason = ""
+        self.loop_error = ""  # (the failed match is gone)
         self.paused = False
         self.skip = self.last_skip = None
         self.forks = {}  # a new match: the old one's what-ifs go with it
@@ -563,7 +583,26 @@ class Runtime:
             steps = 0
             t0 = time.perf_counter()
             while acc >= 1.0 and not self._resetting and not self.paused and time.perf_counter() - t0 < 0.05:
-                self.step_worlds()
+                try:
+                    self.step_worlds()
+                except Exception as e:
+                    # a step that raises must not end this loop: the task died without a word and the game stood
+                    # still, unpaused, for as long as nobody looked at the tick (live, 2026-10-04)
+                    log.exception("a world's step failed; the game is paused")
+                    self.loop_error = f"{type(e).__name__}: {e}"
+                    if self.contract == "experiment" and not self.invalid_reason:
+                        # one world may have stepped before another failed: the worlds are no longer in step, so
+                        # the run can't be resumed as a valid comparison (Codex, #83)
+                        self.invalid_reason = f"a world's step failed: {self.loop_error}"
+                        try:
+                            self.write_manifest()
+                        except Exception as manifest_error:
+                            log.error("could not write invalid experiment manifest: %s", manifest_error)
+                    if self.skip is not None:
+                        self.stop_skip()
+                    self.paused = True
+                    acc = 0.0
+                    break
                 for w in self.worlds.values():
                     self._maybe_save(w)
                 self._maybe_record()
@@ -875,7 +914,8 @@ class Runtime:
                 "sandbox_modified": self.store.get_meta("sandbox_modified") == "1",
                 "durable_tick": {wid: getattr(w, "_durable_tick", -1) for wid, w in self.worlds.items()},
                 "save_errors": dict(self.save_errors), "invalid_reason": self.invalid_reason,
-                "skip": self.skip_state(), "last_skip": self.last_skip, "pop_cap": self.pop_cap_state()}
+                "skip": self.skip_state(), "last_skip": self.last_skip, "pop_cap": self.pop_cap_state(),
+                "loop_error": self.loop_error}
 
     def brain_summary(self) -> Dict[str, Any]:
         out = {}
