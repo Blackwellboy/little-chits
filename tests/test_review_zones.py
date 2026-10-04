@@ -387,6 +387,29 @@ def test_a_harbour_is_built_for_fish_none_reaches():
     assert site is not None and site is not far and site.dist(*fish) <= BLD.HARBOUR_RADIUS, said
 
 
+def test_a_harbour_is_not_raised_out_of_reach_of_the_fish_it_is_for():
+    # fish reached by a one-tile causeway, no room for a quay beside it: the harbour search widened to 60 tiles, stood
+    # 30 from the fish, caught none of it and used up the town's allowance (Codex, #95)
+    w, a, hall, west, east = _town()
+    able(a, w, "harbour")
+    fx, fy = hall.x + 6, hall.y + 12
+    for y in range(fy - 2, fy + 3):
+        for x in range(fx - 2, fx + 3):
+            i = y * w.w + x
+            w.tiles[i], w.res_kind[i], w.res_amt[i] = T.ROCK, 0, 0
+    w.tiles[fy * w.w + fx] = T.SHALLOW
+    w.res_kind[fy * w.w + fx], w.res_amt[fy * w.w + fx] = T.R_FISH, 3
+    for x in (fx - 1, fx - 2):
+        w.tiles[fy * w.w + x] = T.GRASS
+    _pond(w, hall.x - 25, hall.y)  # (open shore, out of the fish's reach)
+    step = _harbour_wants(w, a)
+    assert step and near_of(step) == (fx, fy) and step["_within"] == BLD.HARBOUR_RADIUS, step
+    assert w.find_site("harbour", fx, fy, BLD.HARBOUR_RADIUS) is not None  # (the old search went this far)
+    site, said = begin(w, a, step)
+    assert site is None and f"no clear ground within {BLD.HARBOUR_RADIUS}" in said, (site and (site.x, site.y), said)
+    assert not any(s.design == "harbour" for s in w.structures.values())
+
+
 def test_no_harbour_for_fish_one_reaches_or_beyond_a_towns_share():
     w, a, hall, west, east = _town()
     able(a, w, "harbour")

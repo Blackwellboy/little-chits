@@ -2247,7 +2247,7 @@ def _do_build(world, a: Agent, step, s) -> str:
         radii = tuple(r for r in radii if r < within) + (within,)
     pos = None
     for radius in radii:
-        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y))
+        pos = pos or world.find_site(key, ox, oy, radius, reach=(a.x, a.y), widen=not within)
     if not pos:
         a.reflex_rest["nobuild:" + key] = world.tick + TICKS_PER_DAY  # a crowded village: don't retry every plan
         if within:

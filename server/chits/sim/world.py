@@ -1293,17 +1293,18 @@ class World:
                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
 
     def find_site(self, design: str, x: int, y: int, radius: int = 7,
-                  reach: Optional[Tuple[int, int]] = None) -> Optional[Tuple[int, int]]:
+                  reach: Optional[Tuple[int, int]] = None, widen: bool = True) -> Optional[Tuple[int, int]]:
         """The best free spot near (x, y). With `reach`, only spots on the same connected land as that tile: a site
-        across a river was chosen 8 tiles away and 140 on foot, and chits failed to reach it 1,684 times."""
+        across a river was chosen 8 tiles away and 140 on foot, and chits failed to reach it 1,684 times. With
+        `widen` off, no farther than `radius` (a building sited to serve something there: a harbour for its fish)."""
         d = DESIGNS[design]
         w, h = d.size
         margin = 0 if design in ("road", "boat") else 1
-        if design in ("boat", "lighthouse", "harbour"):
+        if widen and design in ("boat", "lighthouse", "harbour"):
             radius = max(radius, 60)  # the shore may be a long walk from the village
-        if design == "sand_pit":
+        if widen and design == "sand_pit":
             radius = max(radius, 30)  # the nearest shore or riverbank
-        if design == "mine":
+        if widen and design == "mine":
             radius = max(radius, 30)  # the rocks may be a walk from the village
         comp = self._components() if reach and self.inb(*reach) and not self.block[reach[1] * self.w + reach[0]] else None
         home = comp[reach[1] * self.w + reach[0]] if comp else 0

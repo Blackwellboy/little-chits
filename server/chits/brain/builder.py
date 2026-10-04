@@ -674,8 +674,9 @@ def city_options(world, a: Agent) -> List[Tuple[float, Plan]]:
         fish = world.nearest_resource(hall.x, hall.y, "fish", 20) if a.knows_design("harbour") \
             and _none_near(world, hall.x, hall.y, "harbour", 40) else None
     if fish is not None:
+        # (sited for its fish: a harbour farther off catches none of them, yet counted as the town's one)
         plan = _build(world, a, "harbour", _count_all(world, "harbour") + 1, "Boats and a quay would bring in twice the fish.",
-                      near=fish)
+                      near=fish, **({"within": BLD.HARBOUR_RADIUS} if BLD.NEED_SITING else {}))
         if plan:
             out.append((1.3, plan))
     return out
