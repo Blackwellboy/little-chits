@@ -67,6 +67,10 @@ def test_the_village_picks_the_next_ages_first_step_by_need_or_by_its_chief():
     # a structure the village lacks is a project too, once someone knows how to build it
     w.agents[a.id].learn("recipe:cord", "discovered", w.tick)
     w.agents[a.id].learn("design:stockpile", "insight", w.tick)
+    # (a stockpile takes cord: with none made yet the project is the cord for it, then the stockpile itself)
+    cord = next(c for c in projects.candidates(w) if (c[1], c[2]) == ("make", "cord"))
+    assert cord[4]["for"] == "stockpile" and ("build", "stockpile") not in {(c[1], c[2]) for c in projects.candidates(w)}
+    a.inventory["cord"] = cord[4]["n"]
     assert ("build", "stockpile") in {(c[1], c[2]) for c in projects.candidates(w)}
 
 

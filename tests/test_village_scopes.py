@@ -330,6 +330,50 @@ def test_settlements_standing_side_by_side_are_one_village():
     assert sc.whole and all(_sc(w, c).id == sc.id for c in ags)
 
 
+# ---------------------------------------------------------------------------------------------- a way to act
+def test_a_lacking_building_is_never_chosen_without_its_made_materials():
+    """It was chosen with none of them at hand (the road to the next age already asked for them first), stalled for
+    STALL_DAYS, was skipped for SKIP_DAYS, and was picked again."""
+    w = World("A", "A", 3, "direct", 64, 6)
+    a = next(iter(w.agents.values()))
+    w.leader = ""
+    for k in ("recipe:brick", "design:kiln", "design:brick_house"):
+        a.learn(k, "insight", w.tick)
+    made = [m for m, _ in DESIGNS["brick_house"].materials if m == "brick"]
+    assert made, "a brick house takes bricks"
+    need = DESIGNS["brick_house"].material_map["brick"]
+    # no kiln to make bricks at: the kiln is the way to act, never the bare house
+    keys = _keys(w, None)
+    assert ("build", "brick_house") not in keys and ("make", "brick") not in keys and ("build", "kiln") in keys
+    pos = w.find_site("kiln", a.x + 3, a.y, 12)
+    kiln = w.place_site("kiln", pos[0], pos[1], a)
+    kiln.needs = {}
+    w.complete_structure(kiln, a)
+    w.tick += 1
+    cands = projects.candidates(w)
+    brick = next(c for c in cands if (c[1], c[2]) == ("make", "brick"))
+    assert brick[4] == {"n": need, "for": "brick_house"} and "brick house" in brick[3]
+    assert ("build", "brick_house") not in {(c[1], c[2]) for c in cands}
+    for seed in range(40):  # whatever need's jitter picks, it is never the house nobody could start
+        w.civic["projects"].clear()
+        w._rngs.pop("projects", None)
+        w.seed = seed
+        p = projects.pick(w)
+        assert (p["kind"], p["key"]) != ("build", "brick_house")
+    a.inventory["brick"] = need
+    assert ("build", "brick_house") in _keys(w, None) and ("make", "brick") not in _keys(w, None)
+
+
+def test_the_made_materials_first_rule_is_one_switch(monkeypatch):
+    # (so its effect can be measured on its own: off, a lacking building is chosen as it was before)
+    w = World("A", "A", 3, "direct", 64, 6)
+    a = next(iter(w.agents.values()))
+    for k in ("recipe:brick", "design:brick_house"):
+        a.learn(k, "insight", w.tick)
+    monkeypatch.setattr(projects, "MAKE_FIRST", False)
+    assert ("build", "brick_house") in _keys(w, None)
+
+
 # ---------------------------------------------------------------------------------------------- old saves
 def _old_save(w: World, project, skip):
     d = json.loads(json.dumps(w.to_dict()))

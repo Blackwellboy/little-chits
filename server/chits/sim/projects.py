@@ -36,7 +36,7 @@ ONE_VILLAGE = APART  # settlements whose middles are nearer than this are one vi
 JOIN_REACH = STATION_REACH  # a chit (or a site) outside every village belongs to the nearest village this close, else to none
 STATION_USE = STATION_REACH  # a station this near a village's middle is one its chits can use (as far as they walk to one)
 STORE_USE = STORE_SIGHT  # stores and other buildings this near a village's middle count as its own (as far as a chit sees stores)
-MAKE_FIRST = False  # (True: a lacking building whose made materials aren't at hand is first "make N of X")
+MAKE_FIRST = True  # a lacking building whose made materials aren't at hand is first "make N of X" (False: as before F32)
 WORLD = "world"  # the slot of a world where no village stands yet
 LEGACY = ""  # the slot an older save's single project is loaded into, until the next look at the villages
 
