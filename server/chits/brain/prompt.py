@@ -19,7 +19,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-04.3"
+PROMPT_VERSION = "2026-10-04.4"
 
 
 def _dir(dx: int, dy: int) -> str:
@@ -354,7 +354,7 @@ def scene(world, a: Agent) -> str:
         f"energy {a.energy:.0f} ({_level(a.energy, ('exhausted!', 'tired', 'ok', 'rested'))}), "
         f"warmth {a.warmth:.0f} ({_level(a.warmth, ('freezing!', 'cold', 'ok', 'warm'))}), health {a.health:.0f}."
     )
-    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k, world)}" for k, n in sorted(a.inventory.items())) or "nothing"
     full = " — your hands are FULL: store or drop something before gathering more" if a.free_space() <= 0 else ""
     lines.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}.{full}")
     tools = [f"{world.item_name(k)} ({item_use(world.item(k))})" for k in a.inventory
@@ -389,7 +389,7 @@ def scene(world, a: Agent) -> str:
     mine = [inv for k, inv in getattr(world, "inventions", {}).items() if f"recipe:{k}" in a.knows][:6]
     if mine:
         lines.append("- Inventions you know: " + "; ".join(
-            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}, for {inv['purpose']})"
+            f"{inv['name']} ({' + '.join(f'{n} {world.item_name(m)}' if n > 1 else world.item_name(m) for m, n in sorted(inv['inputs'].items()))}, for {inv['purpose']}{_does(inv)})"
             for inv in mine))
     fam = sorted(a.familiar)[:16]
     if fam:
@@ -605,11 +605,20 @@ def with_repair(msgs: List[Dict[str, str]], rep: Dict[str, Any]) -> List[Dict[st
     return out
 
 
-def _worn(a: Agent, k: str) -> str:
-    """" (worn)" on a metal tool past half its life, so a model knows to mend it (issue #5)."""
-    from ..sim.actions import METAL_OF, tool_wear_limit
+def _does(inv) -> str:
+    """": what an invention does, with its strength" (the models saw the purpose and never how good the thing was)."""
+    from ..sim.invent import effect_words
 
-    return " (worn)" if k in METAL_OF and a.tool_wear.get(k, 0) >= tool_wear_limit(k) // 2 else ""
+    words = effect_words(inv.get("effect"))
+    return ": " + ", ".join(words) if words else ""
+
+
+def _worn(a: Agent, k: str, world=None) -> str:
+    """" (worn)" on a metal tool past half its life, so a model knows to mend it (issue #5)."""
+    from ..sim.actions import METAL_OF, metal_of, tool_wear_limit
+
+    metal = k in METAL_OF or (world is not None and metal_of(world, k))  # (an invented metal tool too, F34)
+    return " (worn)" if metal and a.tool_wear.get(k, 0) >= tool_wear_limit(k, world) // 2 else ""
 
 
 _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
@@ -639,7 +648,7 @@ def compact_scene(world, a: Agent) -> str:
     hh = int(c["hour"])
     L: List[str] = [f"Day {c['day']} {c['season']} {hh:02d}h{' night' if c['night'] else ''}. You: {a.name} at ({a.x},{a.y})."]
     L.append(f"Hunger {a.hunger:.0f} energy {a.energy:.0f} warmth {a.warmth:.0f} health {a.health:.0f} (of 100).")
-    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k)}" for k, n in sorted(a.inventory.items())) or "nothing"
+    inv = ", ".join(f"{n} {world.item_name(k)}{_worn(a, k, world)}" for k, n in sorted(a.inventory.items())) or "nothing"
     L.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}{' FULL' if a.free_space() <= 0 else ''}.")
     rec = [world.item_name(k.split(':', 1)[1]) for k in a.knows if k.startswith("recipe:")]
     des = [DESIGNS[k.split(':', 1)[1]].name for k in a.knows if k.startswith("design:")]

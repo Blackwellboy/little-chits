@@ -89,12 +89,47 @@ FOODS = ("loaf", "bread", "berry_tart", "cooked_meat", "cooked_fish", "meat", "f
 
 
 def is_food(key: str, catalog=None) -> bool:
-    """Food as the stores see it: the base foods, and a content pack's items that feed (sim/packs.py). Without a
-    pack this is exactly `key in FOODS`. (Invented dishes are left as they were: stored as goods.)"""
+    """Food as the stores see it: the base foods, a content pack's items that feed (sim/packs.py) and this world's
+    invented dishes (F34: they were stored as goods, and taken out by nobody). Without a pack or an invented dish this
+    is exactly `key in FOODS`."""
     if key in FOODS:
         return True
-    packed = catalog.pack_items.get(key) if catalog is not None and catalog.pack_items else None
+    if catalog is None:
+        return False
+    dish = catalog.items.get(key) if catalog.items else None
+    if dish is not None:
+        return dish.food > 0
+    packed = catalog.pack_items.get(key) if catalog.pack_items else None
     return packed is not None and packed.food > 0 and key not in ITEMS
+
+
+def foods_of(world) -> Tuple[str, ...]:
+    """What a hungry chit looks for in a store or on the ground: the base foods, then this world's invented dishes.
+    Without one this is FOODS itself."""
+    made = world.catalog.items
+    if not made:
+        return FOODS
+    return FOODS + tuple(k for k, it in made.items() if it.food > 0)
+
+
+def kept_in_hand(world, key: str) -> int:
+    """How many of these stay with the chit when it puts its load down: a bite of food, and one of an invention that
+    does something while carried (a coat, a remedy, a hoe). Tools and containers are never part of the load."""
+    if world.inventions and world.invention_carried(key):
+        return 1
+    return 2 if is_food(key, world.catalog) else 0
+
+
+def metal_of(world, tool: Optional[str]) -> Optional[str]:
+    """The metal in a metal tool: a base tool's (METAL_OF), or an invented tool's own (invent.METALS)."""
+    if tool in METAL_OF:
+        return METAL_OF[tool]
+    inv = world.inventions.get(tool) if world.inventions and tool else None
+    if inv is None or not (it := world.item(tool)) or not it.tool:
+        return None
+    from .invent import invention_metal
+
+    return invention_metal(inv)
 
 
 def food_items(a: Agent) -> List[str]:
@@ -229,7 +264,7 @@ def _reflexes(world, a: Agent) -> None:
         return
     if SNACK_BELOW > a.hunger >= 16 and hv not in ("eat", "sleep", "harvest") and not fetching \
             and a.activity != "sleeping" and a.reflex_rest.get("food", 0) <= world.tick \
-            and _stockpile_with(world, a, FOODS, MEAL_RADIUS):
+            and _stockpile_with(world, a, foods_of(world), MEAL_RADIUS):
         # mealtime: World A kept 185 grain and 81 berries in store while its model-driven adults sat at hunger 11-40,
         # too hungry to have children (instinct eats below 45; a model plan rarely says "eat")
         a.plan.insert(0, {"do": "eat", "_reflex": True})
@@ -255,7 +290,8 @@ def _reflexes(world, a: Agent) -> None:
             a.plan.insert(0, {"do": "store", "what": "all", "target": pile.id, "_reflex": True})
         else:
             junk = max((k for k in a.inventory if a.inventory[k] > 0 and not world.item(k).tool and not world.item(k).carry_bonus
-                        and k not in FOODS), key=lambda k: a.inventory[k], default=None)
+                        and k not in FOODS and not (world.inventions and (world.invention_carried(k) or world.item(k).food))),
+                       key=lambda k: a.inventory[k], default=None)
             if junk:
                 a.plan.insert(0, {"do": "drop", "what": junk, "qty": max(1, a.inventory[junk] // 2), "_reflex": True})
         return
@@ -280,14 +316,15 @@ def _food_reflex(world, a: Agent) -> Dict[str, Any]:
     here = (a.x, a.y)
     d = lambda x, y: max(abs(x - here[0]), abs(y - here[1]))
     opts = []
-    pile = _stockpile_with(world, a, FOODS, 30)
+    foods = foods_of(world)
+    pile = _stockpile_with(world, a, foods, 30)
     if pile:
         opts.append((d(*pile.center()), {"do": "eat"}))
     farm = _farm_ready(world, a)
     if farm:
         opts.append((d(*farm.center()), {"do": "harvest", "target": farm.id}))
     ground = next(((px, py, k) for px, py, p in world.piles_near(a.x, a.y, FORAGE_RADIUS)
-                   for k in FOODS if p.get(k, 0) > 0 and world.same_land_xy(a, px, py)
+                   for k in foods if p.get(k, 0) > 0 and world.same_land_xy(a, px, py)
                    and a.reflex_rest.get(f"unreach:{px},{py}", 0) <= world.tick), None)
     if ground:
         opts.append((d(ground[0], ground[1]), {"do": "pickup", "what": ground[2]}))
@@ -312,8 +349,8 @@ def _food_reflex(world, a: Agent) -> Dict[str, Any]:
 
 def _speed(world, a: Agent) -> float:
     sp = 0.55
-    if world.inventions and world.invention_effect(a, "speed"):
-        sp *= 1.2  # shoes, a sledge: an invention for speed
+    if world.inventions and (boost := world.invention_effect(a, "speed")):
+        sp *= boost  # shoes, a sledge: an invention for speed, as fast as what it is made of (invent.py)
     if a.is_child(world.tick):
         sp *= 0.8
     if a.energy < 20:
@@ -605,13 +642,14 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
     from . import artifacts as ART
 
     order = ["stone", "sand", "wood", "clay", "fiber", "ore", "iron_ore", "seeds"]
+    kept = (lambda k: world.invention_carried(k)) if world.inventions else (lambda k: False)  # a coat, a hoe: like a tool
     order += sorted((k for k, n in a.inventory.items() if k not in order and k not in FOODS and (it := world.item(k))
-                     and not it.tool and not it.carry_bonus and not it.food and not ART.is_artifact(k)),
+                     and not it.tool and not it.carry_bonus and not it.food and not ART.is_artifact(k) and not kept(k)),
                     key=lambda k: (-a.inventory[k], k))
-    order += sorted(k for k, n in a.inventory.items() if n > 1 and world.item(k) and world.item(k).tool)
+    order += sorted(k for k, n in a.inventory.items() if n > 1 and world.item(k) and (world.item(k).tool or kept(k)))
     dropped = []
     for k in order:
-        keep = 1 if world.item(k) and world.item(k).tool else 0
+        keep = 1 if world.item(k) and (world.item(k).tool or kept(k)) else 0
         while a.free_space() < need and a.inventory.get(k, 0) > keep:
             a.remove(k, 1)
             world.put_ground(a.x, a.y, k, 1)
@@ -620,8 +658,15 @@ def _drop_for_room(world, a: Agent, need: int) -> None:
         a.remember(world.tick, f"I dropped {len(dropped)} {world.item_name(dropped[0])} to make room for food", 2, "event")
 
 
-def tool_wear_limit(tool: str) -> int:
-    return 60 if tool.startswith("stone") or tool == "spear" else 140
+WEAR_PLAIN, WEAR_METAL = 60, 140  # uses before a tool of stone or wood breaks, and one of metal
+
+
+def tool_wear_limit(tool: str, world=None) -> int:
+    """How many uses a tool lasts. With `world`, an invented tool lasts as long as what it is made of (without it, as
+    before, every invention counted as metal: a net of fiber and wood outlasted two stone axes)."""
+    if world is not None and world.inventions and tool in world.inventions:
+        return WEAR_METAL if metal_of(world, tool) else WEAR_PLAIN
+    return WEAR_PLAIN if tool.startswith("stone") or tool == "spear" else WEAR_METAL
 
 
 # a metal tool's metal: what mending keeps and smelting gives back (issue #5: worn tools only ever vanished, and in long
@@ -634,7 +679,7 @@ MEND_AT, SMELT_AT = "workshop", "furnace"
 
 def _wear(world, a: Agent, tool: str) -> None:
     a.tool_wear[tool] = a.tool_wear.get(tool, 0) + 1
-    limit = tool_wear_limit(tool)
+    limit = tool_wear_limit(tool, world)
     if a.tool_wear[tool] >= limit:
         a.tool_wear[tool] = 0
         a.remove(tool, 1)
@@ -651,7 +696,7 @@ def _forage(world, a: Agent, s) -> str:
     sub = s.get("forage")
     if sub is None:
         pile = next(((px, py, k) for px, py, p in world.piles_near(a.x, a.y, FORAGE_RADIUS)
-                     for k in FOODS if p.get(k, 0) > 0 and world.same_land_xy(a, px, py)
+                     for k in foods_of(world) if p.get(k, 0) > 0 and world.same_land_xy(a, px, py)
                      and a.reflex_rest.get(f"unreach:{px},{py}", 0) <= world.tick), None)
         if pile:
             sub = {"do": "pickup", "what": pile[2]}
@@ -684,7 +729,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
                 pick = f
                 break
     else:
-        st = _stockpile_with(world, a, FOODS, 30)
+        st = _stockpile_with(world, a, foods_of(world), 30)
         if not st:
             return _forage(world, a, s)
         mv = _goto_structure(world, a, s, st)
@@ -699,7 +744,7 @@ def _do_eat(world, a: Agent, step, s) -> str:
             return RUNNING
         a.activity = "taking food"
         took = 0
-        for f in FOODS:
+        for f in foods_of(world):
             if st.storage.get(f, 0) > 0:
                 if a.free_space() < world.item(f).weight:
                     _drop_for_room(world, a, world.item(f).weight)
@@ -1037,7 +1082,7 @@ def _spare_load(world, a: Agent, keep) -> int:
         it = world.item(k)
         if it is None or it.tool or it.carry_bonus or k in keep:
             continue
-        w += it.weight * max(0, n - (2 if is_food(k, world.catalog) else 0))
+        w += it.weight * max(0, n - kept_in_hand(world, k))
     return w
 
 
@@ -1548,7 +1593,9 @@ def _do_invent(world, a: Agent, step, s) -> str:
     if not ok:
         a.remember(world.tick, f"I tried to invent a {name} from {combo}: {feedback}", 3, "experiment")
         return feedback
-    same = next((k for k, inv in world.inventions.items() if inv["purpose"] == pid and inv["inputs"] == bag), None)
+    # (not one brought from over the sea: that is its carrier's knowledge, and nobody here has had "the same idea")
+    same = next((k for k, inv in world.inventions.items() if inv["purpose"] == pid and inv["inputs"] == bag
+                 and not inv.get("from")), None)
     for k, n in bag.items():
         a.remove(k, n)
     if same is not None:
@@ -2320,7 +2367,7 @@ def _do_store(world, a: Agent, step, s) -> str:
         for k, n in a.inventory.items():
             if world.item(k).tool or world.item(k).carry_bonus:
                 continue
-            keep = 2 if is_food(k, world.catalog) else 0  # (a bite stays in hand)
+            keep = kept_in_hand(world, k)  # (a bite stays in hand, and one of an invention that works while carried)
             if n > keep:
                 items[k] = n - keep
     else:
@@ -3052,7 +3099,8 @@ def _do_harvest(world, a: Agent, step, s) -> str:
     a.activity = "harvesting"
     if not _work(a, a.skill_speed("farming"), 8.0):
         return RUNNING
-    bonus = 3 if world.inventions and world.invention_effect(a, "farming") else 0  # a world-specific farming invention
+    # a world-specific farming invention: as much more grain as what it is made of gives (invent.FARMING_GRAIN)
+    bonus = int(world.invention_effect(a, "farming")) if world.inventions else 0
     grain_yield = (12 if a.has("plough") else 6) + bonus
     g = a.add("grain", grain_yield)
     if a.has("plough"):
@@ -3096,7 +3144,7 @@ def _mend_tool(world, a: Agent, step, s, tool: str) -> str:
     name = world.item_name(tool)
     if not a.has(tool):
         return f"I have no {name} to mend"
-    if a.tool_wear.get(tool, 0) <= 0:
+    if a.tool_wear.get(tool, 0) <= 0:  # (an invented metal tool is mended the same way, F34)
         return f"my {name} doesn't need mending"
     if not a.has("wood"):
         return f"I need a piece of wood for a new haft for my {name}"
@@ -3119,7 +3167,8 @@ def _mend_tool(world, a: Agent, step, s, tool: str) -> str:
 def _do_smelt(world, a: Agent, step, s) -> str:
     """Melt a metal tool back into its metal at a furnace (a copper pick nobody needs once there's an iron one)."""
     tool = world.norm_item(step.get("what"))
-    if tool not in METAL_OF:
+    metal = metal_of(world, tool)
+    if metal is None:
         return f"only metal tools can be smelted down ({step.get('what')} isn't one)"
     name = world.item_name(tool)
     if not a.has(tool):
@@ -3135,7 +3184,6 @@ def _do_smelt(world, a: Agent, step, s) -> str:
     a.remove(tool, 1)
     if not a.has(tool):
         a.tool_wear.pop(tool, None)
-    metal = METAL_OF[tool]
     a.add(metal, 1)
     a.bump("tools_smelted")
     world.emit("smelted_down", f"{a.name} smelted a {name} back into {world.item_name(metal)}", 1, a.id, a.x, a.y,
@@ -3146,7 +3194,7 @@ def _do_smelt(world, a: Agent, step, s) -> str:
 
 def _do_repair(world, a: Agent, step, s) -> str:
     tool = world.norm_item(step.get("what")) if step.get("what") else None
-    if tool in METAL_OF:  # a tool, not a building
+    if metal_of(world, tool):  # a tool, not a building
         return _mend_tool(world, a, step, s, tool)
     st = _find_structure(world, a, step.get("target"), 30, lambda x: x.complete and x.durability < 70)
     if not st:

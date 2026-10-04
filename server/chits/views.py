@@ -238,6 +238,12 @@ def _effects(w: World, key: str) -> List[str]:
         out.append("Wearable: a chit can wear it.")
     if key in ACTION_USES:
         out.append(f"Use: {ACTION_USES[key]}.")
+    inv = w.inventions.get(key)
+    if inv is not None:  # what an invention does while it is carried, with its strength (F34)
+        from .sim.invent import CARRIED_EFFECTS, effect_words
+
+        carried = {k: v for k, v in (inv.get("effect") or {}).items() if k in CARRIED_EFFECTS}
+        out += [f"While carried: {line}." for line in effect_words(carried)]
     return out
 
 
@@ -278,7 +284,9 @@ def encyclopedia(w: World, k: str) -> Optional[Dict[str, Any]]:
                                       for dk in known_d],
                    undiscovered_uses=len(in_recipes) - len(known_r) + len(in_designs) - len(known_d),
                    invention={"purpose": inv["purpose"], "purpose_text": inv.get("purpose_text", ""),
-                              "by": inv.get("by_name", ""), "day": inv["tick"] // TICKS_PER_DAY + 1} if inv else None)
+                              "by": inv.get("by_name", ""), "day": inv.get("tick", 0) // TICKS_PER_DAY + 1,
+                              # (only on one carried here over the sea: which island thought of it)
+                              **({"from": inv["from"]} if inv.get("from") else {})} if inv else None)
         return out
     d = DESIGNS[key]
     made_here = [rk for rk, rr in recipes.items() if d.station and rr.station == d.station]

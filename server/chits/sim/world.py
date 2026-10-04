@@ -22,6 +22,7 @@ from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent, design_prereqs_met, make_name, new_agent
 from .items import DESIGNS, ITEMS, RECIPES, STORES, Catalog, Item, Recipe, base_value, item_name, normalize_item, ORE_KINDS, IRON_ORE_SHARE
 from .items import LIBRARIES
+from .invent import HEAL_PER_STRENGTH, MOOD_PER_POINT
 from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
 from . import projects as PROJECTS  # village projects, research and wants (their shared state: world.civic)
@@ -409,6 +410,11 @@ class World:
         for key, inv in (inventions or {}).items():  # foreign inventions travel with the chit
             if self.catalog.item(key) is None:
                 register_invention(self, key, inv["name"], inv["inputs"], tuple(inv.get("props") or ()), inv.get("effect") or {})
+            if key not in self.inventions and key.startswith("inv_"):
+                # ...and are known here as what they are (F34): in the catalogue alone the thing had no effect abroad
+                # (a coat that didn't warm) and could not be made, taught or written by its name. It is this chit's own
+                # knowledge carried over the sea, marked with where it came from; nobody here knows it until taught.
+                self.inventions[key] = {**inv, "key": key, "from": inv.get("from") or from_world_id}
         a = Agent.from_dict(agent_dict)
         home_again = getattr(a, "homeland", "") == self.id
         if home_again and a.home_id and a.home_id not in self.agents and a.home_id not in self.dead:
@@ -760,8 +766,24 @@ class World:
             if any(s.belief == a.belief and s.dist(a.x, a.y) <= 8 for s in shrines):
                 a.mood = min(100.0, a.mood + 0.3)
 
-    def invention_effect(self, a: Agent, kind: str) -> bool:
-        return any(a.inventory.get(k, 0) > 0 and kind in inv.get("effect", {}) for k, inv in self.inventions.items())
+    def invention_effect(self, a: Agent, kind: str) -> float:
+        """How strongly the inventions this chit carries do `kind` (invent.py's table says what the number means):
+        the best one counts, and 0 means it carries none. (It was a yes or no, so every magnitude was lost.)"""
+        from .invent import LOWER_IS_BETTER
+
+        vals = [float(v) for k, inv in self.inventions.items()
+                if a.inventory.get(k, 0) > 0 and (v := (inv.get("effect") or {}).get(kind))]
+        if not vals:
+            return 0.0
+        return min(vals) if kind in LOWER_IS_BETTER else max(vals)
+
+    def invention_carried(self, key: str) -> bool:
+        """Is this an invention that does something for whoever carries it (a coat, a remedy, a hoe)? Then it is kept
+        in hand like a tool: not stored with the load, not dropped as junk."""
+        from .invent import carried_effect
+
+        inv = self.inventions.get(key) if self.inventions else None
+        return inv is not None and carried_effect(inv)
 
     # ------------------------------------------------------------------ time
     @property
@@ -1694,8 +1716,8 @@ class World:
             a.energy -= 0.2
         sheltered = self.in_home(a)
         warm_src = self.near_fire(a) or (sheltered and (sheltered.design in BLD.WARM_HOMES or temp > self.HUT_WARM_TO)) or a.best_tool("light")
-        cloak = 0.5 if self.inventions and self.invention_effect(a, "warmth") else 1.0
-        if cloak == 1.0 and any(n > 0 and (it := self.item(k)) and "wearable" in it.props and "warm" in it.props
+        cloak = (self.invention_effect(a, "warmth") if self.inventions else 0.0) or 1.0  # (the share of the cold let through)
+        if cloak > 0.5 and any(n > 0 and (it := self.item(k)) and "wearable" in it.props and "warm" in it.props
                                 for k, n in a.inventory.items()):
             cloak = 0.5  # a warm thing to wear (T31)
         if temp < 0.42 and not warm_src:
@@ -1725,15 +1747,15 @@ class World:
         if dmg:
             a.health -= dmg
         elif a.hunger > 40 and a.warmth > 40:
-            heal = 0.08 + (0.12 if self.inventions and self.invention_effect(a, "heal") else 0.0)  # a remedy
+            heal = 0.08 + (HEAL_PER_STRENGTH * self.invention_effect(a, "heal") if self.inventions else 0.0)  # a remedy
             a.health = min(100.0, a.health + heal * BLD.heal_mult(self, a))  # (a healer's house nearby)
         # mood: comfort + monuments + company
         target = (a.hunger + a.energy + a.warmth) / 3.0
         if (a.y * self.w + a.x) in self._zones()[1]:
             target += 15
         a.mood += (target - a.mood) * 0.01
-        if self.inventions and self.invention_effect(a, "mood"):
-            a.mood = max(0.0, min(100.0, a.mood + 0.02))
+        if self.inventions and (joy := self.invention_effect(a, "mood")):
+            a.mood = max(0.0, min(100.0, a.mood + MOOD_PER_POINT * joy))
         if a.health <= 0:
             self.kill(a, causes[0] if causes else "illness")
         elif t - a.born > a.lifespan:
