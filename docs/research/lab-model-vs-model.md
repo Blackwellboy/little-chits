@@ -111,17 +111,34 @@ Two things to expect on the real cards:
 A run that breaks a hard invariant (`invariants.py`) isn't a result. This includes a model server that fails 12
 requests in a row (`brain_unavailable`). That run alone stops, and the rest of the batch carries on.
 
-- **The record.** The run gets `runs/<seed>_<label>/invalid.json` instead of `result.json`. It holds the
-  invariant's kind and what broke, the tick and day, the seed and arm, every break found at that tick, and its last
-  5 model calls from the tape.
-- **Exit code.** `make lab` finishes the batch, lists the invalid runs by label and exits 3.
+- **The record.** The run gets two files instead of `result.json`.
+  - `runs/<seed>_<label>/invalid-sealed.json` is the raw record: the invariant's kind and what broke, the tick and
+    day, the seed, the arm and its brain, every break found at that tick (all of them, with their count and a count
+    by kind), and its last 5 model calls from the tape. Like `server.json`, only an unblinded report reads it.
+  - `runs/<seed>_<label>/invalid.json` is the blind copy, which the report and the command line read. It has no arm
+    or brain field. Every arm's identities in its text are replaced by `arm <that arm's label>`, not only its own
+    arm's. The identities are each arm's name; its brain's id; its label and each word of it; its model file, also
+    without the extension and as the name before the first dash; and its servers (card swap included), with or
+    without the scheme and trailing slash, and as host:port. They are matched as whole words, in any case. A string
+    two arms share becomes `an arm`. This matters because a `brain_unavailable` break names the model that stopped
+    answering, and a server or client may change the case of a model or host name.
+  - Only the free text is redacted: what broke, each break's text, and each last call's error and reply. The
+    structure (seed, label, kind, tick, counts) is never touched, so an arm or brain called `A` or `B` can't rewrite
+    a record's label.
+  - A brain with no `model` runs the first model its server lists, and its label falls back to that name. The run
+    records it as `resolved_model` in `server.json`, and the redaction covers it too, along with everything that
+    brain's servers listed in the manifest.
+  - Records written before this (a single raw `invalid.json`, or `invalid-attempt-N.json`) are migrated on the first
+    resume, analyze or CLI listing. The raw record moves to its sealed name, and a redacted copy takes its place.
+    Both are marked `migrated`, with the time, and say that such records kept at most 20 breaks.
+- **Exit code.** `make lab` finishes the batch, lists the invalid runs by label from their blind records, and exits 3.
 - **The report.** An "Invalid runs" table lists them by label, blind. They are left out of the final values, and
-  every paired difference involving that arm leaves the seed out.
+  every paired difference involving that arm leaves the seed out. `analyze --unblind` shows the raw records.
 - **Resuming.** A resume **keeps** an invalid run; it does not rerun it. Rerunning only the runs that broke, until
   they don't, would keep the lucky draws: a model whose server falls over on hard seeds would end up measured on the
   easy ones. When the cause was outside the experiment, such as a server that went down, use
   `make lab ARGS="resume DIR --retry-invalid"`. That declares the retry. Each earlier attempt is kept as
-  `invalid-attempt-N.json` and `tape-attempt-N.jsonl`, the new `result.json` carries `invalid_attempts`, and the
+  `invalid-attempt-N.json`, `invalid-sealed-attempt-N.json` and `tape-attempt-N.jsonl`, the new `result.json` carries `invalid_attempts`, and the
   report says how many runs were retried.
 
 **The first real study (2026-10-05)** lost its whole batch this way, after about 2 hours. Run `42_B` (JevK5 on
