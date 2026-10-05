@@ -230,7 +230,9 @@ def do_study(world, a: Agent, step: Dict[str, Any], s: Dict[str, Any]) -> str:
     a.practice("scholar", 1.0)
     a.bump("studied")
     h = add_insight(world, a, gain)
-    if h is not None:
+    if not world.rules.library_hints:  # (sim/rules.py: study trains scholars, and no idea comes of it)
+        s["note"] = f"Studied the {tablets} tablets at the library (it trained the scholar in me; no idea comes of study here)"
+    elif h is not None:
         s["note"] = f"Studied the {tablets} tablets at the library, and had an idea: {h['text'].split('think ', 1)[-1]}"
     else:
         s["note"] = (f"Studied the {tablets} tablets at the library (the village's scholars are "

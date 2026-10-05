@@ -136,3 +136,40 @@ def test_every_rule_and_preset_is_described_and_valid():
     clean = WorldRules.from_dict(PRESETS["research_clean"]["rules"])
     assert not (clean.religion or clean.library_hints or clean.lore_rescue or clean.storyteller or clean.wanderers)
     assert clean.invention and PRESETS["research_clean"]["model_led"]  # (inventing is a chit's own act: it stays)
+
+
+@pytest.mark.parametrize("rules", [ON, off("invention")])
+def test_no_prompt_mentions_inventing_when_invention_is_off(rules):
+    """Codex on #143: the compact prompt and the stale-village nudge still offered inventing."""
+    w, a = world(rules)
+    texts = [P.compact_system_prompt(w, a), P.system_prompt(w, a), json.dumps(P.messages(w, a, "compact")),
+             json.dumps(P.messages(w, a, "full"))]
+    assert any("invent" in x.lower() for x in texts) is rules.invention
+
+
+@pytest.mark.parametrize("rules", [ON, off("library_hints")])
+def test_study_says_what_it_gives_when_hints_are_off(rules):
+    """Codex on #143: with hints off, study still promised an idea, in the guide and in its own result."""
+    w, a = world(rules)
+    guide = P.system_prompt(w, a)
+    assert ("gives the village's scholars an idea" in guide) is rules.library_hints
+    s = {}
+    research.add_insight(w, a, 1.0)
+    from chits.sim.actions import DONE
+
+    lib = w.place_site("library", *w.find_site("library", a.x + 2, a.y, 10), a)
+    w.complete_structure(lib, a)
+    from chits.sim.world import Tablet
+
+    tb = Tablet(id="t1", knowledge="recipe:cord", author=a.id, author_name=a.name, tick=w.tick, x=lib.x, y=lib.y,
+                in_structure=lib.id)
+    w.tablets[tb.id] = tb
+    lib.shelf.append(tb.id)
+    a.x, a.y = lib.x, lib.y
+    res = None
+    for _ in range(200):
+        res = research.do_study(w, a, {"do": "study"}, s)
+        if res != "running":
+            break
+    assert res == DONE
+    assert ("no idea comes of study here" in s["note"]) is (not rules.library_hints)
