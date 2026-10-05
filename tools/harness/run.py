@@ -4,10 +4,11 @@
 starved, what it was doing before it died, and examples of stuck chits; the JSON line is always the last line.
 
     python tools/harness/run.py SEED [--days 30] [--size 128] [--chits 18] [--culture direct] [--server DIR]
-                                     [--tag TAG] [--autopsy] [--mind scripted|URL [--style cascade] ...]
+                                     [--tag TAG] [--autopsy] [--mind scripted|URL [--style cascade] [--model-only] ...]
 
 ``--mind`` drives the chits through the game's Mind instead (mindrun.py): ``scripted`` is the scripted model
 (scripted.py, deterministic, no GPU), a URL is a real OpenAI-compatible server. Never a real server unless given one.
+``--model-only`` (a diagnostic) takes instinct out of a --mind run: no menu, no fallback and no body reflexes.
 
 ``--server`` is the ``server`` directory of the tree under test (default: this repo's own), so one harness can run
 two trees side by side (tools/harness/ab.py). The world runs from that directory, as the game does.
@@ -91,7 +92,8 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
     row["forgot"] = p.events.get("forgotten", 0)
     row.update(p.report())
     if report is not None:
-        row["mind"] = {"brain": mind, "style": mind_opts.get("style", "cascade"),
+        style = "full" if mind_opts.get("model_only") else mind_opts.get("style", "cascade")
+        row["mind"] = {"brain": mind, "style": style,
                        "hashseed": os.environ.get("PYTHONHASHSEED"), **report}
     return row, p
 
@@ -119,7 +121,12 @@ def main(argv=None) -> None:
     g.add_argument("--loop-after", type=int, default=3, help="a step failing for the same reason more than this "
                    "many times in a row is a loop")
     g.add_argument("--tick-seconds", type=float, default=0.5, help="URL: wall seconds per tick (0.5 is the game at 1x)")
+    g.add_argument("--model-only", action="store_true", help="diagnostic: nothing from instinct covers for the model "
+                   "(the full prompt whatever --style says, no instinct plans, no body reflexes); counts what the "
+                   "reflexes would have done. Never for comparisons")
     args = ap.parse_args(argv)
+    if args.model_only and not args.mind:
+        ap.error("--model-only needs --mind (scripted or a URL): an instinct run has no model to leave alone")
     if args.mind and "PYTHONHASHSEED" not in os.environ:
         # a prompt's text depends on string hashing (world.village_failed counts a set: ties in "Others around here
         # already tried these" come out in hash order), so a model run is only the same run with the hash pinned
@@ -141,7 +148,7 @@ def main(argv=None) -> None:
         opts = {"style": args.style, "slots": args.slots, "bad_rate": args.bad_rate,
                 "bad_kinds": tuple(k for k in args.bad_kinds.split(",") if k) or None,
                 "plan_ticks": args.plan_ticks, "choice_ticks": args.choice_ticks, "loop_after": args.loop_after,
-                "tick_seconds": args.tick_seconds}
+                "tick_seconds": args.tick_seconds, "model_only": args.model_only}
     try:
         row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind, **opts)
     except ValueError as e:

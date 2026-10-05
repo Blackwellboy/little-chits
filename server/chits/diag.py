@@ -39,6 +39,10 @@ class WorldDiag:
         self.said = 0
         self.heard = 0
         self.recent_fails: deque = deque(maxlen=12)
+        # model-only runs (reflexes off): what a reflex would have done but didn't, by its first step's verb
+        self.reflex_would_ticks: Counter = Counter()   # chit-ticks the need stood
+        self.reflex_would_onsets: Counter = Counter()  # times it began (a chit with no such need the tick before)
+        self.reflex_would_last: Dict[str, Optional[str]] = {}  # agent id -> its verb last tick
 
 
 _DIAG: Dict[int, Any] = {}  # id(world) -> (a weak reference to it, its WorldDiag)
@@ -258,6 +262,29 @@ def capability_use(world) -> Dict[str, Dict[str, int]]:
     return out
 
 
+def reflex_would(world, a, verb: Optional[str]) -> None:
+    """With the reflexes off (model-only): the reflex that would have interrupted this chit this tick, or None."""
+    d = of(world)
+    if verb is not None:
+        d.reflex_would_ticks[verb] += 1
+        if d.reflex_would_last.get(a.id) != verb:
+            d.reflex_would_onsets[verb] += 1
+    d.reflex_would_last[a.id] = verb
+
+
+def reflex_would_summary(world) -> Dict[str, Any]:
+    """The would-have-fired counts: chit-ticks and onsets by verb, and onsets by kind (food, sleep, shelter, warm_up,
+    room). All empty when the reflexes were on."""
+    from .sim.actions import REFLEX_GROUP
+
+    d = of(world)
+    kinds: Counter = Counter()
+    for v, n in d.reflex_would_onsets.items():
+        kinds[REFLEX_GROUP.get(v, v)] += n
+    return {"ticks": dict(sorted(d.reflex_would_ticks.items())), "onsets": dict(sorted(d.reflex_would_onsets.items())),
+            "onsets_by_kind": dict(sorted(kinds.items()))}
+
+
 def action_finished(world, a, step, result: str) -> None:
     state = step.get("_s", {})
     origin = "reflex" if step.get("_reflex") else ("filler" if step.get("_filler") else step.get("_origin", a.plan_source or "unknown"))
@@ -310,6 +337,9 @@ def report(rt) -> Dict[str, Any]:
         warn.append(f"World {wid}: checkpoint failed; simulation is paused until an explicit save succeeds ({err[:120]})")
     if out["durability"]["invalid_reason"]:
         warn.append("EXPERIMENT INVALID: " + out["durability"]["invalid_reason"][:180])
+    if getattr(rt.mind, "model_only", False):
+        warn.append("MODEL-ONLY diagnostic: no instinct menu, fallback or body reflexes; chits may die of neglect. "
+                    "Not for comparing models")
     ratings = brain_ratings(rt)
     for bid, b in rt.mind.brains.items():
         st = b.stats
@@ -391,6 +421,8 @@ def report(rt) -> Dict[str, Any]:
             "opportunities": opportunities(w),
             "capability_use": capability_use(w),
         }
+        if d.reflex_would_last:  # a model-only (diagnostic) world: what the reflexes it ran without would have done
+            wd["reflex_would"] = reflex_would_summary(w)
         out["worlds"][wid] = wd
         name = w.name
         if bid != "instinct" and decided >= 20 and wd["model_share_pct"] < 70:

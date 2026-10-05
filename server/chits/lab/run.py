@@ -49,10 +49,16 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "")
                       # model arms: every call of a tick answered before the next, each request seeded from the run's
                       # seed and its prompt, and this sampling unless a brain's extra_body sets its own
                       "lockstep": True, "request_seeds": True, "sampling": dict(SAMPLING), "servers": servers,
+                      "model_only": spec.model_only,
+                      **({"model_only_note": MODEL_ONLY_NOTE} if spec.model_only else {}),
                       "runs": [{"seed": s, "labels": assign.run_order(spec, i),
                                 **({"card_swapped": spec.swapped(i)} if spec.card_swap else {})}
                                for i, s in enumerate(spec.seeds)]})
     return out
+
+
+MODEL_ONLY_NOTE = ("diagnostic run, not a comparison: every arm ran without the body's reflexes, and model arms with "
+                   "the full prompt and no instinct plans")
 
 
 def check_servers(spec: ExperimentSpec) -> Dict[str, List[str]]:
@@ -137,6 +143,7 @@ def run_one(protocol: Dict[str, Any], out: str, seed: int, label: str, arm: Dict
     t0 = time.monotonic()
     w = World("A", label, seed, arm.culture, spec.size, spec.population)
     w.flags.update(arm.flags)
+    w.model_only = spec.model_only  # (a diagnostic: the body's reflexes off, sim/actions.py)
     if arm.treatment:  # (kept apart from result.json, which the blind report reads: who was told names the arm)
         from . import treatment as T
 
@@ -173,7 +180,7 @@ def run_one(protocol: Dict[str, Any], out: str, seed: int, label: str, arm: Dict
     summ = extract.summary(w, daily, founders, blind=spec.blind)
     summ["final"].update(opportunities(w, chit_ticks, 0))
     result = {"seed": seed, "label": label, "days": spec.days, "wall_s": round(time.monotonic() - t0, 1),
-              "interventions": log, **summ}
+              "interventions": log, **summ, **_model_only(spec, w)}
     _write_json(rd / "result.json", result)  # last: its presence means the run is complete
     return result
 
@@ -218,6 +225,7 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     mind = Mind(None)
     mind.strict = True
     mind.repair = False
+    mind.model_only = spec.model_only
     brain = mind.upsert(dict(cfg.__dict__))
     mind.assign(w, cfg.id)
     brain.cooldown = False  # lockstep: wall-clock backoff would only add noise
@@ -263,9 +271,19 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
               "compute": {"requests": st.requests, "failed_requests": st.failed, "tokens_in": st.tokens_in,
                           "tokens_out": st.tokens_out, "tokens": st.tokens_in + st.tokens_out,
                           "chit_days": round(chit_ticks / TICKS_PER_DAY, 2), "tape_calls": brain.tape.recorded},
-              **summ}
+              **summ, **_model_only(spec, w)}
     _write_json(rd / "result.json", result)
     return result
+
+
+def _model_only(spec: ExperimentSpec, w) -> Dict[str, Any]:
+    """A model-only run's own record: the reflexes were off, and what they would have done (diag.reflex_would)."""
+    if not spec.model_only:
+        return {}
+    from .. import diag
+
+    return {"model_only": {"reflexes": False, "reflex_would": diag.reflex_would_summary(w)}}
+
 
 def pending(spec: ExperimentSpec, out) -> List[tuple]:
     names = assign.labels(spec)

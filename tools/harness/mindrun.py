@@ -199,6 +199,8 @@ class ModelProbe:
             "loops": loops[:20],
             "model_loops": sum(L["episodes"] for L in loops if L["origin"] == "model"),
             "diag_loops": dict(sorted(d.loops.items())),
+            "model_only": bool(getattr(self.mind, "model_only", False)),
+            "reflex_would": diag.reflex_would_summary(self.w),
         }
         if self.model is not None:
             out["planted"] = dict(sorted(self.model.planted.items()))
@@ -270,7 +272,7 @@ def _pin_latency(brain, model) -> None:
 
 
 async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad_kinds, choice_ticks, plan_ticks,
-               slots, loop_after, tick_seconds):
+               slots, loop_after, tick_seconds, model_only=False):
     import httpx
 
     from chits.brain.mind import Mind
@@ -281,6 +283,8 @@ async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad
     scripted = mind_spec == "scripted"
     w = World("A", "A", seed, culture, size, chits)
     mind = Mind(None)
+    if model_only:  # a diagnostic: nothing from instinct covers for the model (no menu, fallback or reflexes)
+        mind.model_only = w.model_only = True
     brain = mind.upsert({"id": "scripted" if scripted else "model", "label": "scripted" if scripted else mind_spec,
                          "base_url": "http://scripted.invalid/v1" if scripted else mind_spec,
                          "model": "scripted" if scripted else "", "prompt_style": style, "max_concurrency": slots})
@@ -335,10 +339,12 @@ async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad
 def run_world(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "direct",
               mind: str = "scripted", style: str = "cascade", bad_rate: float = 0.15, bad_kinds=None,
               choice_ticks: int = 1, plan_ticks: int = 8, slots: int = 8, loop_after: int = LOOP_AFTER,
-              tick_seconds: float = 0.5):
+              tick_seconds: float = 0.5, model_only: bool = False):
     """One world with every chit on one brain: ``mind`` is "scripted" or an OpenAI-compatible base URL.
+    ``model_only`` (a diagnostic) runs it with nothing from instinct: the full prompt whatever ``style`` says, no
+    instinct plans and no body reflexes; the report counts what the reflexes would have done (``reflex_would``).
     Returns (world, Probe, ModelProbe, lowest population, the ModelProbe's report)."""
     if mind != "scripted" and not re.match(r"^https?://", mind):
         raise ValueError(f"--mind takes 'scripted' or a server URL such as http://127.0.0.1:18191/v1, not {mind!r}")
     return asyncio.run(_run(seed, days, size, chits, culture, mind, style, bad_rate, bad_kinds, choice_ticks,
-                            plan_ticks, slots, loop_after, tick_seconds))
+                            plan_ticks, slots, loop_after, tick_seconds, model_only))

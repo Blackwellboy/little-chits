@@ -256,12 +256,47 @@ MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise g
 PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
 
 
+# Model-only diagnostic runs (tools/harness run.py --model-only, a Lab protocol's "model_only"): the body's reflexes
+# off, so a chit acts only on its model's plans and may die of neglect. Off for every world with REFLEXES = False, or
+# for one world with ``world.model_only = True``. Never for a comparison: the reflexes are the body, equal in every arm.
+REFLEXES = True
+# what a reflex's first step says about its kind, for the "would have fired" counts (diag.reflex_would)
+REFLEX_GROUP = {"eat": "food", "gather": "food", "harvest": "food", "pickup": "food", "take": "food",
+                "explore": "food", "sleep": "sleep", "shelter": "shelter", "warm_up": "warm_up", "store": "room",
+                "drop": "room"}
+
+
+def reflexes_on(world) -> bool:
+    return REFLEXES and not getattr(world, "model_only", False)
+
+
 def reflexes(world, a: Agent) -> None:
     """Survival reflexes shared by every brain. They interrupt, they don't plan."""
+    if not reflexes_on(world):
+        diag.reflex_would(world, a, _would_fire(world, a))
+        return
     n = len(a.plan)
     _reflexes(world, a)
     if len(a.plan) > n:
         a.bump_rev("a survival reflex took over")  # the situation changed enough to interrupt: a plan asked for before this is stale
+
+
+def _would_fire(world, a: Agent) -> Optional[str]:
+    """The verb of the reflex that would interrupt this chit now, or None, leaving the chit and its plan as they were:
+    the reflexes run on a copy of the plan's head (they keep lookups in its step state) and the face they pull is
+    put back. They only read the world."""
+    plan, emote = a.plan, (a.emote, a.emote_until)
+    head = dict(plan[0]) if plan else None
+    if head is not None and isinstance(head.get("_s"), dict):
+        head["_s"] = dict(head["_s"])
+    a.plan = ([head] if head is not None else []) + plan[1:]
+    try:
+        _reflexes(world, a)
+        new = a.plan[0] if a.plan and a.plan[0] is not head else None
+    finally:
+        a.plan = plan
+        a.emote, a.emote_until = emote
+    return str(new.get("do")) if new and new.get("_reflex") else None
 
 
 def _reflexes(world, a: Agent) -> None:
