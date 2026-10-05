@@ -18,7 +18,13 @@ DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron",
 
 OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waiting share", "waiting_share"),
                     ("seconds waited per chit-day", "wait_seconds_per_chit_day"),
-                    ("model share of steps", "model_step_share")]
+                    ("model share of steps", "model_step_share"),
+                    ("... from plans the model wrote", "model_authored_step_share"),
+                    ("body reflex share of steps", "reflex_step_share"),
+                    ("routine share of steps", "routine_step_share"),
+                    ("heuristic instinct share of steps", "instinct_step_share"),
+                    ("strategic plans the model decided", "model_strategic_share"),
+                    ("... and wrote itself", "model_authored_strategic_share")]
 
 
 def by_label(a: Dict[str, Any], label: str) -> List[Dict[str, Any]]:
