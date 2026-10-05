@@ -413,14 +413,24 @@ def _drafted_runs(world, a: Agent, plan: Dict[str, Any]) -> bool:
     held = {} if everything else {k: n - used.get(k, 0) for k, n in a.inventory.items() if n - used.get(k, 0) > 0}
     taken = {}
     picked = set()
+    gained: Dict[str, int] = {}  # what the rest of its own plan brings into its hands first
     for s in ahead:
         k = world.norm_item(s.get("what"))
         if s.get("do") == "take" and k:
             taken[k] = taken.get(k, 0) + _n(s, 3)
+            gained[k] = gained.get(k, 0) + _n(s, 3)
         elif s.get("do") == "pickup" and k:
             picked.add(k)
+            gained[k] = gained.get(k, 0) + sum(pile.get(k, 0) for _, _, pile in world.piles_near(a.x, a.y, 20))
+        elif s.get("do") in ("gather", "craft") and k:
+            gained[k] = gained.get(k, 0) + _n(s, 5 if s.get("do") == "gather" else 1)
+    # the room in its hands once those steps have run: what they bring in fills it (up to full), what they use frees it
+    weight = lambda k: (it.weight if (it := world.item(k)) is not None else 1)
+    free = a.free_space()
+    room = max(0, free - sum(weight(k) * n for k, n in gained.items())) + sum(
+        weight(k) * min(n, a.inventory.get(k, 0) + gained.get(k, 0)) for k, n in used.items())
     built = False
-    freed = any(s.get("do") in ("store", "drop", "eat", "give", "craft") for s in ahead)
+    freed = everything or any(s.get("do") == "eat" for s in ahead)
     for s in plan.get("steps") or []:
         do = s.get("do")
         k = world.norm_item(s.get("what")) if isinstance(s.get("what"), str) else None
@@ -428,7 +438,7 @@ def _drafted_runs(world, a: Agent, plan: Dict[str, Any]) -> bool:
             freed = True  # (from here on the room in its hands is anyone's guess)
         elif do in ("take", "pickup", "gather") and k and not freed:
             it = world.item(k)
-            if it is not None and a.free_space() < it.weight:
+            if it is not None and room < it.weight:
                 return False  # "my hands are full"
         if do == "take" and k:
             stored = sum(st.storage.get(k, 0) for st in world.structures_near(a.x, a.y, 30)

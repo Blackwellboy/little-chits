@@ -198,6 +198,47 @@ def test_a_fetch_into_full_hands_is_not_offered_unless_something_is_put_down_fir
     assert _drafted_runs(w, a, take)
 
 
+def test_room_in_hand_is_counted_after_what_its_own_plan_brings_in_first():
+    # (Codex, PR #119) one stone fits now and the rest of its plan takes it: a drafted "gather wood" then starts with
+    # full hands
+    w, a = _world()
+    _stockpile(w, a, stone=10)
+    stone, wood, fiber = w.item("stone"), w.item("wood"), w.item("fiber")
+    while a.free_space() - fiber.weight >= max(wood.weight, stone.weight) and a.free_space() - fiber.weight >= 0:
+        a.inventory["fiber"] = a.inventory.get("fiber", 0) + 1
+    gather = {"goal": "collect wood", "thought": "", "steps": [{"do": "gather", "what": "wood", "qty": 2}]}
+    assert a.free_space() >= wood.weight and _drafted_runs(w, a, gather)
+    a.plan = [{"do": "take", "what": "stone", "qty": 1}]
+    assert a.free_space() - stone.weight < wood.weight
+    assert not _drafted_runs(w, a, gather)
+    a.plan = [{"do": "take", "what": "stone", "qty": 1}, {"do": "experiment", "with": ["stone", "fiber"]}]
+    assert _drafted_runs(w, a, gather)  # (the experiment uses the stone again, and a fiber)
+
+
+def test_a_build_the_step_would_not_reuse_is_judged_on_its_ground():
+    # (Codex, PR #119) the step builds a new farm beside a sown one and a new campfire beside a ruin: with no ground
+    # for it, it fails, so the preflight must say so; an empty farm or a lit campfire it uses instead
+    from chits.sim.actions import reuse_within
+
+    w, a = _world()
+    for d in ("farm", "campfire"):
+        a.learn(f"design:{d}", "taught", w.tick)
+        assert reuse_within(d)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    fire = w.place_site("campfire", *w.find_site("campfire", a.x - 3, a.y, 8), a)
+    w.complete_structure(fire, a)
+    _no_ground(w, a)
+    farm.planted = True
+    assert not build_could_start(w, a, {"do": "build", "what": "farm"})
+    farm.planted = False
+    assert build_could_start(w, a, {"do": "build", "what": "farm"})  # it sows the empty one
+    assert build_could_start(w, a, {"do": "build", "what": "campfire"})  # it feeds the one standing
+    fire.durability = 0
+    assert fire.ruined
+    assert not build_could_start(w, a, {"do": "build", "what": "campfire"})
+
+
 # ---------------------------------------------------------------------------- the menu is never empty, and costs nothing
 
 def test_a_menu_with_nothing_that_can_run_still_offers_instincts_pick_and_changes_nothing():

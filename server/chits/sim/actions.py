@@ -2265,17 +2265,17 @@ def reuse_within(key: str) -> Optional[int]:
     return r
 
 
-def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Optional[int] = None) -> Optional[str]:
-    """One already stands where this would go up (x, y: by default where the chit is): use that instead."""
+def reuse_choice(world, a: Agent, key: str, x: Optional[int] = None, y: Optional[int] = None):
+    """What _use_existing does instead of building a `key` at (x, y), without doing it: ("plenty", None), ("refuel",
+    a campfire), ("plant", an empty farm), ("room", None) or ("use", the one standing there); None when it builds.
+    One predicate for the step and for the options preflight (build_could_start), so the two can't drift."""
     x, y = (a.x, a.y) if x is None else (x, y)
     radius = reuse_within(key)
     if not radius:
         return None
-    if key == "stockpile" and sum(1 for x in world.structures.values() if x.design == "stockpile" and x.functional) \
-            >= max(6, len(world.agents) // 6):
+    if key == "stockpile" and sum(1 for x in world.structures.values() if x.design == "stockpile" and x.functional)             >= max(6, len(world.agents) // 6):
         # World A's model built 43 for 60 chits, most of them full of hoarded seeds
-        s["note"] = "The village has plenty of stockpiles already: use what's stored in them, or take from a full one"
-        return DONE
+        return "plenty", None
     near = [st for st in world.structures_near(x, y, radius, key) if st.complete and world.same_land(a, st)]
     if key == "shrine" and a.belief:
         # a believer's own shrine: only one of its own faith (or one not yet anyone's) stands in for it. With any
@@ -2285,29 +2285,43 @@ def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Opti
         return None
     if key == "campfire":
         st = near[0]
-        if st.ruined:
-            return None  # a ruin: build a new one
+        return None if st.ruined else ("refuel", st)  # (a ruin: build a new one)
+    if key == "farm":
+        empty = next((x for x in near if x.functional and not x.planted), None)
+        return ("plant", empty) if empty is not None else None  # (every farm nearby is sown: a new one is fine)
+    if key == "stockpile" and any(stockpile_room(x, None, world.catalog) > 20 for x in near if x.functional):
+        return "room", None
+    if key in ("shrine", "kiln", "workshop", "furnace", "library") or key in BLD.REUSE_WITHIN:
+        st = next((x for x in near if x.functional), None)
+        if st is not None:
+            return "use", st
+    return None
+
+
+def _use_existing(world, a: Agent, key: str, s, x: Optional[int] = None, y: Optional[int] = None) -> Optional[str]:
+    """One already stands where this would go up (x, y: by default where the chit is): use that instead."""
+    got = reuse_choice(world, a, key, x, y)
+    if got is None:
+        return None
+    how, st = got
+    if how == "plenty":
+        s["note"] = "The village has plenty of stockpiles already: use what's stored in them, or take from a full one"
+        return DONE
+    if how == "refuel":
         s.clear()
         s["redirect"] = {"do": "refuel", "target": st.id}
         s["note"] = f"There was already a campfire close by ({st.id}); I fed it instead of building another"
         return _redirect(world, a, s)
-    if key == "farm":
-        empty = next((x for x in near if x.functional and not x.planted), None)
-        if empty is not None:
-            s.clear()
-            s["redirect"] = {"do": "plant", "target": empty.id}
-            s["note"] = f"There was an empty farm close by ({empty.id}); I sowed it instead of making another"
-            return _redirect(world, a, s)
-        return None  # every farm nearby is sown: a new one is fine
-    if key == "stockpile" and any(stockpile_room(x, None, world.catalog) > 20 for x in near if x.functional):
+    if how == "plant":
+        s.clear()
+        s["redirect"] = {"do": "plant", "target": st.id}
+        s["note"] = f"There was an empty farm close by ({st.id}); I sowed it instead of making another"
+        return _redirect(world, a, s)
+    if how == "room":
         s["note"] = "There's a stockpile with room close by already"
         return DONE
-    if key in ("shrine", "kiln", "workshop", "furnace", "library") or key in BLD.REUSE_WITHIN:
-        st = next((x for x in near if x.functional), None)
-        if st is not None:
-            s["note"] = f"There's already a {DESIGNS[key].name} close by ({st.id} at {st.x},{st.y}): use that one"
-            return DONE
-    return None
+    s["note"] = f"There's already a {DESIGNS[key].name} close by ({st.id} at {st.x},{st.y}): use that one"
+    return DONE
 
 
 def _serving(step, key: str, within: int):
@@ -2464,9 +2478,8 @@ def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
            and (serves is None or serves(st.x, st.y))
            for st in world.structures_near(ox, oy, min(12, within) if within else 12, key)):
         return True  # it joins that site
-    radius = reuse_within(key)
-    if radius and any(st.complete and world.same_land(a, st) for st in world.structures_near(ox, oy, radius, key)):
-        return True  # it uses the one standing there
+    if reuse_choice(world, a, key, ox, oy) is not None:
+        return True  # it uses the one standing there (or refuels it, sows it, or has enough)
     cap = step.get("_cap")
     if cap and sum(1 for x in world.structures.values() if x.design == key) >= cap:
         return True  # (done: there are enough)
