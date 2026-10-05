@@ -1,5 +1,5 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
@@ -35,6 +35,21 @@ export function Inspector() {
     load();
     const t = setInterval(load, 1000);
     return () => { alive = false; clearInterval(t); };
+  }, [selected?.world, selected?.id]);
+
+  // Track who we hold so closing/deselecting can free the AI slot (orders already in flight still finish).
+  const heldRef = useRef<{ world: string; id: string } | null>(null);
+  useEffect(() => {
+    if (!selected || !selected.id.startsWith("a")) return;
+    const world = selected.world;
+    const id = selected.id;
+    return () => {
+      const held = heldRef.current;
+      if (held && held.world === world && held.id === id) {
+        heldRef.current = null;
+        api(`/api/worlds/${world}/agents/${id}/release`, {}).catch(() => {});
+      }
+    };
   }, [selected?.world, selected?.id]);
 
   if (!selected || !detail) return null;
@@ -89,7 +104,8 @@ export function Inspector() {
         </div>
       </div>
 
-      <ControlStrip key={a.id} world={selected.world} id={a.id} possessed={a.possessed} alive={a.alive} />
+      <ControlStrip key={a.id} world={selected.world} id={a.id} possessed={a.possessed} alive={a.alive}
+        onHeld={(h) => { heldRef.current = h ? { world: selected.world, id: a.id } : null; }} />
 
       {a.alive && (
         <div className="needs">
@@ -198,12 +214,14 @@ export function flyToAgent(world: string, id: string) {
 type Kin = { id: string; name: string; alive: boolean; born_day: number; died_day: number | null; cause: string | null };
 
 /** 🎮 Possess: one chit per world can be controlled by clicking age-gate orders, or a short line of text. */
-function ControlStrip({ world, id, possessed, alive }: { world: string; id: string; possessed?: boolean; alive: boolean }) {
+function ControlStrip({ world, id, possessed, alive, onHeld }: {
+  world: string; id: string; possessed?: boolean; alive: boolean; onHeld?: (held: boolean) => void;
+}) {
   const [held, setHeld] = useState(!!possessed);
   const [text, setText] = useState("");
   const [msg, setMsg] = useState("");
   const [last, setLast] = useState("");
-  useEffect(() => { setHeld(!!possessed); }, [possessed]);  // (the detail refreshes every second: another chit may take over)
+  useEffect(() => { setHeld(!!possessed); onHeld?.(!!possessed); }, [possessed]);  // (the detail refreshes every second: another chit may take over)
   if (!alive) return null;
 
   const order = (action: string) =>
@@ -219,9 +237,9 @@ function ControlStrip({ world, id, possessed, alive }: { world: string; id: stri
       .catch((e) => setMsg(errorText(e)));
   };
   const possess = () => api(`/api/worlds/${world}/agents/${id}/possess`, {})
-    .then(() => { setHeld(true); setMsg(""); }).catch((e) => setMsg(errorText(e)));
+    .then(() => { setHeld(true); onHeld?.(true); setMsg(""); }).catch((e) => setMsg(errorText(e)));
   const release = () => api(`/api/worlds/${world}/possess/release`, {})
-    .then(() => { setHeld(false); setLast(""); setMsg(""); }).catch((e) => setMsg(errorText(e)));
+    .then(() => { setHeld(false); onHeld?.(false); setLast(""); setMsg(""); }).catch((e) => setMsg(errorText(e)));
 
   const BUTTONS: [string, string, string][] = [
     ["⛏ Mine", "mine", "Gather the raw material the road to the next age needs most"],

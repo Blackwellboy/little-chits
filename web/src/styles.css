@@ -158,7 +158,11 @@ table.know { width: 100%; border-collapse: collapse; font-size: 12px; }
 .control-btns button:hover { border-color: var(--accent); }
 .control-tell { margin-top: 4px; }
 .control-tell input { flex: 1; min-width: 120px; }
-.control-tell .release { border-color: rgba(255,120,120,0.5); color: #ff9d9d; }
+/* Go + Release: same dark Inspector vibe as order chips / Following (not stock white form controls) */
+.control-tell button { font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); }
+.control-tell button:hover { border-color: var(--accent); }
+.control-tell .release { border-color: rgba(255,120,120,0.5); color: #ff9d9d; background: rgba(255,80,80,0.08); }
+.control-tell .release:hover { border-color: rgba(255,140,140,0.7); background: rgba(255,80,80,0.14); }
 .control-msg { margin: 6px 0 0; font-size: 12px; color: #ffcf99; }
 .control-msg.err { color: #ff9d9d; }
 .needs { display: grid; gap: 5px; margin: 6px 0 10px; }
@@ -262,6 +266,8 @@ button.danger { color: var(--bad); }
   .rail { flex-direction: row; top: auto; bottom: 12px; left: 12px; }
   .rail button { width: 48px; height: 48px; }
   .inspector { top: auto; height: 62vh; left: 10px; right: 10px; width: auto; }
+  .control-tell input { min-width: 72px; }
+  .control-tell button { padding: 4px 7px; }
   .minimap { width: 96px; height: 96px; bottom: 76px; }
   .stage.split { flex-direction: column; }
   .stage.split .pane + .pane { border-left: 0; border-top: 2px solid rgba(255,255,255,0.12); }
