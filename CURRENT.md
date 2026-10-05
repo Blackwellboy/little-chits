@@ -29,6 +29,10 @@ identity. The live game on the owner's PC runs `main`.
 - Manual real-GPU checks (2026-09-30, RTX 3090 only, see `docs/MANUAL_CHECKS_2026-09-30.md`): T01, T17, T18 and
   T19 pass; T04 ran (the bench's spread is noted there); T15 is partial (3090 vs 3090); **T03 is open** (needs the
   5090). Don't mark T03 or the 5090 arm of T15 as passed until they are run.
+- World rules (docs/WORLD_RULES.md):
+  - Every world has a frozen, versioned rule set: religion, invention, library hints, lore rescue, storyteller, wanderers.
+  - New Game offers presets (Standard, Model-led, Research Clean, Sandbox), and the 📜 panel shows the running game's rules.
+  - Model-led play (docs/MODEL_LED.md) and provenance (docs/PROVENANCE.md) separate what the model decided from what the body, the executor and instinct did.
 - Live game (since 2026-10-05): a single world on the RTX 5090's JevK5 9B (cascade), started with 20 founders.
   Play is not a controlled comparison: model questions go through the Lab (see
   HANDOFF.md, Work in flight, for the JevK5-vs-Gemma study now running).
