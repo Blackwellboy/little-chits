@@ -274,7 +274,11 @@ class Event:
 
 class World:
     def __init__(self, world_id: str, name: str, seed: int, culture: str = "direct", size: int = 128,
-                 n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None):
+                 n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None,
+                 rng_scheme: Optional[int] = None):
+        """`rng_scheme`: the random-number scheme (2 or 3), when it must match a twin's; otherwise scheme_now()."""
+        if rng_scheme not in (None, RNG_RUNNING, RNG_STREAMED):
+            raise ValueError(f"unsupported RNG scheme {rng_scheme}")
         self.id = world_id
         self.name = name
         self.label = label or name
@@ -284,7 +288,7 @@ class World:
         self.w = self.h = size
         self.tick = 0
         self._rngs: Dict[str, random.Random] = {}
-        self.rng_scheme = scheme_now()
+        self.rng_scheme = rng_scheme or scheme_now()  # (set before the first draw: the animals' spawn)
         self.terrain_version = T.TERRAIN_VERSION
         self.tiles, self.res_kind, self.res_amt = T.generate(seed, size, size, self.terrain_version)
         self.traffic = [0.0] * (size * size)

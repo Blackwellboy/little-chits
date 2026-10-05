@@ -239,3 +239,60 @@ def test_a_lab_directory_is_not_resumed_under_another_scheme(streams, tmp_path):
     streams(False)
     with pytest.raises(SpecError, match="random-number scheme 3"):
         run.start(spec, tmp_path, "abc")
+
+
+# ---------------------------------------------------------------- twins share one scheme (the runtime)
+
+def _runtime_closed(rt):
+    import asyncio
+
+    rt.store.db.close()
+    asyncio.run(rt.mind.close())
+
+
+@pytest.mark.parametrize("lose", ["corrupt", "missing"])
+def test_a_world_made_beside_a_restored_one_takes_its_scheme(streams, tmp_path, lose):
+    """A scheme-2 checkpoint of one twin, the other set aside or missing: the fresh one is made on scheme 2 too."""
+    from chits.runtime import Runtime
+
+    streams(False)
+    rt = Runtime(tmp_path)
+    wids = sorted(rt.worlds)
+    assert len(wids) == 2 and {w.rng_scheme for w in rt.worlds.values()} == {2}
+    rt.save_all()
+    if lose == "corrupt":
+        rt.store.db.execute("UPDATE snapshots SET data=? WHERE world_id=?", (b"broken gzip", wids[1]))
+    else:
+        rt.store.db.execute("DELETE FROM snapshots WHERE world_id=?", (wids[1],))
+    rt.store.db.commit()
+    _runtime_closed(rt)
+    streams(True)  # (this build now makes new worlds on scheme 3)
+    back = Runtime(tmp_path)
+    try:
+        assert {wid: w.rng_scheme for wid, w in back.worlds.items()} == {wids[0]: 2, wids[1]: 2}
+        man = back.manifest()
+        assert man["rng_scheme"] == 2 and {v["rng_scheme"] for v in man["worlds"].values()} == {2}
+    finally:
+        _runtime_closed(back)
+
+
+def test_restored_twins_on_different_schemes(streams, tmp_path):
+    """An experiment refuses them; play goes on under the first world's scheme, and says so."""
+    from chits.runtime import Runtime
+
+    streams(True)
+    rt = Runtime(tmp_path)
+    try:
+        a, b = sorted(rt.worlds)
+        rt.worlds[b].rng_scheme = 2
+        restored = {a: rt.worlds[a], b: rt.worlds[b]}
+        with pytest.raises(RuntimeError, match="different random-number schemes"):
+            rt.manifest()  # (mixed twins are never written down as one run)
+        rt.contract = "experiment"
+        with pytest.raises(RuntimeError, match="different random-number schemes"):
+            rt._twin_scheme(restored)
+        rt.contract = "play"
+        assert rt._twin_scheme(restored) == 3 and rt.worlds[b].rng_scheme == 3
+        assert any(e.kind == "notice" and "scheme 3" in e.text for e in rt.worlds[b].events)
+    finally:
+        _runtime_closed(rt)
