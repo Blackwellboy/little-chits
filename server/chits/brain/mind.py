@@ -428,8 +428,11 @@ class Mind:
 
     def _became_model_driven(self, world, a: Agent) -> None:
         """Under model-only, a chit that has just come under a model (assigned one, or arriving where one drives
-        it) leaves its instinct plan behind before it acts."""
-        if a.brain != INSTINCT and a.__dict__.get("_model_only_brain") != a.brain:
+        it) leaves its instinct plan behind before it acts. Back on instinct, its mark goes: the plans it makes there
+        are instinct's, and a later return to the same model cleans them too (Codex on #118, issue #120)."""
+        if a.brain == INSTINCT:
+            a.__dict__.pop("_model_only_brain", None)
+        elif a.__dict__.get("_model_only_brain") != a.brain:
             diag.model_only_dropped(world, self._model_only_clean(world, a, "model-only: a model took over"))
 
     def no_stand_in(self) -> bool:
@@ -545,7 +548,9 @@ class Mind:
         def at_send():  # the 3090 queued requests ~6 s: describe the chit as it is when the request goes out
             if rec.get("match") != self.match:
                 raise StaleMatch()  # a new match started while this waited: don't spend the GPU on it
-            fresh = P.messages(world, a, style=style)
+            # model-only switched on while this was queued: it goes out as full, as model-only requires. The switch
+            # bumps rev, and at_send resets rev_requested, so the old style would pass the stale check (Codex, #120)
+            fresh = P.messages(world, a, style="full" if self.model_only else style)
             if rep:
                 fresh = P.with_repair(fresh, rep)
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
