@@ -12,3 +12,4 @@ plan/reports/
 *.tsbuildinfo
 .vite/
 harness-out/
+runs/

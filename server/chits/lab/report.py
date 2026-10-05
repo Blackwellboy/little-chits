@@ -16,6 +16,15 @@ DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron",
                    "births", "forgotten", "tunnels", "loose"]
 
 
+OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waiting share", "waiting_share"),
+                    ("seconds waited per chit-day", "wait_seconds_per_chit_day"),
+                    ("model share of steps", "model_step_share")]
+
+
+def by_label(a: Dict[str, Any], label: str) -> List[Dict[str, Any]]:
+    return [r for r in a["runs"] if r["label"] == label]
+
+
 def _fmt(x: float) -> str:
     if x is None or x != x:
         return "-"
@@ -96,6 +105,22 @@ def markdown(a: Dict[str, Any]) -> str:
                      f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | {_fmt(p['mann_whitney_p'])} |")
         L += ["", "Differences are paired by seed (both arms had the same island). p-values are not corrected for the "
                   "number of metrics: read them as a guide, not a verdict.", ""]
+    if any(r.get("compute") for r in a["runs"]):
+        L += ["## Thinking opportunities", "",
+              "Per chit-day (one chit alive for one day). Reported, not equalised: a model whose plans run out sooner "
+              "asks more often. Waiting is the share of a model-minded chit's time spent waiting for its answer "
+              "(near 0 in lockstep, where the world waits instead); seconds waited is that lockstep wait in wall time, a cost "
+              "of the card and the model, not a world fact; model steps are the finished steps that came from the "
+              "model's plans (the rest are reflexes).",
+              "", "| | " + " | ".join(show[l] for l in a["labels"]) + " |", "|---|" + "---|" * len(a["labels"])]
+        for name, key in OPPORTUNITY_ROWS:
+            cells = []
+            for l in a["labels"]:
+                xs = [r["final"].get(key) for r in by_label(a, l)]
+                xs = [x for x in xs if x is not None]
+                cells.append(_fmt(sum(xs) / len(xs)) if xs else "-")
+            L.append(f"| {name} | " + " | ".join(cells) + " |")
+        L += ["", "Means over seeds.", ""]
     if a["events"]:
         L += ["## Time to event", "", "| event | " + " | ".join(show[l] for l in a["labels"]) + " |",
               "|---|" + "---|" * len(a["labels"])]
