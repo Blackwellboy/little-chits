@@ -7,7 +7,8 @@ export type Clock = {
 export type AgentBrief = {
   id: string; name: string; x: number; y: number; hue: number; act: string; emote: string; say: string;
   think: boolean; carry: string | null; tool: string | null; child: boolean; basket: boolean; light?: boolean; hp: number;
-  hunger: number; brain: string; src: "model" | "instinct";
+  hunger: number; brain: string; src: "model" | "instinct" | "player";
+  possessed?: boolean;
 };
 
 export type StructureView = {

@@ -32,7 +32,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**146** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**152** occurrences in 22 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
@@ -41,6 +41,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `brain/builder.py` | 12 | 64, 71, 83, 103, 104, 145, 260, 393, 408, 414, 470, 477 |
 | `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
 | `brain/instinct.py` | 22 | 465, 719, 729, 758, 825, 847, 866, 880, 881, 889, 897, 908, 975, 976, 1012, 1059, 1076, 1184, 1190, 1221 |
+| `brain/orders.py` | 6 | 128, 216, 218, 240, 247, 297 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
 | `brain/prompt.py` | 8 | 395, 410, 411, 485, 716, 734 |

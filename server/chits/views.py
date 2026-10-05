@@ -16,7 +16,7 @@ def knowledge_name(k: str, w: Optional[World] = None) -> str:
     return item_name(key, w.catalog if w else None) if kind == "recipe" else DESIGNS[key].name
 
 
-def agent_brief(w: World, a: Agent) -> Dict[str, Any]:
+def agent_brief(w: World, a: Agent, possessed_id: Optional[str] = None) -> Dict[str, Any]:
     carry = None
     best = 0
     for k, n in a.inventory.items():
@@ -26,12 +26,15 @@ def agent_brief(w: World, a: Agent) -> Dict[str, Any]:
     tool = None
     for cls in ("axe", "pick", "spear", "light"):
         tool = tool or a.best_tool(cls)
-    return {
+    d = {
         "id": a.id, "name": a.name, "x": a.x, "y": a.y, "hue": a.hue, "act": a.activity, "emote": a.emote,
         "say": a.say, "think": a.thinking, "carry": carry, "tool": tool, "child": a.is_child(w.tick),
         "basket": a.has("basket"), "light": a.best_tool("light") is not None, "hp": round(a.health), "hunger": round(a.hunger), "brain": a.brain,
-        "src": "model" if a.plan_source.startswith("model") else "instinct",
+        "src": "player" if a.plan_source == "player" else ("model" if a.plan_source.startswith("model") else "instinct"),
     }
+    if a.id == possessed_id:
+        d["possessed"] = True
+    return d
 
 
 def structure_view(s: Structure, w: World) -> Dict[str, Any]:
@@ -93,7 +96,7 @@ def world_meta(w: World) -> Dict[str, Any]:
             "seed": w.seed, "uuid": w.uuid, "epoch": w.epoch, "leader": w.leader, "laws": w.laws}
 
 
-def snapshot(w: World, events_limit: int = 80) -> Dict[str, Any]:
+def snapshot(w: World, events_limit: int = 80, possessed_id: Optional[str] = None) -> Dict[str, Any]:
     trails = [i for i, v in enumerate(w.traffic) if v > 30]
     try:
         amt = bytes(w.res_amt)  # ~1 ms; the clamping generator below took ~100 ms on a 512 island
@@ -101,6 +104,7 @@ def snapshot(w: World, events_limit: int = 80) -> Dict[str, Any]:
         amt = bytes(min(255, max(0, int(v))) for v in w.res_amt)
     return {
         "world": world_meta(w),
+        "possessed": possessed_id,
         "signs": list(w.signs.values()),
         "inventions": list(w.inventions.values()),
         "beliefs": belief_list(w),
@@ -109,14 +113,14 @@ def snapshot(w: World, events_limit: int = 80) -> Dict[str, Any]:
         "tiles": b64(w.tiles), "res_kind": b64(w.res_kind), "res_amt": b64(amt),
         "roads": sorted(w.roads), "trails": trails,
         "structures": [structure_view(s, w) for s in w.structures.values()],
-        "agents": [agent_brief(w, a) for a in w.agents.values()],
+        "agents": [agent_brief(w, a, possessed_id) for a in w.agents.values()],
         "tablets": [{"id": t.id, "x": t.x, "y": t.y} for t in w.tablets.values() if not t.in_structure],
         "events": [e.to_dict() for e in list(w.events)[-events_limit:]],
         "clock": w.clock(), "stats": w.stats(), "history": w.history[-200:],
     }
 
 
-def agent_detail(w: World, a: Agent, brain_label: str = "") -> Dict[str, Any]:
+def agent_detail(w: World, a: Agent, brain_label: str = "", possessed_id: Optional[str] = None) -> Dict[str, Any]:
     t = w.tick
     everyone = {**w.dead, **w.agents}
 
@@ -137,7 +141,7 @@ def agent_detail(w: World, a: Agent, brain_label: str = "") -> Dict[str, Any]:
     rels = sorted(((v, k) for k, v in a.affinity.items() if abs(v) >= 3), reverse=True)[:10]
     home = w.structures.get(a.home or "")
     return {
-        **agent_brief(w, a),
+        **agent_brief(w, a, possessed_id),
         "alive": a.alive, "age": round(a.age(t if a.alive else a.died), 1), "generation": a.generation,
         "parents": [nm(p) for p in a.parents], "died": a.died, "cause": a.cause_of_death,
         "needs": {"hunger": round(a.hunger), "energy": round(a.energy), "warmth": round(a.warmth),

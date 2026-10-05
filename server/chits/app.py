@@ -121,7 +121,7 @@ def agent(wid: str, aid: str):
     if not a:
         raise HTTPException(404, "no such chit")
     b = R().mind.brains.get(a.brain)
-    return views.agent_detail(w, a, b.label if b else "Instinct")
+    return views.agent_detail(w, a, b.label if b else "Instinct", R().possessed.get(wid))
 
 
 @app.get("/api/worlds/{wid}/agents")
@@ -130,7 +130,7 @@ def agents(wid: str, dead: bool = False):
     src = list(w.agents.values()) + (list(w.dead.values()) if dead else [])
     out = []
     for a in src:
-        d = views.agent_brief(w, a)
+        d = views.agent_brief(w, a, R().possessed.get(wid))
         d.update(alive=a.alive, age=round(a.age(w.tick if a.alive else a.died), 1), generation=a.generation,
                  goal=a.goal, known=len(a.knows), built=a.stats.get("built", 0), cause=a.cause_of_death,
                  role=_role(a), job=a.job, job_source=a.job_source, leader=a.id == w.leader)
@@ -284,6 +284,61 @@ def god(wid: str, body: GodBody):
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "event": text}
+
+
+# ------------------------------------------------------------------ 🎮 possess: one chit per world, observer's orders
+class OrderBody(BaseModel):
+    action: Optional[str] = None
+    text: Optional[str] = None
+    target: Optional[str] = None
+
+
+@app.post("/api/worlds/{wid}/agents/{aid}/possess")
+def possess(wid: str, aid: str):
+    """Take control of one chit in a world (possessing another releases the first). Marks the run as a sandbox."""
+    world(wid)
+    try:
+        return R().possess(wid, aid)
+    except KeyError:
+        raise HTTPException(404, "no such chit")
+    except PermissionError as e:
+        raise HTTPException(409, f"possess is {e}: an experiment stays untouched")
+
+
+@app.post("/api/worlds/{wid}/possess/release")
+def release_world(wid: str):
+    world(wid)
+    R().release(wid)
+    return {"ok": True}
+
+
+@app.post("/api/worlds/{wid}/agents/{aid}/release")
+def release_agent(wid: str, aid: str):
+    world(wid)
+    R().release(wid, aid)
+    return {"ok": True}
+
+
+@app.post("/api/worlds/{wid}/agents/{aid}/order")
+def order(wid: str, aid: str, body: OrderBody):
+    """Give the possessed chit an order: an action, or a short line of text (no raw JSON plan)."""
+    world(wid)
+    try:
+        return R().order(wid, aid, body.action, body.text, body.target)
+    except KeyError:
+        raise HTTPException(404, "no such chit")
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@app.get("/api/worlds/{wid}/possess")
+def possess_state(wid: str):
+    world(wid)
+    from .brain.orders import ORDERS
+
+    return {"possessed": R().possessed_id(wid), "orders": list(ORDERS)}
 
 
 class SaveBody(BaseModel):

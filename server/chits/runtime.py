@@ -113,6 +113,9 @@ class Runtime:
         self.first_run = not brains_path.exists()
         self.autodetected: List[Dict[str, Any]] = []
         self.mind = Mind(brains_path)
+        # one possessed chit per world (shared by all observers): the Mind sees it, so its AI-slot logic can too
+        self.possessed: Dict[str, str] = {}
+        self.mind.possessed = self.possessed
         preset = os.environ.get("CHITS_BRAINS_PRESET", "").strip()
         if preset and Path(preset).exists():
             self.mind.merge_preset(Path(preset))  # e.g. configs/dual-gpu.json: 5090 -> A, 3090 -> B
@@ -386,6 +389,7 @@ class Runtime:
         self.save_errors = {}
         self.invalid_reason = ""
         self.loop_error = ""  # (the failed match is gone)
+        self.possessed.clear()  # a new match: nobody is possessed
         self.paused = False
         self.skip = self.last_skip = None
         self.forks = {}  # a new match: the old one's what-ifs go with it
@@ -1004,7 +1008,7 @@ class Runtime:
             tabs = [{"id": t.id, "x": t.x, "y": t.y} for t in w.tablets.values() if not t.in_structure]
         return {
             "type": "frame", "world": w.id, "clock": w.clock(),
-            "agents": [views.agent_brief(w, a) for a in w.agents.values()],
+            "agents": [views.agent_brief(w, a, self.possessed.get(w.id)) for a in w.agents.values()],
             "res": res, "structures": structs, "removed": removed, "paths": paths, "events": sent,
             "tablets": tabs, "stats": w.stats() if w.tick % 20 == 0 else None,
             "signs": self._signs_once(w), "ground": self._ground_once(w),
@@ -1292,6 +1296,68 @@ class Runtime:
         w.emit("miracle", text, 5, None, x if needs_xy else None, y if needs_xy else None, action=action, item=item)
         return text
 
+    # -------------------------------------------------------------- 🎮 possess: one chit per world, observer's orders
+    def possess(self, wid: str, aid: str) -> Dict[str, Any]:
+        """An observer takes hold of one chit in a world (possessing another releases the first). Play only: an
+        experiment run is untouched (PermissionError)."""
+        w = self.worlds.get(wid)
+        if w is None:
+            raise KeyError(wid)
+        a = w.agents.get(aid)
+        if a is None:
+            raise KeyError(aid)
+        self.mark_sandbox("possess")  # PermissionError in an experiment run
+        prev = self.possessed.get(wid)
+        self.possessed[wid] = aid
+        if prev != aid:
+            self.mind.invalidate_slots(wid)
+        return {"ok": True, "possessed": aid}
+
+    def possessed_id(self, wid: str) -> Optional[str]:
+        """The chit possessed in a world, if it is still alive there (a dead or departed one is let go here)."""
+        aid = self.possessed.get(wid)
+        w = self.worlds.get(wid)
+        if aid is not None and (w is None or aid not in w.agents):
+            self.release(wid)
+            return None
+        return aid
+
+    def release(self, wid: str, aid: Optional[str] = None) -> None:
+        """Let go of the possessed chit (if `aid`, only if it is the one held)."""
+        cur = self.possessed.get(wid)
+        if aid is not None and cur != aid:
+            return
+        if self.possessed.pop(wid, None) is not None:
+            self.mind.invalidate_slots(wid)
+
+    def order(self, wid: str, aid: str, action: Optional[str] = None, text: Optional[str] = None,
+              target: Optional[str] = None) -> Dict[str, Any]:
+        """Give the possessed chit an order, as an action or a short natural-language line. Raises KeyError (unknown
+        world/chit), ValueError (bad order) or PermissionError (not the possessed chit, or an experiment run)."""
+        from .brain import orders
+
+        w = self.worlds.get(wid)
+        if w is None:
+            raise KeyError(wid)
+        a = w.agents.get(aid)
+        if a is None:
+            raise KeyError(aid)
+        act = (action or "").strip().lower()
+        parsed_target: Optional[str] = None
+        if not act and text:
+            act, parsed_target = orders.parse_order(text)
+        if target is None:
+            target = parsed_target
+        if act not in orders.ORDERS:
+            raise ValueError(f"unknown order {act!r}; try one of {', '.join(orders.ORDERS)}")
+        self.mark_sandbox("player order")  # PermissionError in an experiment run
+        if self.possessed.get(wid) != aid:
+            raise PermissionError("that chit isn't the one you possess")
+        plan = orders.order_plan(w, a, act, target)
+        orders.apply_order(w, a, act, plan, self.mind)
+        steps = [{k: v for k, v in s.items() if not k.startswith("_")} for s in plan.get("steps") or []]
+        return {"ok": True, "action": act, "goal": plan.get("goal") or "", "steps": steps}
+
     def save_point(self, name: str) -> Dict[str, Any]:
         name = (name or "").strip()[:60] or time.strftime("save %H:%M")
         tick = max((w.tick for w in self.worlds.values()), default=0)
@@ -1542,7 +1608,7 @@ class Runtime:
             q._chits_seq = 0  # type: ignore[attr-defined]
         self.push(q, {**self.hello(), "resync": resync})
         for w in self.worlds.values():
-            self.push(q, {"type": "snapshot", **views.snapshot(w)})
+            self.push(q, {"type": "snapshot", **views.snapshot(w, possessed_id=self.possessed.get(w.id))})
 
     def end_experiment(self) -> None:
         """Turn an experiment run into ordinary play: models and settings can change again, and instinct covers a slow

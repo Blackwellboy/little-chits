@@ -205,14 +205,20 @@ def _ai_chit_score(world, a: Agent, ctx: Dict[str, Any]) -> float:
     return score
 
 
-def _select_ai_chits(world, brain, living_agents: List[Agent]) -> set:
+def _select_ai_chits(world, brain, living_agents: List[Agent], possessed=None) -> set:
     """Which living chits may ask this brain while max_ai_chits caps it: the `cap` highest-scoring ones, so a small
-    or local model keeps up by concentrating on the chits that move the age gate along (see _ai_chit_score)."""
+    or local model keeps up by concentrating on the chits that move the age gate along (see _ai_chit_score). The
+    chit an observer possesses (one per world) always gets a slot, whatever its score, and never more than the cap."""
     from ..sim import projects as PJ
 
     cap = int(getattr(brain.cfg, "max_ai_chits", 0) or 0)
     if cap <= 0 or not living_agents:
         return {a.id for a in living_agents}
+    living_ids = {a.id for a in living_agents}
+    chosen: set = set()
+    possessed_id = (possessed or {}).get(world.id) if isinstance(possessed, dict) else None
+    if possessed_id is not None and possessed_id in living_ids:
+        chosen.add(possessed_id)
     road = PJ.road(world)
     road_steps = [s for s in (road["steps"] if road else []) if not s["done"]]
     road_keys = {f"{s['kind']}:{s['key']}" for s in road_steps}
@@ -222,8 +228,10 @@ def _select_ai_chits(world, brain, living_agents: List[Agent]) -> set:
         "sole_keepers": _sole_keepers(living_agents, road_keys if road is not None else None),
         "project_helpers": _project_helpers(world),
     }
-    scored = sorted((-_ai_chit_score(world, a, ctx), a.id) for a in living_agents)
-    return {aid for _, aid in scored[:cap]}
+    rest = [a for a in living_agents if a.id not in chosen]
+    scored = sorted((-_ai_chit_score(world, a, ctx), a.id) for a in rest)
+    chosen |= {aid for _, aid in scored[:cap - len(chosen)]}
+    return chosen
 
 
 class Mind:
@@ -248,7 +256,12 @@ class Mind:
         self.match = 0  # bumped by new_match(): replies to an older match are dropped
         self.on_decision: Optional[Callable[[Dict[str, Any]], None]] = None
         self._ai_slots: Dict[tuple, Dict[str, Any]] = {}  # (world_id, brain_id) -> {"ids": set, "tick": int, "cap": int}
+        self.possessed: Dict[str, str] = {}  # world id -> the one chit an observer possesses there (kept by the Runtime)
         self.load()
+
+    def invalidate_slots(self, wid: str) -> None:
+        """A chit was possessed or released: recompute that world's AI slots on the next look."""
+        self._ai_slots = {k: v for k, v in self._ai_slots.items() if k[0] != wid}
 
     # ------------------------------------------------------------ config
     def load(self) -> None:
@@ -343,7 +356,7 @@ class Mind:
             if len(chosen_living) >= target:
                 return a.id in slot["ids"]
         # the cap changed, the window lapsed, a chosen chit died/left, or the set needs refilling: choose again
-        slot = {"ids": _select_ai_chits(world, brain, living), "tick": world.tick, "cap": cap}
+        slot = {"ids": _select_ai_chits(world, brain, living, self.possessed), "tick": world.tick, "cap": cap}
         self._ai_slots[key] = slot
         return a.id in slot["ids"]
 
@@ -360,6 +373,10 @@ class Mind:
             dg.model_ticks += 1
             if a.thinking and (not a.plan or a.plan[0].get("_filler")):
                 dg.waiting_ticks += 1
+        # a possessed chit following the observer's order: let the player plan run, untouched, until it finishes.
+        # (Then it falls back to its brain/instinct as usual, but stays possessed and keeps its AI slot until release.)
+        if self.possessed.get(world.id) == a.id and a.plan and a.plan[0].get("_origin") == "player":
+            return
         if a.brain != INSTINCT and brain is None:
             if self.no_stand_in():
                 if not a.plan:

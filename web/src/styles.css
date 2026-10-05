@@ -148,8 +148,19 @@ table.know { width: 100%; border-collapse: collapse; font-size: 12px; }
 .src { font-size: 11px; padding: 3px 8px; border-radius: 8px; }
 .src.model { background: rgba(187,134,252,0.15); color: #d9c3ff; }
 .src.instinct { background: rgba(255,255,255,0.07); color: var(--muted); }
+.src.player { background: rgba(255,210,74,0.18); color: #ffe08a; }
 .follow { font-size: 12px; padding: 3px 10px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); }
 .follow.on { border-color: var(--accent); color: var(--accent); }
+.control { margin: 8px 0; }
+.control .possess { border-color: #ffd24a; color: #ffe08a; font-size: 13px; padding: 5px 12px; }
+.control-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.control-btns button { font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); }
+.control-btns button:hover { border-color: var(--accent); }
+.control-tell { margin-top: 4px; }
+.control-tell input { flex: 1; min-width: 120px; }
+.control-tell .release { border-color: rgba(255,120,120,0.5); color: #ff9d9d; }
+.control-msg { margin: 6px 0 0; font-size: 12px; color: #ffcf99; }
+.control-msg.err { color: #ff9d9d; }
 .needs { display: grid; gap: 5px; margin: 6px 0 10px; }
 .bar { display: grid; grid-template-columns: 58px 1fr 28px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .bar b { text-align: right; color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
