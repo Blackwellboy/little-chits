@@ -489,8 +489,14 @@ class Runtime:
 
     def set_model_only(self, on: bool) -> None:
         """The model-only diagnostic (brain/mind.py): no instinct menu, fallback or reflexes, in every world."""
-        self.mind.model_only = bool(on)
+        from . import diag
+
+        was, self.mind.model_only = self.mind.model_only, bool(on)
         for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:
+            if on and not was:
+                self.mind.start_model_only(w)  # (nothing from before the switch may act after it)
+            elif not on:
+                diag.model_only_from(w, None)
             w.model_only = bool(on)
 
     def write_manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:

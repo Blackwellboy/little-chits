@@ -43,6 +43,8 @@ class WorldDiag:
         self.reflex_would_ticks: Counter = Counter()   # chit-ticks the need stood
         self.reflex_would_onsets: Counter = Counter()  # times it began (a chit with no such need the tick before)
         self.reflex_would_last: Dict[str, Optional[str]] = {}  # agent id -> its verb last tick
+        self.model_only_since: Optional[int] = None  # the tick model-only was switched on mid-game (None: off)
+        self.model_only_dropped = 0  # steps the model didn't write, dropped at that moment
 
 
 _DIAG: Dict[int, Any] = {}  # id(world) -> (a weak reference to it, its WorldDiag)
@@ -262,6 +264,19 @@ def capability_use(world) -> Dict[str, Dict[str, int]]:
     return out
 
 
+def model_only_from(world, dropped: Optional[int]) -> None:
+    """Model-only switched on (``dropped``: the steps the model didn't write, dropped then) or off (None). Reports
+    count a model-only stretch from this tick; the would-have-fired counts restart with it."""
+    d = of(world)
+    if dropped is None:
+        d.model_only_since = None
+        return
+    d.model_only_since, d.model_only_dropped = world.tick, dropped
+    d.reflex_would_ticks.clear()
+    d.reflex_would_onsets.clear()
+    d.reflex_would_last.clear()
+
+
 def reflex_would(world, a, verb: Optional[str]) -> None:
     """With the reflexes off (model-only): the reflex that would have interrupted this chit this tick, or None."""
     d = of(world)
@@ -423,6 +438,8 @@ def report(rt) -> Dict[str, Any]:
         }
         if d.reflex_would_last:  # a model-only (diagnostic) world: what the reflexes it ran without would have done
             wd["reflex_would"] = reflex_would_summary(w)
+        if d.model_only_since is not None:
+            wd["model_only"] = {"since_tick": d.model_only_since, "dropped_steps": d.model_only_dropped}
         out["worlds"][wid] = wd
         name = w.name
         if bid != "instinct" and decided >= 20 and wd["model_share_pct"] < 70:

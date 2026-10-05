@@ -244,3 +244,39 @@ def test_an_experiment_run_never_runs_model_only(tmp_path, monkeypatch):
         assert c.post("/api/reset", json={"contract": "experiment"}).status_code == 200
         assert R().mind.model_only is False  # an experiment starts with it off ...
         assert c.post("/api/model-only", json={"on": True}).status_code == 409  # ... and can't turn it on
+
+
+def test_switching_model_only_on_mid_game_drops_instinct_plans_and_stales_menu_requests():
+    """Codex P2 on #118: turned on mid-game, the flag alone let a running instinct plan finish and a choose request
+    already in flight come back and be adopted. Neither may act after the switch."""
+    from chits.runtime import Runtime
+
+    w, a = _chit()
+    b_ = next(x for x in w.agents.values() if x is not a)
+    mind = Mind(None)
+    mind.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1", "prompt_style": "choose"})
+    mind.assign(w, "m")
+    # a: running an instinct plan, with a reflex in front of it
+    a.plan = [{"do": "eat", "_reflex": True}, {"do": "gather", "what": "wood", "_origin": "instinct"}]
+    # b: a menu choice is in flight (asked before the switch, answered after it)
+    b_.plan = [{"do": "gather", "what": "stone", "_origin": "model_generated", "_decision_id": "r0"}]
+    rec = {"request_id": "r1", "style": "choose", "parse": "choice", "rev_requested": b_.rev, "tick_requested": w.tick,
+           "world": w.id, "agent": b_.id}
+    b_.__dict__["_decision"] = rec
+    b_.thinking = True
+    rt = Runtime.__new__(Runtime)
+    rt.mind, rt.worlds, rt.forks = mind, {w.id: w}, {}
+    rt.set_model_only(True)
+    assert a.plan == []  # no instinct or reflex step survives the switch
+    assert b_.plan == [{"do": "gather", "what": "stone", "_origin": "model_generated", "_decision_id": "r0"}]  # its own
+    d = diag.of(w)
+    assert d.model_only_since == w.tick and d.model_only_dropped == 2
+    # the choice comes back: it is stale, never adopted, even if it was only sent after the switch
+    rec["rev_requested"] = b_.rev
+    b_.thinking, b_.plan = False, []
+    b_.pending_plan = {"steps": [{"do": "gather", "what": "clay"}], "goal": "clay"}
+    mind.hook(w, b_)
+    assert not any(s.get("what") == "clay" for s in b_.plan) and rec.get("outcome") == "stale"
+    assert all(str(s.get("_origin")).startswith("model") for s in b_.plan)  # and no instinct plan in its place
+    rt.set_model_only(False)
+    assert diag.of(w).model_only_since is None

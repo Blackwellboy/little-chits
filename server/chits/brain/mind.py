@@ -279,9 +279,13 @@ class Mind:
             a.pending_plan = None
             rec = getattr(a, "_decision", None)
             too_old = STALE_TICKS * max(1.0, getattr(self, "speed_scale", 1.0))
-            if rec is not None and (a.rev != rec["rev_requested"] or world.tick - rec["tick_requested"] > too_old):
-                # the world moved on while the model was thinking: don't act on an out-of-date intention
-                rec["stale_why"] = a.rev_why if a.rev != rec["rev_requested"] else "too old"
+            menu = self.model_only and rec is not None and rec.get("parse") == "choice"
+            if rec is not None and (menu or a.rev != rec["rev_requested"]
+                                    or world.tick - rec["tick_requested"] > too_old):
+                # the world moved on while the model was thinking: don't act on an out-of-date intention (and in a
+                # model-only run never on instinct's drafted option, even one asked for before the switch)
+                rec["stale_why"] = ("model-only: a menu choice" if menu else
+                                    a.rev_why if a.rev != rec["rev_requested"] else "too old")
                 self._resolve(rec, "stale", world.tick)
                 if not a.thinking:
                     self._ask(world, a, brain)
@@ -386,6 +390,28 @@ class Mind:
 
     def focused(self, brain: LLMBrain) -> bool:
         return bool(getattr(brain.cfg, "focus", False)) and not self.no_stand_in()  # an experiment's model decides everything
+
+    def start_model_only(self, world) -> int:
+        """Model-only switched on mid-game: every chit drops the steps its model didn't write itself (instinct,
+        reflex, filler, routine, duty, fallback and menu choices) and every request in flight goes stale (its rev is
+        bumped), so nothing from before the switch acts after it. The moment is recorded (diag.model_only_from).
+        Returns how many steps were dropped."""
+        own = ("model_generated", "model_repaired")
+        dropped = 0
+        for a in world.agents.values():
+            keep = [s for s in a.plan if s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler")]
+            dropped += len(a.plan) - len(keep)
+            a.plan = keep
+            if a.pending_plan is not None:
+                rec = getattr(a, "_decision", None)
+                if rec is not None and rec.get("parse") == "choice":
+                    a.pending_plan = None
+                    rec["stale_why"] = "model-only: a menu choice"
+                    self._resolve(rec, "stale", world.tick)
+            a.bump_rev("model-only switched on")
+        world.model_only = True
+        diag.model_only_from(world, dropped)
+        return dropped
 
     def no_stand_in(self) -> bool:
         """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""
