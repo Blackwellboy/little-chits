@@ -641,7 +641,9 @@ def advance(world, a: Agent, step: Dict[str, Any]) -> str:
     if not verb:
         return f"'{step.get('do')}' is not something a chit can do"
     if not world.rules.allows_verb(verb):  # (sim/rules.py)
-        return f"there is no religion in this world, so nobody can {verb}"
+        from .rules import refusal
+
+        return refusal(verb)
     step["do"] = verb
     s = step.setdefault("_s", {})
     s["ticks"] = s.get("ticks", 0) + 1

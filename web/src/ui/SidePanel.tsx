@@ -6,6 +6,7 @@ import { localStorageSet, useUI, worlds, type Tab } from "../state/store";
 import type { Stats, WorldEvent } from "../types";
 import { entryLines, type Entry } from "./encyclopedia";
 import { rowClicked } from "./listPosition";
+import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 
@@ -42,7 +43,7 @@ export function SidePanel() {
   return (
     <>
       <nav className="rail">
-        {([["progress", "🧭", "Progress"], ["why", "🐢", "Why slow?"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"]] as const).map(([t, i, l]) => (
+        {([["progress", "🧭", "Progress"], ["why", "🐢", "Why slow?"], ["chronicle", "📖", "Chronicle"], ["people", "👥", "People"], ["knowledge", "✦", "Knowledge"], ["stats", "📈", "Stats"], ["rules", "📜", "Rules"]] as const).map(([t, i, l]) => (
           <button key={t} className={tab === t ? "on" : ""} onClick={() => setTab(t)} title={l}><span>{i}</span><small>{l}</small></button>
         ))}
       </nav>
@@ -61,6 +62,7 @@ export function SidePanel() {
           {tab === "people" && <People world={primary} />}
           {tab === "knowledge" && <Knowledge metas={metas} />}
           {tab === "stats" && <StatsPanel metas={metas} />}
+          {tab === "rules" && <RulesPanel />}
         </section>
       )}
     </>

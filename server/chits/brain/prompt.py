@@ -98,7 +98,9 @@ def verb_guide(world) -> str:
         lines.append('{"do":"preach"}  (speak your belief to the chits around you; some may come to share it)')
     lines += [
         '{"do":"read"}  (learn from tablets at a library)',
-        '{"do":"study"}  (research at a library that holds tablets; enough study gives the village\'s scholars an idea for something new to make)',
+        ('{"do":"study"}  (research at a library that holds tablets; enough study gives the village\'s scholars an idea for something new to make)'
+         if world.rules.library_hints else
+         '{"do":"study"}  (study at a library that holds tablets: it trains scholars; new things come only from experimenting)'),
         '{"do":"inspect","target":"<structure id | chit name | carried item>"}  (study it to try to learn how it was made)',
         '{"do":"explore","dir":"N|S|E|W|NE|NW|SE|SW"}  {"do":"go","to":"x,y | name | id"}',
         '{"do":"refuel","target":"<campfire id>"}  (feed wood to a fire' + (', or charcoal, which burns far longer' if IT.ITEM_USES else '')
@@ -112,6 +114,7 @@ def verb_guide(world) -> str:
     from ..sim.agent import JOBS
 
     lines.append(f'Your reply may also include "job":"<one of {", ".join(JOBS)}>" to take up (or change) a trade.')
+    lines = [l for l in lines if not l.startswith('{"do":"invent"') or world.rules.invention]  # (sim/rules.py)
     return "\n".join("- " + l for l in lines)
 
 
@@ -447,7 +450,8 @@ def scene(world, a: Agent) -> str:
     if stale >= STALE_DAYS and a.home and a.hunger > 30 and not world.is_night:
         # a settled world can spend every plan on upkeep and never try anything new (World A: 21 days, 0 crafts)
         lines.append(f"Nothing new has been made or discovered around here for {stale} days. You have a roof and "
-                     "food: this is a good time to experiment with what you carry, or to invent something.")
+                     "food: this is a good time to experiment with what you carry"
+                     + (", or to invent something." if world.rules.invention else "."))
     mems = a.recall(8, keywords=[a.goal] if a.goal else None, now=t)
     if mems:
         lines.append("")
@@ -705,11 +709,12 @@ def compact_system_prompt(world, a: Agent) -> str:
     verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX
              and world.rules.allows_verb(v)]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
+    invent_line = ("You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts "
+                   "can do decides what it can be, and the purpose chooses among that.\n") if world.rules.invention else ""
     return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
             "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
             "kiln, furnace, workshop, forge, factory, mill or loom). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
-            "You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts can do "
-            "decides what it can be, and the purpose chooses among that.\n"
+            f"{invent_line}"
             'Reply with ONE JSON object only: {"thought":"...","goal":"...","plan":[{"do":"gather","what":"wood","qty":4},...]}\n'
             "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, site, near, dir, text, name, purpose, "
             "give and get (trade), intent (sail).\n"

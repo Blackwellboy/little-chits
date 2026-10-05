@@ -33,7 +33,7 @@ export type Stats = {
 };
 
 export type WorldMeta = {
-  id: string; name: string; label: string; culture: "direct" | "stigmergy"; flags: Record<string, boolean>;
+  id: string; name: string; label: string; culture: "direct" | "stigmergy"; flags: Record<string, boolean>; rules?: Record<string, unknown>;
   size: number; seed: number;
 };
 

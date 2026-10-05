@@ -8,7 +8,7 @@ A world's **rules** say what kinds of civilisation are possible in it. Two examp
   - It appears in `GET /api/rules`, in each world's metadata (`world_meta`) and in the run manifest.
   - A save file whose worlds have different rules is refused as "not one game".
 - **Versioned.**
-  - `RULES_VERSION` (now 1) is saved inside the record.
+  - `RULES_VERSION` (now 2) is saved inside the record.
   - A record from a newer build is refused, never reinterpreted, and so is an unknown rule name or a value that isn't `true` or `false`.
   - A record from an older version comes forward with each missing rule at its default.
 - **Legacy by default.** Each rule's default is how worlds behaved before the rule existed.
@@ -21,6 +21,37 @@ A world's **rules** say what kinds of civilisation are possible in it. Two examp
 | Rule | Default | Label | Off means |
 |---|---|---|---|
 | `religion` | on | Religion & belief can emerge | No faith can be founded, joined, inherited, preached, prayed to or read from a tablet. Shrines can't be imagined, taught or built, and prompts say nothing of belief. |
+| `invention` | on | Chits can invent new things | No named inventions. `invent` is refused ("nobody in this world invents new things (they can still experiment)") and never offered or described. Experimenting stays: it is how the world's own recipes are discovered. |
+| `library_hints` | on | Libraries may hint at undiscovered technology | Studying still trains scholars, but no insight builds up and the scholars never get an idea of a recipe nobody knows. |
+| `lore_rescue` | on | Protect endangered knowledge | The last old keeper of a recipe gets no reminder in its prompt and no instinct plan to teach it or write it down. Knowledge can die out, and that is still recorded. A printing press the chits built still prints: it is their own technology, not a rescue. |
+| `storyteller` | on | The storyteller may stir things up | No play-mode storyteller events: hard winters, droughts, sickness, fires, a wolf pack, a meteorite, a stranger, a bumper harvest. Experiments never have them anyway. |
+| `wanderers` | on | Wanderers may join a village | No newcomers wander into a shrinking village. Experiments never have them anyway. |
+
+**Version history.**
+- Version 1 had `religion` only.
+- Version 2 added the other five rules.
+
+A version-1 record comes forward with the new rules at their defaults, which is what such a world always had.
+
+**Considered and not made rules (yet).**
+- **Technological ages** drive village projects and much of the game. They can't be switched off cleanly.
+- **Elections and government:** a chief names the village's projects. Without one, projects need another way to be chosen first.
+- **Combat and theft:** wolves are nature, and watchtowers and lamps exist for them. A rule here needs to separate chit-against-chit conflict from the wild first (issue #11).
+- **Contact between islands** is already a match setting (the game mode and the "Allow contact" choice), and it is recorded in the run manifest.
+- **Markets:** the market is a building whose only effect is on trade. It belongs with trade, if trade ever becomes a rule.
+
+**Presets** (New Game; `GET /api/rules` lists them):
+
+| Preset | Rules | Model-led | For |
+|---|---|---|---|
+| Standard | all on | no | Little Chits as intended |
+| Model-led | all on | yes | the model supplies the intelligence; the chit keeps its body (docs/MODEL_LED.md) |
+| Research Clean | religion, library hints, lore rescue, storyteller and wanderers **off**; invention on | yes | fewer hidden mechanics. Closer to a clean test, but play is not a controlled experiment, so use the Lab |
+| Sandbox | all on | no | fun rather than claims |
+
+Research Clean keeps invention, because inventing is the chits' own act. It removes the shared mechanics that blur a causal claim: a belief system that isn't research-ready, hints from outside the chits, rescue nudges, and outside events. The storyteller and wanderers already never run in experiments.
+
+The running game shows its rules, read-only, in the 📜 **Rules** panel.
 
 ### Religion off: every path, and where it is closed
 

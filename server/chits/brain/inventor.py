@@ -117,7 +117,7 @@ def option(world, a: Agent) -> Optional[Dict[str, Any]]:
     """One invention this chit could make now from what it carries, as a plan a model can pick: the first purpose it
     has a use for that some two or three of its things can serve. None for a chit without a model, a child, or when
     nothing it carries makes anything it lacks."""
-    if not model_driven(a) or a.is_child(world.tick):
+    if not model_driven(a) or a.is_child(world.tick) or not world.rules.invention:
         return None
     want = wanted(world, a)
     have = parts(world, a)

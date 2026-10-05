@@ -284,7 +284,7 @@ def lore_options(ins, world, a: Agent, rng) -> List[Opt]:
     from ..sim import lore
     from .instinct import _craft_steps, _need_steps
 
-    keys = lore.last_of(world, a)
+    keys = lore.last_of(world, a) if world.rules.lore_rescue else []  # (sim/rules.py)
     if not keys:
         return []
     k = keys[0]

@@ -5,7 +5,7 @@ import { WorldData } from "./world";
 import { pickTheme, setTheme, type ThemeId } from "../theme";
 import { addToasts, type Toast } from "./milestones";
 
-export type Tab = "progress" | "why" | "chronicle" | "people" | "knowledge" | "stats" | null;
+export type Tab = "progress" | "why" | "chronicle" | "people" | "knowledge" | "stats" | "rules" | null;
 
 type UI = {
   conn: ConnStatus;
