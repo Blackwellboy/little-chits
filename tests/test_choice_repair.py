@@ -9,7 +9,7 @@ import pytest
 from chits.brain import mind as M
 from chits.brain.mind import Mind
 from chits.sim import actions
-from tests.test_action_repair import fail_step, setup as full_setup
+from test_action_repair import fail_step, setup as full_setup  # noqa: E402  (a sibling test module, as in test_model_only)
 
 LINE = "YOUR LAST PLAN FAILED"
 
