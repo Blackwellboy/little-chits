@@ -280,8 +280,19 @@ export function BrainsModal() {
                 <option value="full">Full (best for 14B+ models)</option>
                 <option value="compact">Compact (small models or short context)</option>
                 <option value="choose">Choose (fastest: the model picks one of a few drafted plans · slow GPUs)</option>
+                <option value="cascade">Cascade (chooses by letter; writes its own plan when unsure or it has its own idea)</option>
               </select>
             </label>
+            {form.prompt_style === "cascade" && (
+              <label title="A two-level mind (docs/TWO_LEVEL.md): this brain answers the one-letter choices, and the plans it escalates are written by another model. If that model is down, the choice runs; no other model stands in.">Plans written by
+                <select value={form.escalate_to ?? ""} onChange={(e) => setForm({ ...form, escalate_to: e.target.value })}>
+                  <option value="">This model itself</option>
+                  {(status?.brains ?? []).filter((b: any) => b.config.id !== form.id).map((b: any) => (
+                    <option key={b.config.id} value={b.config.id}>{b.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="check"><input type="checkbox" checked={form.disable_thinking ?? false} onChange={(e) => setForm({ ...form, json_mode: form.json_mode ?? false, disable_thinking: e.target.checked, touched: true })} /> Ask reasoning models (Qwen3 etc.) to skip long thinking</label>
             <label className="check"><input type="checkbox" checked={form.json_mode ?? false} onChange={(e) => setForm({ ...form, disable_thinking: form.disable_thinking ?? false, json_mode: e.target.checked, touched: true })} /> Request JSON mode (turned off automatically if the server doesn't support it)</label>
             {form.detect !== false && !form.touched && <small className="muted">Not tested yet. The first Test sets these two to what the model server takes, unless you set them here.</small>}

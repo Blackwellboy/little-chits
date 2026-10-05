@@ -1029,12 +1029,18 @@ class BrainBody(BaseModel):
     prompt_style: Optional[str] = "full"
     escalate_below: Optional[float] = 0.5
     escalate_share: Optional[float] = 0.3
+    escalate_to: Optional[str] = ""  # cascade: the brain its escalated plans go to (docs/TWO_LEVEL.md); "" = itself
     focus: Optional[bool] = True
 
 
 def _in_experiment(bid: str) -> bool:
+    """A brain a world of an experiment thinks with, or the planner one of them hands its plans to (escalate_to)."""
     r = R()
-    return r.contract == "experiment" and bid in r.mind.world_brain.values()
+    if r.contract != "experiment":
+        return False
+    used = set(r.mind.world_brain.values())
+    used |= {getattr(b.cfg, "escalate_to", "") for i, b in r.mind.brains.items() if i in used} - {""}
+    return bid in used
 
 
 def _locked_brain(bid: str) -> None:

@@ -228,3 +228,27 @@ def test_a_planner_that_answers_nonsense_leaves_the_choice_to_run():
     rec = _escalate(m, chosen)
     assert a.pending_plan is not None and rec["choice"]["denial"] == "planner unavailable"
     assert rec["planner_error"] == "an unreadable reply" and rec["planner_parse"] == "failed" and rec["parse"] == "choice"
+
+
+def test_the_game_sets_a_planner_and_an_experiment_locks_it(tmp_path, monkeypatch):
+    """Codex on #144: the brain API dropped escalate_to, and an experiment left the planner editable."""
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("CHITS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CHITS_SPEED", "0")
+    monkeypatch.setenv("CHITS_AUTODETECT", "0")
+    monkeypatch.delenv("CHITS_MODEL_URL", raising=False)
+    from chits.app import R, app
+
+    with TestClient(app) as c:
+        r = R()
+        assert c.post("/api/brains", json={"id": "plan", "label": "Planner", "base_url": "http://127.0.0.1:9/v1",
+                                            "model": "p"}).status_code == 200
+        assert c.post("/api/brains", json={"id": "jev", "label": "Jev", "base_url": "http://127.0.0.1:9/v1",
+                                            "model": "j", "prompt_style": "cascade", "escalate_to": "plan"}).status_code == 200
+        assert r.mind.brains["jev"].cfg.escalate_to == "plan"
+        assert c.post("/api/reset", json={"seed": 5, "chits": 4, "size": 64, "mode": "single", "brains": {"A": "jev"},
+                                          "contract": "experiment"}).status_code == 200
+        assert c.post("/api/brains", json={"id": "plan", "label": "Changed", "base_url": "http://127.0.0.1:9/v1",
+                                            "model": "q"}).status_code == 409
+        assert r.mind.brains["plan"].cfg.model == "p"
