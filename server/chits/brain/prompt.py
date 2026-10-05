@@ -79,7 +79,9 @@ def verb_guide(world) -> str:
     if world.flags.get("teach"):
         lines.append('{"do":"teach","to":"<name>","what":"<item or structure you know>"}')
     if world.flags.get("write"):
-        lines.append('{"do":"write","what":"<item or structure you know> | belief"}  (needs a clay tablet; best at a library; "belief" writes down your belief\'s teachings)')
+        lines.append('{"do":"write","what":"<item or structure you know> | belief"}  (needs a clay tablet; best at a library; "belief" writes down your belief\'s teachings)'
+                     if world.rules.religion else
+                     '{"do":"write","what":"<item or structure you know>"}  (needs a clay tablet; best at a library)')
     lines.append('{"do":"mark","what":"food|wood|stone|clay|ore|fish|danger|home|build|meet"}  (put up a sign here for others; costs 1 wood)')
     lines.append('{"do":"shelter"}  (get indoors or by a fire in bad weather)')
     lines.append('{"do":"prospect","what":"ore|sand|clay","dir":"N|NE|E|SE|S|SW|W|NW"}  (a long trip out to find what is '
@@ -90,8 +92,9 @@ def verb_guide(world) -> str:
         lines.append('{"do":"trade","at":"stores"}  (a trader from over the sea: swap the goods you carried over at the stores here '
                      'for goods of the same worth, then {"do":"sail"} home in your boat)')
     lines.append('{"do":"hunt","what":"deer|wolf"}  (needs a spear; deer give meat)  {"do":"tame"}  (lure a wild sheep into a pen with grain or berries; tame sheep give wool)')
-    lines.append('{"do":"pray"} or {"do":"pray","target":"<shrine id>"}  (spend quiet time at a shrine)')
-    if world.flags.get("say"):
+    if world.rules.religion:  # (a world without religion: no word of prayer, preaching or belief, sim/rules.py)
+        lines.append('{"do":"pray"} or {"do":"pray","target":"<shrine id>"}  (spend quiet time at a shrine)')
+    if world.flags.get("say") and world.rules.religion:
         lines.append('{"do":"preach"}  (speak your belief to the chits around you; some may come to share it)')
     lines += [
         '{"do":"read"}  (learn from tablets at a library)',
@@ -699,7 +702,8 @@ def compact_system_prompt(world, a: Agent) -> str:
     """A short system prompt for small or short-context models: same reply contract, one-line verb list."""
     from ..sim.actions import VERBS
 
-    verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX]
+    verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX
+             and world.rules.allows_verb(v)]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
     return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
             "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
@@ -876,7 +880,9 @@ def reflection_messages(world, a: Agent) -> List[Dict[str, str]]:
                       + (f"Now: {now}" if now else "There is no village project now."))
     bel = getattr(world, "beliefs", {}).get(a.belief)
     around = beliefs_around(world, a)
-    if bel:
+    if not world.rules.religion:
+        faith = ""  # (a world without religion: the reflection doesn't invite a belief)
+    elif bel:
         faith = f'You follow {bel["name"]}: "{bel["tenet"]}". If you name a belief, name this one.'
     elif around:
         listed = "\n".join(f'- {b["name"]} (founded by {b["founder_name"]}, {len(b["followers"])} '

@@ -640,6 +640,8 @@ def advance(world, a: Agent, step: Dict[str, Any]) -> str:
     verb = normalize_verb(step.get("do"))
     if not verb:
         return f"'{step.get('do')}' is not something a chit can do"
+    if not world.rules.allows_verb(verb):  # (sim/rules.py)
+        return f"there is no religion in this world, so nobody can {verb}"
     step["do"] = verb
     s = step.setdefault("_s", {})
     s["ticks"] = s.get("ticks", 0) + 1
@@ -2986,7 +2988,7 @@ def _do_write(world, a: Agent, step, s) -> str:
     if not world.flags.get("write"):
         return "in this world chits cannot leave written messages"
     what_raw = str(step.get("what") or "").strip().lower()
-    bel = world.beliefs.get(a.belief)
+    bel = world.beliefs.get(a.belief) if world.rules.religion else None
     if bel and (what_raw in ("belief", "my belief", "faith", "scripture", "teachings", "tenet") or what_raw == bel["name"].lower()
                 or what_raw == f"belief:{a.belief}"):
         kk = f"belief:{a.belief}"

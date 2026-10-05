@@ -885,6 +885,18 @@ class Reset(BaseModel):
     # a content pack for the new match (docs/modding.md): the pack's JSON itself, never a path. Left out: keep the
     # current pack. {}: play without one. Refused in experiments.
     pack: Optional[Dict[str, Any]] = None
+    # the new match's world rules (sim/rules.py, docs/WORLD_RULES.md), fixed for its life. Left out: keep the current
+    rules: Optional[Dict[str, Any]] = None
+
+
+@app.get("/api/rules")
+def get_rules():
+    """What rules a world can have (labels, defaults, meanings) and the rules the running worlds were made with."""
+    from .sim import rules as RL
+
+    r = R()
+    return {**RL.describe(), "current": r.rules.to_dict(),
+            "worlds": {wid: w.rules.to_dict() for wid, w in r.worlds.items()}}
 
 
 @app.post("/api/reset")
@@ -903,7 +915,8 @@ def reset(body: Reset):
     if body.contract is not None and body.contract not in CONTRACTS:
         raise HTTPException(400, f"contract must be one of {', '.join(CONTRACTS)}")
     try:
-        r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact, body.pack)
+        r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact, body.pack,
+                body.rules)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "worlds": [views.world_meta(w) for w in r.worlds.values()]}
