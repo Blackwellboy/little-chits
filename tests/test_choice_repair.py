@@ -208,3 +208,15 @@ def test_a_repaired_plan_counts_only_its_corrective_first_step():
 
     out = repair_outcomes(w)
     assert out["repaired_steps_ok"] == 1 and out["repaired_steps_failed"] == 1
+
+
+def test_failure_loops_are_the_models_own():
+    """Codex on #142: loops from reflexes and instinct were counted in the model's failure_loops."""
+    from chits import diag
+    from chits.lab.run import repair_outcomes
+    from chits.sim.world import World
+
+    w = World("A", "A", 3, "direct", 64, 2)
+    d = diag.of(w)
+    d.loops.update({"model": 2, "reflex": 5, "instinct": 3})
+    assert repair_outcomes(w)["failure_loops"] == 2

@@ -383,7 +383,7 @@ def _run_one(spec: ExperimentSpec, arm: Arm, rd: Path, seed: int, label: str, t0
 def repair_outcomes(w) -> Dict[str, Any]:
     """What became of the model's failed steps (research plan item 40): how many of its steps failed, how many
     requests carried the simulator's reason (0 unless the arm declares repair), how each repaired plan's first step fared,
-    and how often a chit failed the same way LOOP_N times in a row. For a model arm."""
+    and how often a model's own step failed the same way LOOP_N times in a row. For a model arm."""
     from .. import diag
 
     d = diag.of(w)
@@ -394,7 +394,8 @@ def repair_outcomes(w) -> Dict[str, Any]:
             "model_step_failure_rate": round(model_failed / (model_failed + model_ok), 3) if model_failed + model_ok else 0.0,
             # the corrective first step of each repaired plan (its later steps would inflate the count, Codex #142)
             "repairs_asked": d.repairs_asked, "repaired_steps_ok": d.repaired_first["ok"],
-            "repaired_steps_failed": d.repaired_first["fail"], "failure_loops": sum(d.loops.values())}
+            "repaired_steps_failed": d.repaired_first["fail"],
+            "failure_loops": d.loops.get("model", 0)}  # (the model's own loops: a reflex's are not its doing, Codex #142)
 
 
 def opportunities(w, chit_ticks: int, requests: int, wait_s: float = 0.0) -> Dict[str, Any]:
