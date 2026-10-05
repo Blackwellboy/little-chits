@@ -104,7 +104,7 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
     row.update(p.report())
     if report is not None:
         style = "full" if mind_opts.get("model_only") else mind_opts.get("style", "cascade")
-        row["mind"] = {"brain": mind, "style": style,
+        row["mind"] = {"brain": mind, "style": style, "model_led": bool(mind_opts.get("model_led")),
                        "hashseed": os.environ.get("PYTHONHASHSEED"), **report}
     return row, p
 
@@ -136,7 +136,13 @@ def main(argv=None) -> None:
     g.add_argument("--model-only", action="store_true", help="diagnostic: nothing from instinct covers for the model "
                    "(the full prompt whatever --style says, no instinct plans, no body reflexes); counts what the "
                    "reflexes would have done. Never for comparisons")
+    g.add_argument("--model-led", action="store_true", help="model-led play (docs/MODEL_LED.md): no instinct plans, filler or "
+                   "fallback for the model's chits; the body's reflexes stay")
     args = ap.parse_args(argv)
+    if args.model_led and args.model_only:
+        ap.error("--model-led and --model-only are different modes: pick one")
+    if args.model_led and not args.mind:
+        ap.error("--model-led needs --mind (scripted or a URL)")
     if args.model_only and not args.mind:
         ap.error("--model-only needs --mind (scripted or a URL): an instinct run has no model to leave alone")
     if args.mind and "PYTHONHASHSEED" not in os.environ:
@@ -160,7 +166,7 @@ def main(argv=None) -> None:
         opts = {"style": args.style, "slots": args.slots, "bad_rate": args.bad_rate,
                 "bad_kinds": tuple(k for k in args.bad_kinds.split(",") if k) or None,
                 "plan_ticks": args.plan_ticks, "choice_ticks": args.choice_ticks, "loop_after": args.loop_after,
-                "tick_seconds": args.tick_seconds, "model_only": args.model_only}
+                "tick_seconds": args.tick_seconds, "model_only": args.model_only, "model_led": args.model_led}
     try:
         row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind,
                      json.loads(args.rules) if args.rules != "" else None, **opts)

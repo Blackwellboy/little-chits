@@ -47,6 +47,9 @@ class WorldDiag:
         self.reflex_would_ticks: Counter = Counter()   # chit-ticks the need stood
         self.reflex_would_onsets: Counter = Counter()  # times it began (a chit with no such need the tick before)
         self.reflex_would_last: Dict[str, Optional[str]] = {}  # agent id -> the kind of need it had last tick
+        self.model_led_since: Optional[int] = None  # the tick model-led was switched on (None: off)
+        self.model_led_dropped = 0                  # instinct steps dropped from model-driven chits under model-led
+        self.unavailable_ticks = 0                  # chit-ticks a model's chit spent with its mind down
         self.model_only_since: Optional[int] = None  # the tick model-only was switched on mid-game (None: off)
         self.model_only_dropped = 0  # steps the model didn't write, dropped at that moment
 
@@ -268,6 +271,19 @@ def capability_use(world) -> Dict[str, Dict[str, int]]:
     return out
 
 
+def model_led_from(world, dropped: Optional[int]) -> None:
+    """Model-led switched on (``dropped``: the instinct steps dropped then) or off (None)."""
+    d = of(world)
+    if dropped is None:
+        d.model_led_since = None
+        return
+    d.model_led_since, d.model_led_dropped = world.tick, d.model_led_dropped + dropped
+
+
+def model_led_dropped(world, n: int) -> None:
+    of(world).model_led_dropped += n
+
+
 def model_only_from(world, dropped: Optional[int]) -> None:
     """Model-only switched on (``dropped``: the steps the model didn't write, dropped then) or off (None). Reports
     count a model-only stretch from this tick; the would-have-fired counts restart with it."""
@@ -458,6 +474,9 @@ def report(rt) -> Dict[str, Any]:
         }
         if d.reflex_would_last:  # a model-only (diagnostic) world: what the reflexes it ran without would have done
             wd["reflex_would"] = reflex_would_summary(w)
+        if d.model_led_since is not None:
+            wd["model_led"] = {"since_tick": d.model_led_since, "dropped_steps": d.model_led_dropped}
+        wd["mind_unavailable_pct"] = _pct(d.unavailable_ticks, d.model_ticks)
         if d.model_only_since is not None:
             wd["model_only"] = {"since_tick": d.model_only_since, "dropped_steps": d.model_only_dropped}
         out["worlds"][wid] = wd
