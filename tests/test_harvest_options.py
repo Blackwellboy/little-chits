@@ -66,3 +66,29 @@ def _is_harvest_and_store(w, o):
     steps = o.get("steps") or []
     return any(s.get("do") == "harvest" for s in steps) and any(
         s.get("do") == "store" and w.norm_item(s.get("what")) == "grain" for s in steps)
+
+
+def test_a_chit_harvesting_some_other_named_farm_takes_nothing_from_this_one():
+    # (Codex on #113): a harvest names its farm, or takes the nearest ripe one to its harvester
+    w, a, b, farm = _farm_world()
+    b.plan = [{"do": "harvest", "target": "s9999"}, {"do": "store", "what": "grain"}]
+    assert _can_run(w, a, HARVEST_AND_STORE)
+
+
+def test_two_chits_naming_the_same_farm_leave_the_other_ripe_farm_free():
+    w = World("A", "A", 3, "direct", 64, 3)
+    a, b, c = list(w.agents.values())[:3]
+    farms = []
+    for dx in (3, -8):
+        pos = w.find_site("farm", a.x + dx, a.y, 10)
+        f = w.place_site("farm", pos[0], pos[1], a)
+        w.complete_structure(f, a)
+        f.planted, f.growth = True, 1.0
+        farms.append(f)
+    a.inventory.clear()
+    for o in (b, c):
+        o.x, o.y = a.x, a.y + 1
+        o.plan = [{"do": "harvest", "target": farms[0].id}]
+    assert _can_run(w, a, HARVEST_AND_STORE)  # (the second farm is nobody's)
+    c.plan = [{"do": "harvest", "target": farms[1].id}]
+    assert not _can_run(w, a, HARVEST_AND_STORE)

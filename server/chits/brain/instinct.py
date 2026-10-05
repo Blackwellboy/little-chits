@@ -55,21 +55,37 @@ def _harvest_open(world, a: Agent) -> bool:
     game offered it to every chit near a ripe farm: in its last week 14 of 20 such plans found the farm harvested by
     others first and sowed instead, and the other 6 had room for 0-5 grain, left the rest on the ground and mostly ate
     what they held on the way. Then "store grain" failed ("I'm not carrying any grain", 159 times by day 107). Run
-    forward 3 days from that save (3 seeds, a stand-in chooser), store-grain failures fell from 35 to 1."""
-    ripe = [st for st in world.structures_near(a.x, a.y, HARVEST_REACH, "farm") if st.functional and st.planted
-            and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick]
+    forward 3 days from that save (3 seeds, a stand-in chooser), store-grain failures fell from 35 to 7."""
+    ripe = _ripe_farms(world, a)
     if not ripe:
         return False
     grain = world.item("grain")
     if a.free_space() < HARVEST_YIELD * (grain.weight if grain else 1):
         return False
+    taken = set()
+    for o in world.agents.values():
+        if o.id != a.id:
+            taken.add(_farm_taken_by(world, o))
+    return any(st.id not in taken for st in ripe)
 
-    def harvesting(o: Agent) -> bool:
-        steps = list(o.plan[:2]) + list(((o.pending_plan or {}).get("steps") or [])[:2])
-        return any(s.get("do") == "harvest" for s in steps) and any(
-            max(abs(o.x - st.x), abs(o.y - st.y)) <= HARVEST_REACH for st in ripe)
 
-    return sum(1 for o in world.agents.values() if o.id != a.id and harvesting(o)) < len(ripe)
+def _ripe_farms(world, a: Agent) -> List[Any]:
+    """The ripe farms a harvest step with no target looks through, nearest first (sim.actions._do_harvest)."""
+    return [st for st in world.structures_near(a.x, a.y, HARVEST_REACH, "farm") if st.functional and st.planted
+            and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick]
+
+
+def _farm_taken_by(world, o: Agent) -> Optional[str]:
+    """The farm a chit set on a harvest (its plan's next steps, or the plan it is about to adopt) will take: the one it
+    names, or with none named the nearest ripe one to it."""
+    steps = list(o.plan[:2]) + list(((o.pending_plan or {}).get("steps") or [])[:2])
+    step = next((s for s in steps if s.get("do") == "harvest"), None)
+    if step is None:
+        return None
+    if step.get("target"):
+        return str(step["target"]).strip()
+    near = _ripe_farms(world, o)
+    return near[0].id if near else None
 
 
 def _can_run(world, a: Agent, p: Dict[str, Any]) -> bool:
