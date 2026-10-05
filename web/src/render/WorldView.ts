@@ -25,7 +25,7 @@ class Tex {
 
 type ChitView = {
   root: Container; body: Sprite; outline: Sprite; eyes: Sprite; feet: [Sprite, Sprite]; shadow: Sprite;
-  carry: Sprite; tool: Sprite; basket: Sprite; phase: number; blinkAt: number; lastAct: string;
+  carry: Sprite; tool: Sprite; basket: Sprite; halo: Sprite; phase: number; blinkAt: number; lastAct: string;
 };
 
 type Chunk = { cx: number; cy: number; terrain?: Sprite; autumn?: Sprite; snow?: Sprite;
@@ -654,9 +654,10 @@ export class WorldView {
     const basket = new Sprite(this.tex.get("i:basket", () => A.iconCanvas("basket"))); basket.anchor.set(0.5, 1); basket.visible = false;
     const carry = new Sprite(); carry.anchor.set(0.5, 1); carry.visible = false;
     const tool = new Sprite(); tool.anchor.set(0.2, 0.9); tool.visible = false;
-    root.addChild(shadow, basket, f1, f2, outline, body, eyes, carry, tool);
+    const halo = new Sprite(this.tex.get("ring", A.ringCanvas)); halo.anchor.set(0.5); halo.tint = 0xffd24a; halo.visible = false;
+    root.addChild(shadow, halo, basket, f1, f2, outline, body, eyes, carry, tool);
     this.objects.addChild(root);
-    return { root, body, outline, eyes, feet: [f1, f2], shadow, carry, tool, basket, phase: Math.random() * 10, blinkAt: 0, lastAct: "" };
+    return { root, body, outline, eyes, feet: [f1, f2], shadow, carry, tool, basket, halo, phase: Math.random() * 10, blinkAt: 0, lastAct: "" };
   }
 
   private removeChit(id: string) {
@@ -1094,6 +1095,9 @@ export class WorldView {
       c.body.scale.set(1 / squash * (sleeping ? 1.12 : 1), squash * (sleeping ? 0.8 : 1));
       c.outline.scale.copyFrom(c.body.scale);
       c.body.y = -bob; c.outline.y = -bob + 1;
+      const possessed = !!(a as any).possessed;
+      c.halo.visible = possessed;
+      if (possessed) { c.halo.position.set(0, -6); c.halo.scale.set(1 + Math.sin(now / 180) * 0.08); }
       theme().chit.placeEyes(c.eyes, c.body, bob, sleeping, moving);
       c.feet[0].x = -3 + (moving ? Math.sin(c.phase) * 1.5 : 0); c.feet[0].y = 0;
       c.feet[1].x = 3 - (moving ? Math.sin(c.phase) * 1.5 : 0); c.feet[1].y = 0;
@@ -1191,7 +1195,7 @@ export class WorldView {
       const head = p.y - (a.child ? 13 : 18) * Z;
       l.name.visible = onScreen && (showNames || selected || hovered);
       if (l.name.visible) {
-        l.name.text = a.name;
+        l.name.text = (a as any).possessed ? "🎮 " + a.name : a.name;
         l.name.position.set(p.x, head - 2);
         if (l.sel !== selected) { l.sel = selected; l.name.style = selected ? LABEL_SEL : LABEL; }
       }

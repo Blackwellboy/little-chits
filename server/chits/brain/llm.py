@@ -35,6 +35,7 @@ class BrainConfig:
     # Tuned for 8-30B instruct models driving ~18 chits: enough parallelism to keep a GPU busy,
     # warm enough to vary plans, room for a plan plus a short thought without truncation.
     max_concurrency: int = 6
+    max_ai_chits: int = 0  # 0 = unlimited: cap how many living chits this brain may ask at once (the rest stay on instinct)
     timeout: float = 90.0
     temperature: float = 0.7
     max_tokens: int = 600
@@ -49,6 +50,8 @@ class BrainConfig:
     focus: bool = True  # play games: plans that are only eating, sleeping, resting, sheltering or hauling are left to
     #                     instinct, so the model's time goes to the decisions that matter (never in an experiment)
     detect: bool = False  # added without saying what its server takes: its first Test finds out (brain/checkup.py)
+    # Optional gameplay flavour appended to every system prompt for this brain (Mad Max vs egalitarian, etc.).
+    instructions: str = ""
 
     def key(self) -> str:
         k = self.api_key or ""

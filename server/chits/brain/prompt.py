@@ -20,7 +20,13 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-05.2"
+PROMPT_VERSION = "2026-10-05.3"
+
+
+def with_instructions(text: str, instructions: str = "") -> str:
+    """Append optional per-brain gameplay instructions from brains.json (BrainConfig.instructions)."""
+    extra = (instructions or "").strip()
+    return text if not extra else f"{text}\n\nGameplay instructions:\n{extra}"
 TOWN_WORDS = " (only a town can build one)"  # after a town-life building's blurb while buildings.TOWN_GATE is on
 
 
@@ -115,7 +121,7 @@ def verb_guide(world) -> str:
     return "\n".join("- " + l for l in lines)
 
 
-def system_prompt(world, a: Agent) -> str:
+def system_prompt(world, a: Agent, instructions: str = "") -> str:
     culture = (
         "In this world chits can talk, teach each other and write on tablets."
         if world.flags.get("say") else
@@ -124,7 +130,7 @@ def system_prompt(world, a: Agent) -> str:
     )
     # Everything up to "Steps:" is the same for every chit in a world, and the chit's own lines come last, so
     # model servers can reuse the shared start of the prompt (prefix caching) instead of re-reading it each time.
-    return f"""You are the mind of a small creature called a chit, living with other chits in a wild world.
+    body = f"""You are the mind of a small creature called a chit, living with other chits in a wild world.
 Nobody tells you what to become — you decide.
 The world follows real, consistent rules of nature. Only what nature allows succeeds; you'll be told what happened.
 There is no recipe book. New items are discovered by EXPERIMENTING (combining carried items, sometimes at a fire,
@@ -141,6 +147,7 @@ gather what a step needs before the step that needs it. Steps:
 {verb_guide(world)}
 
 You are {a.name}. Your nature: {a.personality()}."""
+    return with_instructions(body, instructions)
 
 
 # what a thing does just by being carried, where no tool class says it (sim/actions.py: harvest, gather)
@@ -228,7 +235,7 @@ CHIEF_SYSTEM = ("You are the chief of a small village of creatures. Choose the o
                 "on next. Answer with the letter of your choice only.")
 
 
-def chief_project_messages(world, a: Agent, options: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+def chief_project_messages(world, a: Agent, options: List[Dict[str, Any]], instructions: str = "") -> List[Dict[str, str]]:
     """The village's next project, put to its chief as a one-letter choice."""
     from ..sim import projects
 
@@ -237,7 +244,8 @@ def chief_project_messages(world, a: Agent, options: List[Dict[str, Any]]) -> Li
             + (f"Your ambition: {a.ambition}\n" if getattr(a, "ambition", "") else "")
             + (f"{store_line(world, a)}\n" if store_line(world, a) else "")
             + "What should the village work on together next?\n" + "\n".join(rows) + "\nAnswer with one letter.")
-    return [{"role": "system", "content": CHIEF_SYSTEM}, {"role": "user", "content": body}]
+    return [{"role": "system", "content": with_instructions(CHIEF_SYSTEM, instructions)},
+            {"role": "user", "content": body}]
 
 
 VOTE_SYSTEM = ("You are a creature in a small village choosing its chief. Back the one you want to lead. Answer with "
@@ -605,7 +613,7 @@ CHOICE_SYSTEM = ("You are the mind of a small creature called a chit, in a wild 
 
 
 def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bool = False,
-                    repair: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+                    repair: Optional[Dict[str, Any]] = None, instructions: str = "") -> List[Dict[str, str]]:
     """Choose mode (JEV-style): the model reads the scene and picks one of a few drafted plans by letter. One output
     token instead of ~90: on the RTX 3090 a decision took 6 s instead of 25 s. The system prompt is the same for
     every chit, so servers can reuse it from their prompt cache. `repair`: its last choice failed (repair_line)."""
@@ -615,7 +623,7 @@ def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bo
     if own_idea:
         rows.append(f"{LETTERS[len(options)]}) {OWN_IDEA}")
     head = f"You are {a.name}. Your nature: {a.personality()}.\n"
-    return [{"role": "system", "content": CHOICE_SYSTEM},
+    return [{"role": "system", "content": with_instructions(CHOICE_SYSTEM, instructions)},
             {"role": "user", "content": head + choice_scene(world, a) + (repair_line(repair) if repair else "")
              + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
              + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
@@ -651,11 +659,12 @@ def body_line(world, a: Agent) -> str:
     return " ".join(words) or "Your body is fine: no urgent needs."
 
 
-def messages(world, a: Agent, style: str = "full") -> List[Dict[str, str]]:
+def messages(world, a: Agent, style: str = "full", instructions: str = "") -> List[Dict[str, str]]:
     if style == "compact":
-        return [{"role": "system", "content": compact_system_prompt(world, a)},
+        return [{"role": "system", "content": compact_system_prompt(world, a, instructions=instructions)},
                 {"role": "user", "content": compact_scene(world, a)}]
-    return [{"role": "system", "content": system_prompt(world, a)}, {"role": "user", "content": scene(world, a)}]
+    return [{"role": "system", "content": system_prompt(world, a, instructions=instructions)},
+            {"role": "user", "content": scene(world, a)}]
 
 
 def with_repair(msgs: List[Dict[str, str]], rep: Dict[str, Any]) -> List[Dict[str, str]]:
@@ -698,14 +707,14 @@ _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
 _REFLEX = ("warm_up", "wander")  # the simulator's own reflexes: never something to ask a model for
 
 
-def compact_system_prompt(world, a: Agent) -> str:
+def compact_system_prompt(world, a: Agent, instructions: str = "") -> str:
     """A short system prompt for small or short-context models: same reply contract, one-line verb list."""
     from ..sim.actions import VERBS
 
     verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX
              and world.rules.allows_verb(v)]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
-    return (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
+    body = (f"You are a small creature (a chit) in a wild world with real rules of nature. You decide what to do.{talk}\n"
             "Nothing is given: discover new items by EXPERIMENTING with 1-5 carried items (sometimes at a station: fire, "
             "kiln, furnace, workshop, forge, factory, mill or loom). Item properties are clues. Tools matter. Winter is cold and nothing grows.\n"
             "You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts can do "
@@ -714,6 +723,7 @@ def compact_system_prompt(world, a: Agent) -> str:
             "The plan has 2-6 steps. Step fields: do, what, qty, with (list), at, to, target, site, near, dir, text, name, purpose, "
             "give and get (trade), intent (sail).\n"
             "Verbs: " + ", ".join(verbs) + f"\nYou are {a.name}.")
+    return with_instructions(body, instructions)
 
 
 def compact_scene(world, a: Agent) -> str:
@@ -860,7 +870,7 @@ def beliefs_around(world, a: Agent) -> List[Dict[str, Any]]:
     return sorted((beliefs[b] for b in sorted(ids) if b in beliefs), key=lambda b: -len(b["followers"]))[:5]
 
 
-def reflection_messages(world, a: Agent) -> List[Dict[str, str]]:
+def reflection_messages(world, a: Agent, instructions: str = "") -> List[Dict[str, str]]:
     mems = sorted(a.memories, key=lambda m: (-m.importance, -m.tick))[:18]
     mems.sort(key=lambda m: m.tick)
     body = "\n".join(f"- [m{m.id}] day {m.tick // 240 + 1}: {m.text}" for m in mems)
@@ -894,11 +904,14 @@ def reflection_messages(world, a: Agent) -> List[Dict[str, str]]:
     else:
         faith = ('If, from your life so far, you truly hold a conviction about the world, what is sacred, or how to '
                  'live, you may add "belief": {"name": "...", "tenet": "one short sentence"}. Do not invent one just to fill the field.')
+    sys = (
+        f"You are {a.name}, a chit, reflecting quietly at the end of the week. "
+        "Draw up to 3 short, practical lessons from your experiences — things that will help you survive, build and "
+        "discover. Only state lessons supported by the memories, and cite the memories each one comes from. "
+        "Also name your ambition: a life goal, ambitious but possible in this world, in one short sentence. "
+        "Reply as JSON: {\"lessons\":[{\"text\":\"...\",\"from\":[12,15]}],\"ambition\":\"...\"}"
+    )
     return [
-        {"role": "system", "content": f"You are {a.name}, a chit, reflecting quietly at the end of the week. "
-         "Draw up to 3 short, practical lessons from your experiences — things that will help you survive, build and "
-         "discover. Only state lessons supported by the memories, and cite the memories each one comes from. "
-         "Also name your ambition: a life goal, ambitious but possible in this world, in one short sentence. "
-         "Reply as JSON: {\"lessons\":[{\"text\":\"...\",\"from\":[12,15]}],\"ambition\":\"...\"}"},
+        {"role": "system", "content": with_instructions(sys, instructions)},
         {"role": "user", "content": f"Your lessons so far:\n{prev}\n\n{amb}\n{faith}{chief}\n\nYour notable memories:\n{body}\n\nWhat have you learned?"},
     ]

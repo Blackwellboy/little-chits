@@ -49,6 +49,7 @@ export function GodModal() {
     <div className="modal-bg" onClick={() => set({ godOpen: false })}>
       <div className="modal god" onClick={(e) => e.stopPropagation()}>
         <h2>🪄 God mode</h2>
+        <button className="god-orders-btn" onClick={() => set({ godOpen: false, godOrderOpen: true })}>📜 Order a chit</button>
         <p className="muted small">Pick something, then click the map to put it there (Esc cancels). Chits find out what things
           do the usual way: picking them up, studying them, experimenting. Meddling marks this run as a sandbox.</p>
         <div className="tabs">

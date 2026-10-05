@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useState } from "react";
-import { api } from "../net/socket";
+import { useEffect, useRef, useState } from "react";
+import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
 import { Portrait } from "./Portrait";
@@ -35,6 +35,21 @@ export function Inspector() {
     load();
     const t = setInterval(load, 1000);
     return () => { alive = false; clearInterval(t); };
+  }, [selected?.world, selected?.id]);
+
+  // Track who we hold so closing/deselecting can free the AI slot (orders already in flight still finish).
+  const heldRef = useRef<{ world: string; id: string } | null>(null);
+  useEffect(() => {
+    if (!selected || !selected.id.startsWith("a")) return;
+    const world = selected.world;
+    const id = selected.id;
+    return () => {
+      const held = heldRef.current;
+      if (held && held.world === world && held.id === id) {
+        heldRef.current = null;
+        api(`/api/worlds/${world}/agents/${id}/release`, {}).catch(() => {});
+      }
+    };
   }, [selected?.world, selected?.id]);
 
   if (!selected || !detail) return null;
@@ -72,7 +87,7 @@ export function Inspector() {
   }
 
   const a = detail as AgentDetail;
-  const src = a.plan_source.startsWith("model") ? "model" : "instinct";
+  const src = a.plan_source.startsWith("model") ? "model" : a.plan_source === "player" ? "player" : "instinct";
   return (
     <aside className="inspector">
       <button className="x" onClick={close}>✕</button>
@@ -83,11 +98,14 @@ export function Inspector() {
           <p className="muted">{a.age} days old · gen {a.generation}{a.parents.filter(Boolean).length ? ` · child of ${a.parents.filter(Boolean).join(" & ")}` : ""}</p>
           <p className="traits">{a.personality}</p>
           <div className="row">
-            <span className={`src ${src}`} title={a.plan_source}>{src === "model" ? `🧠 ${a.brain_label}` : a.plan_source === "waiting" ? "⏳ waiting for its mind" : a.plan_source === "instinct-filler" ? "⚙ instinct (while it thinks)" : a.plan_source === "instinct-fallback" ? "⚙ instinct (model down)" : "⚙ instinct"}</span>
+            <span className={`src ${src}`} title={a.plan_source}>{src === "player" ? "🎮 player order" : src === "model" ? `🧠 ${a.brain_label}` : a.plan_source === "waiting" ? "⏳ waiting for its mind" : a.plan_source === "instinct-filler" ? "⚙ instinct (while it thinks)" : a.plan_source === "instinct-fallback" ? "⚙ instinct (model down)" : "⚙ instinct"}</span>
             {a.alive && <button className={`follow ${follow ? "on" : ""}`} onClick={() => set({ follow: !follow })}>{follow ? "◉ Following" : "◎ Follow"}</button>}
           </div>
         </div>
       </div>
+
+      <ControlStrip key={a.id} world={selected.world} id={a.id} possessed={a.possessed} alive={a.alive}
+        onHeld={(h) => { heldRef.current = h ? { world: selected.world, id: a.id } : null; }} />
 
       {a.alive && (
         <div className="needs">
@@ -194,6 +212,66 @@ export function flyToAgent(world: string, id: string) {
 }
 
 type Kin = { id: string; name: string; alive: boolean; born_day: number; died_day: number | null; cause: string | null };
+
+/** 🎮 Possess: one chit per world can be controlled by clicking age-gate orders, or a short line of text. */
+function ControlStrip({ world, id, possessed, alive, onHeld }: {
+  world: string; id: string; possessed?: boolean; alive: boolean; onHeld?: (held: boolean) => void;
+}) {
+  const [held, setHeld] = useState(!!possessed);
+  const [text, setText] = useState("");
+  const [msg, setMsg] = useState("");
+  const [last, setLast] = useState("");
+  useEffect(() => { setHeld(!!possessed); onHeld?.(!!possessed); }, [possessed]);  // (the detail refreshes every second: another chit may take over)
+  if (!alive) return null;
+
+  const order = (action: string) =>
+    api(`/api/worlds/${world}/agents/${id}/order`, { action })
+      .then((r: any) => { setMsg(""); setLast(r.goal || (action === "cancel" ? "side quest dropped" : "")); })
+      .catch((e) => setMsg(errorText(e)));
+  const send = () => {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    api(`/api/worlds/${world}/agents/${id}/order`, { text: t })
+      .then((r: any) => { setMsg(""); if (r.goal) setLast(r.goal); })
+      .catch((e) => setMsg(errorText(e)));
+  };
+  const possess = () => api(`/api/worlds/${world}/agents/${id}/possess`, {})
+    .then(() => { setHeld(true); onHeld?.(true); setMsg(""); }).catch((e) => setMsg(errorText(e)));
+  const release = () => api(`/api/worlds/${world}/possess/release`, {})
+    .then(() => { setHeld(false); onHeld?.(false); setLast(""); setMsg(""); }).catch((e) => setMsg(errorText(e)));
+
+  const BUTTONS: [string, string, string][] = [
+    ["⛏ Mine", "mine", "Gather the raw material the road to the next age needs most"],
+    ["🔥 Smelt", "smelt", "Turn ore into copper or iron at a furnace"],
+    ["⚒ Forge", "forge", "Work the forge into the next metal part (steel, gear…)"],
+    ["🏗 Build", "build", "Build the next building the road needs"],
+    ["📖 Teach", "teach", "Teach a recipe or design someone else lacks"],
+    ["📦 Haul", "haul", "Carry materials to where they're needed"],
+    ["✖ Cancel sidequest", "cancel", "Drop the current plan, pending plan and objective"],
+  ];
+
+  return (
+    <div className="control">
+      {!held ? (
+        <button className="follow possess" onClick={possess}>🎮 Possess</button>
+      ) : (
+        <>
+          <div className="control-btns">
+            {BUTTONS.map(([label, act, tip]) => <button key={act} title={tip} onClick={() => order(act)}>{label}</button>)}
+          </div>
+          <div className="row control-tell">
+            <input placeholder="tell it… (e.g. mine iron)" value={text} onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") send(); }} />
+            <button onClick={send}>Go</button>
+            <button className="release" onClick={release}>Release</button>
+          </div>
+        </>
+      )}
+      {(msg || last) && <p className={`control-msg${msg ? " err" : ""}`}>{msg || `↳ ${last}`}</p>}
+    </div>
+  );
+}
 
 /** 👪 A chit's family, living and dead: click a name to go to them. */
 function FamilyCard({ world, id }: { world: string; id: string }) {

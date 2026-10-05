@@ -52,6 +52,7 @@ class StaleMatch(Exception):
 REFLECT_EVERY_DAYS = 7  # a chit sits down to draw lessons (and maybe a belief or a decree) once a week
 STALE_TICKS = 120  # a model plan older than this (in world ticks) is out of date
 QUEUE_PER_SLOT = 3  # plan requests waiting per parallel slot before more are shed to instinct
+SLOT_STICKY_TICKS = TICKS_PER_DAY // 2  # how long a capped brain's chosen AI slots are kept before they are reconsidered
 TICKS_PER_SEC = 2.0  # the world's pace at 1x (speed_scale stretches it)
 SLOW_TICKS = 12  # a model whose reply takes this many world ticks or more is asked two steps before a plan runs out
 ROUTINE = frozenset({"eat", "sleep", "rest", "shelter", "store", "drop", "refuel"})  # (and "go", with one of these)
@@ -59,6 +60,12 @@ ROUTINE = frozenset({"eat", "sleep", "rest", "shelter", "store", "drop", "refuel
 
 def _lesson_words(text: str) -> set:
     return {w for w in "".join(c.lower() if c.isalpha() else " " for c in text).split() if len(w) >= 4}
+
+
+
+def brain_instructions(brain: LLMBrain) -> str:
+    """Optional gameplay flavour from BrainConfig.instructions (empty = unchanged prompts)."""
+    return (getattr(brain.cfg, "instructions", None) or "").strip()
 
 
 def reflection_due(a: Agent, day: int, hour: int) -> bool:
@@ -132,6 +139,104 @@ def apply_reflection(world, a: Agent, text: str) -> Dict[str, Any]:
 
 CIVIC_STYLES = ("chief-project", "vote", "trade-offer")  # one-letter civic choices: decisions, but not plans
 
+_AGE_GATE_JOBS = ("gatherer", "crafter", "builder", "farmer", "fisher")  # the hands that climb the road to the next age
+
+
+def _sole_keepers(living_agents: List[Agent], critical) -> set:
+    """The chits who are the only living knower of a critical recipe/design. `critical` is a set of "kind:key"
+    knowledge keys (the unfinished road steps), or None for the endgame: any sole recipe/design keeper counts."""
+    knowers: Dict[str, List[str]] = {}
+    for a in living_agents:
+        for k in a.knows:
+            if (critical is None and k.startswith(("recipe:", "design:"))) or (critical is not None and k in critical):
+                knowers.setdefault(k, []).append(a.id)
+    return {ids[0] for ids in knowers.values() if len(ids) == 1}
+
+
+def _project_helpers(world) -> set:
+    """Chits working on an open village project now (projects.helpers: moved it on in the last day, or planning a
+    step for it)."""
+    from ..sim import projects as PJ
+
+    out = set()
+    for p in (getattr(world, "civic", None) or {}).get("projects", {}).values():
+        if p:
+            out |= set(PJ.helpers(world, p))
+    return out
+
+
+def _feeds_road(a: Agent, road_keys) -> bool:
+    """The chit is actively working a material or building that the unfinished road steps still need (its plan's
+    steps, or what it is working towards), so it earns a small boost among the age-gate workers."""
+    keys = {k.split(":", 1)[1] for k in road_keys}
+    text = " ".join((a.goal, a.objective)).lower()
+    for s in a.plan:
+        for field in ("what", "item"):
+            v = s.get(field)
+            if v:
+                text += " " + str(v).lower()
+    return any(k in text for k in keys if k)
+
+
+def _ai_chit_score(world, a: Agent, ctx: Dict[str, Any]) -> float:
+    """Priority for a chit's AI slot while a brain's max_ai_chits caps who may ask it (higher first):
+
+    1. age-gate workers — gatherers, crafters, builders (and farmers/fishers), the hands that climb the road to the
+       next age, boosted a little when they are working a material or building an unfinished road step still needs;
+    2. unique knowledge holders — the sole living knower of a critical recipe/design on the road (or, in the endgame,
+       of anything);
+    3. chits assigned to an open village age-gate project;
+    4. else the oldest and most practised (crafting + building + gathering skill).
+    While the road is still open, pure scholars get a large negative score so they lose slots to the workers."""
+    road = ctx["road"]
+    sole = a.id in ctx["sole_keepers"]
+    helper = a.id in ctx["project_helpers"]
+
+    score = 0.0
+    if a.job in _AGE_GATE_JOBS:
+        score = 4000.0
+        if road is not None and _feeds_road(a, ctx["road_keys"]):
+            score += 500.0
+    if sole:
+        score = max(score, 3000.0)
+    if helper:
+        score = max(score, 2000.0)
+    if road is not None and a.job == "scholar" and not sole and not helper:
+        score = -1000.0
+    skill = a.skill("crafting") + a.skill("building") + a.skill("gathering")
+    score += a.age(world.tick) / 100.0 + skill / 1000.0
+    return score
+
+
+def _select_ai_chits(world, brain, living_agents: List[Agent], possessed=None) -> set:
+    """Which living chits may ask this brain while max_ai_chits caps it: the `cap` highest-scoring ones, so a small
+    or local model keeps up by concentrating on the chits that move the age gate along (see _ai_chit_score). The
+    chit an observer possesses (one per world) always gets a slot, whatever its score, and never more than the cap."""
+    from ..sim import projects as PJ
+
+    cap = int(getattr(brain.cfg, "max_ai_chits", 0) or 0)
+    if cap <= 0 or not living_agents:
+        return {a.id for a in living_agents}
+    living_ids = {a.id for a in living_agents}
+    chosen: set = set()
+    possessed_id = (possessed or {}).get(world.id) if isinstance(possessed, dict) else None
+    if possessed_id is not None and possessed_id in living_ids:
+        chosen.add(possessed_id)
+    road = PJ.road(world)
+    road_steps = [s for s in (road["steps"] if road else []) if not s["done"]]
+    road_keys = {f"{s['kind']}:{s['key']}" for s in road_steps}
+    ctx = {
+        "road": road,
+        "road_keys": road_keys,
+        "sole_keepers": _sole_keepers(living_agents, road_keys if road is not None else None),
+        "project_helpers": _project_helpers(world),
+    }
+    rest = [a for a in living_agents if a.id not in chosen]
+    scored = sorted((-_ai_chit_score(world, a, ctx), a.id) for a in rest)
+    chosen |= {aid for _, aid in scored[:cap - len(chosen)]}
+    return chosen
+
+
 class Mind:
     def __init__(self, config_path: Optional[Path] = None):
         self.instinct = Instinct()
@@ -159,7 +264,13 @@ class Mind:
         self.adopted: Counter = Counter()  # world id -> plan decisions adopted this match (the scorecard's denominator)
         self.match = 0  # bumped by new_match(): replies to an older match are dropped
         self.on_decision: Optional[Callable[[Dict[str, Any]], None]] = None
+        self._ai_slots: Dict[tuple, Dict[str, Any]] = {}  # (world_id, brain_id) -> {"ids": set, "tick": int, "cap": int}
+        self.possessed: Dict[str, str] = {}  # world id -> the one chit an observer possesses there (kept by the Runtime)
         self.load()
+
+    def invalidate_slots(self, wid: str) -> None:
+        """A chit was possessed or released: recompute that world's AI slots on the next look."""
+        self._ai_slots = {k: v for k, v in self._ai_slots.items() if k[0] != wid}
 
     # ------------------------------------------------------------ config
     def load(self) -> None:
@@ -235,6 +346,29 @@ class Mind:
             return None
         return self.brains.get(a.brain)
 
+    # ------------------------------------------------------------ max_ai_chits: who may ask
+    def _ai_eligible(self, world, a: Agent, brain: LLMBrain) -> bool:
+        """Whether this chit may enqueue a request while its brain caps how many living chits may ask. The chosen set
+        is sticky (kept for SLOT_STICKY_TICKS) so it doesn't thrash every tick, and is recomputed when the cap
+        changes, a chosen chit dies or leaves, or fewer living chits are chosen than min(cap, living model chits)."""
+        if self.no_stand_in():
+            return True  # an experiment or model-only run never replaces a model's decision with instinct
+        cap = int(getattr(brain.cfg, "max_ai_chits", 0) or 0)
+        if cap <= 0:
+            return True
+        key = (world.id, brain.id)
+        living = [ag for ag in world.agents.values() if ag.brain == brain.id]
+        slot = self._ai_slots.get(key)
+        target = min(cap, len(living))
+        if slot is not None and slot["cap"] == cap and world.tick - slot["tick"] < SLOT_STICKY_TICKS:
+            chosen_living = slot["ids"] & {ag.id for ag in living}
+            if len(chosen_living) >= target:
+                return a.id in slot["ids"]
+        # the cap changed, the window lapsed, a chosen chit died/left, or the set needs refilling: choose again
+        slot = {"ids": _select_ai_chits(world, brain, living, self.possessed), "tick": world.tick, "cap": cap}
+        self._ai_slots[key] = slot
+        return a.id in slot["ids"]
+
     # ------------------------------------------------------------ per-tick hook
     def hook(self, world, a: Agent) -> None:
         world.__dict__["_mind_strict"] = self.strict  # (the prompt's loop note is for play only)
@@ -248,6 +382,10 @@ class Mind:
             dg.model_ticks += 1
             if a.thinking and (not a.plan or a.plan[0].get("_filler")):
                 dg.waiting_ticks += 1
+        # a possessed chit following the observer's order: let the player plan run, untouched, until it finishes.
+        # (Then it falls back to its brain/instinct as usual, but stays possessed and keeps its AI slot until release.)
+        if self.possessed.get(world.id) == a.id and a.plan and a.plan[0].get("_origin") == "player":
+            return
         if a.brain != INSTINCT and brain is None:
             if self.no_stand_in():
                 if not a.plan:
@@ -305,7 +443,7 @@ class Mind:
                 rec["stale_why"] = ("model-only: a menu choice" if menu else
                                     a.rev_why if a.rev != rec["rev_requested"] else "too old")
                 self._resolve(rec, "stale", world.tick)
-                if not a.thinking:
+                if not a.thinking and self._ai_eligible(world, a, brain):
                     self._ask(world, a, brain)
                 return
             a.plan = p["steps"] if self.model_only else tools_first(world, a, p["steps"])  # a pick before the ore
@@ -354,6 +492,11 @@ class Mind:
                 # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
                 if not a.plan:  # (counted once, as shed: counted as instinct too, it still diluted the model's share)
                     self._instinct_plan(world, a, f"instinct ({brain.label} queue full)", kind="shed")
+                return
+            if not self._ai_eligible(world, a, brain):
+                # over max_ai_chits: keep its brain, but act on instinct until a slot opens (counted once, as capped)
+                if not a.plan:
+                    self._instinct_plan(world, a, f"instinct ({brain.label} max AI chits)", kind="capped")
                 return
             self._ask(world, a, brain)
         if not a.plan and a.thinking and world.tick - a.think_started > self.patience_ticks:
@@ -557,7 +700,7 @@ class Mind:
         if style in ("choose", "cascade"):
             return self._ask_choice(world, a, brain, cascade=style == "cascade")
         rep = self._repair_note(world, a)
-        msgs = P.messages(world, a, style=style)
+        msgs = P.messages(world, a, style=style, instructions=brain_instructions(brain))
         if rep:
             msgs = P.with_repair(msgs, rep)
         a.thinking = True
@@ -583,7 +726,7 @@ class Mind:
                 raise StaleMatch()  # a new match started while this waited: don't spend the GPU on it
             # model-only switched on while this was queued: it goes out as full, as model-only requires. The switch
             # bumps rev, and at_send resets rev_requested, so the old style would pass the stale check (Codex, #120)
-            fresh = P.messages(world, a, style="full" if self.model_only else style)
+            fresh = P.messages(world, a, style="full" if self.model_only else style, instructions=brain_instructions(brain))
             if rep:
                 fresh = P.with_repair(fresh, rep)
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
@@ -623,7 +766,7 @@ class Mind:
             # shuffled, so the model's pick is its own and not "always the first one" (instinct's)
             random.Random(world.tick * 13 + zlib.crc32(a.id.encode())).shuffle(opts)
             sent["options"] = opts
-            msgs = P.choice_messages(world, a, opts, own_idea=cascade, repair=rep)
+            msgs = P.choice_messages(world, a, opts, own_idea=cascade, repair=rep, instructions=brain_instructions(brain))
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
             rec["prompt_hash"] = hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16]
             return msgs
@@ -636,7 +779,7 @@ class Mind:
         from ..sim import projects as PJ
 
         options = list(ask["options"])
-        msgs = P.chief_project_messages(world, a, options)
+        msgs = P.chief_project_messages(world, a, options, instructions=brain_instructions(brain))
         rec = {"request_id": uuid.uuid4().hex, "world": world.id, "epoch": getattr(world, "epoch", ""),
                "agent": a.id, "agent_name": a.name, "brain": brain.id, "style": "chief-project",
                "model": brain.cfg.model or brain.stats.resolved_model, "base_url": brain.cfg.base_url,
@@ -800,7 +943,7 @@ class Mind:
                 def full_at_send():
                     if rec.get("match") != self.match:
                         raise StaleMatch()
-                    fresh = P.messages(world, a, style="full")
+                    fresh = P.messages(world, a, style="full", instructions=brain_instructions(brain))
                     if sent.get("repair"):  # the plan it writes answers the failure, as a full brain's does
                         fresh = P.with_repair(fresh, sent["repair"])
                     rec["prompt_hash"] = hashlib.sha256(json.dumps(fresh, sort_keys=True).encode()).hexdigest()[:16]
@@ -902,7 +1045,7 @@ class Mind:
         def at_send():
             if self.match != match:
                 raise StaleMatch()
-            return P.reflection_messages(world, a)
+            return P.reflection_messages(world, a, instructions=brain_instructions(brain))
 
         try:
             res = await brain.chat(at_send, max_tokens=450, temperature=0.6)

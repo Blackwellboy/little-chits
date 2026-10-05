@@ -240,6 +240,15 @@ function Chronicle({ world }: { world: string }) {
   const [saga, setSaga] = useState<string>("");
   const [thread, setThread] = useState<string[] | null>(null);
   const [story, setStory] = useState<any>(null);
+  const [logView, setLogView] = useState<{ title: string; text: string | null; err?: string } | null>(null);
+  const openTextLog = (title: string, path: string) => {
+    setLogView({ title, text: null });
+    fetch(authedUrl(path)).then(async (r) => {
+      if (!r.ok) throw new Error(`${r.status}`);
+      return r.text();
+    }).then((text) => setLogView((v) => v && { ...v, text }))
+      .catch(() => setLogView((v) => v && { ...v, text: "", err: "Could not load the log. Try again in a moment." }));
+  };
   useEffect(() => {
     if (thread && thread.length === 0) api("/api/story/x?since_day=1&max_posts=6").then((r) => setThread(r.posts)).catch(() => setThread(null));
   }, [thread]);
@@ -257,7 +266,7 @@ function Chronicle({ world }: { world: string }) {
           <button className={mode === "weeks" ? "on" : ""} onClick={() => setMode("weeks")}>Weeks</button>
           <button onClick={() => api(`/api/worlds/${world}/recap`).then(setStory).catch(() => {})} title="The story so far, for someone who has just arrived">📜 So far</button>
           <button onClick={() => setThread([])} title="A ready-to-post X thread built from real moments">𝕏 Thread</button>
-          <a className="log-link" href={authedUrl(`/api/worlds/${world}/log.txt`)} target="_blank" rel="noreferrer" title="Everything that happened in this world, as a text log">⬇ log</a>
+          <button type="button" className="log-link" onClick={() => openTextLog(`${world === "A" ? "World A" : "World B"} · log`, `/api/worlds/${world}/log.txt`)} title="Everything that happened in this world, as a text log">⬇ log</button>
         </div>
       </div>
       {mode === "live" && (
@@ -283,6 +292,21 @@ function Chronicle({ world }: { world: string }) {
             <h2>📜 {story.title}</h2>
             <ul className="recap">{story.lines.map((l: string, i: number) => <li key={i}>{l}</li>)}</ul>
             <div className="row"><button onClick={() => navigator.clipboard?.writeText(story.lines.join("\n"))}>Copy</button></div>
+          </div>
+        </div>
+      )}
+      {logView && (
+        <div className="modal-bg" onClick={() => setLogView(null)}>
+          <div className="modal log-view" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="x" onClick={() => setLogView(null)} title="Back to the map">✕</button>
+            <h2>⬇ {logView.title}</h2>
+            {logView.text === null && !logView.err && <p className="muted">Loading…</p>}
+            {logView.err && <p className="err">{logView.err}</p>}
+            {logView.text != null && !logView.err && <pre className="log-body">{logView.text || "(empty log)"}</pre>}
+            <div className="row">
+              <button type="button" className="primary" onClick={() => setLogView(null)}>Back to map</button>
+              {logView.text ? <button type="button" onClick={() => navigator.clipboard?.writeText(logView.text || "")}>Copy</button> : null}
+            </div>
           </div>
         </div>
       )}
