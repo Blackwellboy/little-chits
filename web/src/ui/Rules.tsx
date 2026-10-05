@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../net/socket";
+import { useUI } from "../state/store";
 
 /** World rules (server/chits/sim/rules.py, docs/WORLD_RULES.md): what kinds of civilisation a world allows. */
 export type RuleSpec = { default: boolean; label: string; off: string };
@@ -68,10 +69,12 @@ export function RulesPicker({ info, rules, setRules, modelLed, setModelLed, stri
 
 /** The 📜 panel: the rules the running worlds were made with, read-only. */
 export function RulesPanel() {
-  const info = useRules(true);
+  const info = useRules(true);  // (the rules' descriptions: they don't change)
+  // the running worlds' own rules come with their metadata, so a new game shows its rules at once (Codex on #143)
+  const metas = useUI((s) => s.worlds);
   if (!info) return <p className="muted">Loading…</p>;
   const ids = Object.keys(info.worlds);
-  const r = (ids.length ? info.worlds[ids[0]] : info.current) as Record<string, unknown>;
+  const r = (metas[0]?.rules ?? (ids.length ? info.worlds[ids[0]] : info.current)) as Record<string, unknown>;
   return (
     <div>
       <div className="panel-head"><h3>📜 World rules</h3><small className="muted">version {String(r.version ?? info.version)}</small></div>
