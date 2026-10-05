@@ -826,7 +826,10 @@ class Mind:
                 entry = {}
                 await self._think(world, a, planner, full_at_send, rec, sent_full)
                 failed = rec.get("error") or rec.get("parse") == "failed"  # (unreachable, or unreadable twice)
-                if planner is brain or not failed or a.pending_plan is not None or not a.alive:
+                if planner is brain or not failed:
+                    return
+                if a.pending_plan is not None or not a.alive:  # (nothing to fall back to: it failed, recorded once)
+                    self._resolve(rec, "failed", world.tick)
                     return
                 # the planner failed on the way (it passed healthy() first): no other model writes the plan; the
                 # chosen option runs instead, and the record keeps what happened (Codex on #144)
@@ -908,7 +911,8 @@ class Mind:
         except ParseError as e:
             brain.stats.parse_failed += 1
             rec.update(parse="failed", response_hash=hashlib.sha256(text.encode()).hexdigest()[:16])
-            self._resolve(rec, "failed", world.tick)
+            if rec.get("planner") != brain.id:  # (a two-level mind's planner: _choose resolves it, once: issue #146)
+                self._resolve(rec, "failed", world.tick)
             entry.update(ok=False, error=f"unreadable reply: {e}", raw=text[:400])
             a.last_result = "(your last reply could not be understood — reply with the JSON object only)"
         except StaleMatch:
@@ -916,7 +920,8 @@ class Mind:
         except Exception as e:
             entry.update(ok=False, error=f"{type(e).__name__}: {str(e)[:160]}")
             rec["error"] = f"{type(e).__name__}: {str(e)[:160]}"
-            self._resolve(rec, "failed", world.tick)
+            if rec.get("planner") != brain.id:
+                self._resolve(rec, "failed", world.tick)
         finally:
             a.thinking = False
             entry["wall_ms"] = round((time.monotonic() - m0) * 1000)

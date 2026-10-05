@@ -252,3 +252,45 @@ def test_the_game_sets_a_planner_and_an_experiment_locks_it(tmp_path, monkeypatc
         assert c.post("/api/brains", json={"id": "plan", "label": "Changed", "base_url": "http://127.0.0.1:9/v1",
                                             "model": "q"}).status_code == 409
         assert r.mind.brains["plan"].cfg.model == "p"
+
+
+@pytest.mark.parametrize("how", ["down", "babble"])
+def test_a_failed_planners_decision_is_recorded_once(how):
+    """Codex on #144 (issue #146): _think resolved the request as failed, then the fallback choice was adopted and
+    resolved again: two rows for one request. Now its caller resolves it, once."""
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+    seen = []
+    m.on_decision = lambda rec: seen.append((rec["request_id"], rec["outcome"]))
+
+    async def down(at, **kw):
+        at() if callable(at) else None
+        raise ConnectionError("gone")
+
+    async def babble(at, **kw):
+        at() if callable(at) else None
+        return {"text": "not json", "latency_ms": 1.0}
+
+    m.brains["plan"].chat = down if how == "down" else babble
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    a.plan = []
+    m.hook(w, a)  # the fallback choice is adopted
+    assert [o for r, o in seen if r == rec["request_id"]] == ["adopted"]
+
+
+def test_a_failed_planner_with_nothing_to_fall_back_to_is_recorded_once_as_failed():
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+    seen = []
+    m.on_decision = lambda rec: seen.append((rec["request_id"], rec["outcome"]))
+
+    async def down(at, **kw):
+        at() if callable(at) else None
+        a.pending_plan = {"goal": "something else came back", "steps": [{"do": "rest"}]}
+        raise ConnectionError("gone")
+
+    m.brains["plan"].chat = down
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    assert [o for r, o in seen if r == rec["request_id"]] == ["failed"]

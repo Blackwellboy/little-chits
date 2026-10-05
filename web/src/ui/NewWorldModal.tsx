@@ -23,11 +23,15 @@ export function NewWorldModal() {
   // 📜 world rules for the new game (docs/WORLD_RULES.md), and model-led play (docs/MODEL_LED.md)
   const rulesInfo = useRules(newWorldOpen);
   const [rules, setRules] = useState<Record<string, boolean>>({});
-  const [modelLed, setModelLed] = useState(false);
+  const [modelLed, setModelLedState] = useState(false);
+  const ledPicked = useRef(false);
+  const setModelLed = (v: boolean) => { ledPicked.current = true; setModelLedState(v); };
   useEffect(() => {
     if (!rulesInfo) return;
     setRules(Object.fromEntries(Object.entries(rulesInfo.current).filter(([k]) => k !== "version")) as Record<string, boolean>);
-    api("/api/brains").then((s: any) => setModelLed(!!s.model_led)).catch(() => {});
+    // the game's own model-led setting, unless a preset or the box was picked meanwhile (Codex on #143, issue #145)
+    ledPicked.current = false;
+    api("/api/brains").then((s: any) => { if (!ledPicked.current) setModelLedState(!!s.model_led); }).catch(() => {});
   }, [rulesInfo]);
   // 📦 content pack: null keeps the running game's, "none" plays without, an object is a pack the server has checked
   const [packNow, setPackNow] = useState<PackInfo | null>(null);
