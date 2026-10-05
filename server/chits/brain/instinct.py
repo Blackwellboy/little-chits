@@ -577,12 +577,14 @@ class Instinct:
         self._world = world
         seen: set = set()
         out: List[Dict[str, Any]] = []
+        left_out: List[Dict[str, Any]] = []  # options that can't run from here
 
         def add(p, check: bool = True) -> Optional[bool]:
             """True when added; False when it can't run from here (the next of its kind may); None otherwise."""
             if p and p.get("steps") and p["goal"] not in seen and len(out) < k:
                 p["steps"] = [dict(s) for s in p["steps"] if s][:6]
                 if check and not _drafted_runs(world, a, p):
+                    left_out.append(p)
                     return False  # (it would fail at once: an option the model can't run is no choice)
                 seen.add(p["goal"])
                 out.append(p)
@@ -620,6 +622,10 @@ class Instinct:
             for p in chores:  # one chore, if nothing else is one
                 if add(p) is not False:
                     break
+        if left_out:  # options left out with hands nearly full: offer to store the load, or put some down
+            # (_declutter offers nothing while there are more than 3 free; a model chose fetches into full hands
+            # 95 times by day 107 of the 2026-10-05 live game, and with them left out it had no way to make room)
+            add(self._declutter(world, a, random.Random(seed + 5)))
         if not out:
             add(best, check=False)  # (a model must have something to choose)
         return out

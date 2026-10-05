@@ -253,6 +253,12 @@ FOOD_SLACK = 12  # ...plus this many ticks to take, pick or harvest it and start
 MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is looked up (SNACK_BELOW)
 MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
 MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise give way to food below hunger 16
+# A harvest step that names a farm needs it ripe, or looks for a ripe one as with no name; it keeps to the farm it
+# chose, and a hunger reflex whose farm was harvested first chooses its food again. Without it a named farm is
+# harvested as it stands: 6 grain from an empty plot, a physics bug. OFF pending a 24-seed A/B: on 18 seeds (60 days,
+# with random streams) against main it gave discoveries 76.7 > 73.4, era 8.6 > 8.1, pop 58.8 > 58.3, starved 1 > 0,
+# harvests 682 > 503, plantings 175 > 247, food 1285 > 1381. (False: as before; tests/identity_runner.py keeps it off)
+RIPE_TARGET = False
 PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
 
 
@@ -3414,8 +3420,25 @@ def _do_plant(world, a: Agent, step, s) -> str:
 def _do_harvest(world, a: Agent, step, s) -> str:
     if s.get("redirect"):
         return _redirect(world, a, s)
-    st = _find_structure(world, a, step.get("target"), 35, lambda x: x.design == "farm" and x.functional and x.planted
-                         and x.growth >= 1.0 and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+    def ripe(x) -> bool:
+        return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
+            and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+
+    held = world.structures.get(s.get("farm") or "") if RIPE_TARGET else None
+    if held is not None and ripe(held):
+        st = held  # the farm it set out for, while that stays ripe: chosen afresh each tick, a starving chit walked
+        # between two farms for 500 ticks and never reached either (tools/harness, seed 42)
+    else:
+        st = _find_structure(world, a, step.get("target"), 35, ripe)
+        if st is not None and RIPE_TARGET and not ripe(st):  # a farm named by id was taken as it stood, ripe or not
+            if step.get("_reflex"):
+                # the hunger reflex named it as the nearest food: let it choose the nearest food again. Sent on to
+                # some other ripe farm instead, chits starved 6-16 tiles from a store (tools/harness, 24 seeds)
+                s["note"] = f"Farm {st.id} had nothing ripe left"
+                return DONE
+            st = _find_structure(world, a, None, 35, ripe)
+        if st is not None and RIPE_TARGET:
+            s["farm"] = st.id
     if not st:
         # nothing ripe. World A's model harvested unripe or empty farms 483 times in 160 days, and each failure
         # threw the rest of its plan away while 32 farms lay empty: sow an empty one, or just say how it's growing
