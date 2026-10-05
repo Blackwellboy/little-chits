@@ -24,7 +24,8 @@ OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waitin
                     ("routine share of steps", "routine_step_share"),
                     ("heuristic instinct share of steps", "instinct_step_share"),
                     ("strategic plans the model decided", "model_strategic_share"),
-                    ("... and wrote itself", "model_authored_strategic_share")]
+                    ("... and wrote itself", "model_authored_strategic_share"),
+                    ("steps carried out as another (redirects)", "redirects")]
 
 
 def by_label(a: Dict[str, Any], label: str) -> List[Dict[str, Any]]:

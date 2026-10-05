@@ -94,3 +94,25 @@ def test_the_scorecard_shows_who_is_driving(tmp_path, monkeypatch):
     with TestClient(app) as c:
         rows = c.get("/api/scorecard").json()["rows"]
         assert rows and all({"model_strategic_pct", "reflex_steps_pct", "waiting_pct"} <= set(r["drivers"]) for r in rows)
+
+
+def test_a_models_spoken_reply_is_the_models():
+    """Codex on #139: a reply's top-level "say" was inserted untagged and counted as unknown."""
+    from chits.brain.mind import Mind
+
+    w = World("A", "A", 3, "direct", 64, 3)
+    a = next(iter(w.agents.values()))
+    m = Mind(None)
+    m.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1"})
+    m.assign(w, "m")
+    a.plan = []
+    a.pending_plan = {"goal": "talk", "thought": "", "steps": [{"do": "rest"}], "say": "hello all", "objective": ""}
+    m.hook(w, a)
+    say = next(s for s in a.plan if s.get("do") == "say")
+    assert PV.of_step(say) == "model_plan" and all(PV.of_step(s) == "model_plan" for s in a.plan)
+
+
+def test_the_report_lists_redirects():
+    from chits.lab import report
+
+    assert "redirects" in {k for _, k in report.OPPORTUNITY_ROWS}
