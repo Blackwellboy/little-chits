@@ -4,7 +4,10 @@
 starved, what it was doing before it died, and examples of stuck chits; the JSON line is always the last line.
 
     python tools/harness/run.py SEED [--days 30] [--size 128] [--chits 18] [--culture direct] [--server DIR]
-                                     [--tag TAG] [--autopsy]
+                                     [--tag TAG] [--autopsy] [--mind scripted|URL [--style cascade] ...]
+
+``--mind`` drives the chits through the game's Mind instead (mindrun.py): ``scripted`` is the scripted model
+(scripted.py, deterministic, no GPU), a URL is a real OpenAI-compatible server. Never a real server unless given one.
 
 ``--server`` is the ``server`` directory of the tree under test (default: this repo's own), so one harness can run
 two trees side by side (tools/harness/ab.py). The world runs from that directory, as the game does.
@@ -58,24 +61,38 @@ def metrics(w, low: int, starved: int) -> dict:
             "loose": sum(n for pile in w.ground.values() for k, n in pile.items() if k != "_t")}
 
 
-def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "direct", tag: str = ""):
-    """Run the world with a Probe attached; returns (the JSON row, the probe)."""
+def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "direct", tag: str = "",
+        mind: str = "", **mind_opts):
+    """Run the world with a Probe attached; returns (the JSON row, the probe). With ``mind`` ("scripted" or a server
+    URL) the chits are driven through the game's Mind instead of instinct (mindrun.py): the row gains a "mind" section
+    and the probe a ``.mind`` (the ModelProbe)."""
     from chits.sim.world import World
     from probe import Probe
 
-    w = World("A", "A", seed, culture, size, chits)
-    p = Probe(w)
-    low = len(w.agents)
-    with p:
-        for t in range(240 * days):
-            w.step(p.hook)
-            p.after_tick()
-            low = min(low, len(w.agents))  # (every tick: a death and a birth between daily samples hid a dip)
+    report = None
+    if mind:
+        from mindrun import run_world
+
+        w, p, mp, low, report = run_world(seed, days, size, chits, culture, mind, **mind_opts)
+        p.mind = mp
+    else:
+        w = World("A", "A", seed, culture, size, chits)
+        p = Probe(w)
+        p.mind = None
+        low = len(w.agents)
+        with p:
+            for t in range(240 * days):
+                w.step(p.hook)
+                p.after_tick()
+                low = min(low, len(w.agents))  # (every tick: a death and a birth between daily samples hid a dip)
     row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture}
     row.update(metrics(w, low, len(p.starved)))
     row["births"] = p.events.get("birth", 0)
     row["forgot"] = p.events.get("forgotten", 0)
     row.update(p.report())
+    if report is not None:
+        row["mind"] = {"brain": mind, "style": mind_opts.get("style", "cascade"),
+                       "hashseed": os.environ.get("PYTHONHASHSEED"), **report}
     return row, p
 
 
@@ -89,7 +106,26 @@ def main(argv=None) -> None:
     ap.add_argument("--server", default=str(HERE.parents[1] / "server"), help="the server dir of the tree under test")
     ap.add_argument("--tag", default="")
     ap.add_argument("--autopsy", action="store_true", help="print the starved chits' last moments and stuck chits")
+    g = ap.add_argument_group("model in the loop (mindrun.py)")
+    g.add_argument("--mind", default="", help="'scripted' (the scripted model: no GPU, deterministic) or an "
+                   "OpenAI-compatible base URL such as http://127.0.0.1:18191/v1. Default: instinct only")
+    g.add_argument("--style", default="cascade", choices=("full", "compact", "choose", "cascade"),
+                   help="the brain's prompt_style (the live game's brains use cascade)")
+    g.add_argument("--slots", type=int, default=8, help="the brain's max_concurrency")
+    g.add_argument("--bad-rate", type=float, default=0.15, help="scripted: share of answers that go wrong")
+    g.add_argument("--bad-kinds", default="", help="scripted: comma-separated subset of scripted.BAD_KINDS")
+    g.add_argument("--plan-ticks", type=int, default=8, help="scripted: world ticks a written plan takes to arrive")
+    g.add_argument("--choice-ticks", type=int, default=1, help="scripted: world ticks a one-letter answer takes")
+    g.add_argument("--loop-after", type=int, default=3, help="a step failing for the same reason more than this "
+                   "many times in a row is a loop")
+    g.add_argument("--tick-seconds", type=float, default=0.5, help="URL: wall seconds per tick (0.5 is the game at 1x)")
     args = ap.parse_args(argv)
+    if args.mind and "PYTHONHASHSEED" not in os.environ:
+        # a prompt's text depends on string hashing (world.village_failed counts a set: ties in "Others around here
+        # already tried these" come out in hash order), so a model run is only the same run with the hash pinned
+        os.environ["PYTHONHASHSEED"] = "0"
+        os.execv(sys.executable, [sys.executable, str(Path(__file__).resolve())]
+                 + list(sys.argv[1:] if argv is None else argv))
     server = Path(args.server).resolve()
     if not (server / "chits").is_dir():
         sys.exit(f"{server} is not a server dir (no chits/ in it)")
@@ -100,11 +136,20 @@ def main(argv=None) -> None:
     where = Path(getattr(chits, "__file__", None) or next(iter(chits.__path__), "")).resolve()
     if server not in where.parents:  # (a chits installed in the venv would otherwise stand in for the tree under test)
         sys.exit(f"chits was imported from {where}, not from {server}")
-    row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag)
+    opts = {}
+    if args.mind:
+        opts = {"style": args.style, "slots": args.slots, "bad_rate": args.bad_rate,
+                "bad_kinds": tuple(k for k in args.bad_kinds.split(",") if k) or None,
+                "plan_ticks": args.plan_ticks, "choice_ticks": args.choice_ticks, "loop_after": args.loop_after,
+                "tick_seconds": args.tick_seconds}
+    try:
+        row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind, **opts)
+    except ValueError as e:
+        sys.exit(str(e))
     if args.autopsy:
-        text = p.autopsy_text()
-        if text:
-            print(text)
+        for text in (p.autopsy_text(), p.mind.autopsy_text() if p.mind else ""):
+            if text:
+                print(text)
     print(json.dumps(row), flush=True)
 
 

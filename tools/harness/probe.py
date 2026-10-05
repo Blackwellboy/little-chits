@@ -137,7 +137,11 @@ class Probe:
         if not a.plan:
             p = self.brain.plan(world, a)
             a.plan, a.goal = p["steps"], p["goal"]
-            self._first[a.id] = a.plan[0] if a.plan else None
+            self.note_plan(a)
+
+    def note_plan(self, a) -> None:
+        """A chit has just been given a new plan (by this hook, or by the Mind in a --mind run): watch its first step."""
+        self._first[a.id] = a.plan[0] if a.plan else None
 
     # ------------------------------------------------------------------ events
     def _on_event(self, ev) -> None:
