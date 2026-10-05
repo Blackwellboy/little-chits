@@ -421,12 +421,24 @@ button.danger { color: var(--bad); }
 .god-order .verb-btns button { font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); }
 .god-order .verb-btns button:hover { border-color: var(--accent); }
 .god-order .verb-btns button.on { border-color: var(--accent); color: var(--accent); background: rgba(255,184,107,0.12); }
+.god-order .verb-btns.dimmed button { opacity: 0.45; cursor: not-allowed; }
+.god-order .verb-btns button:disabled { opacity: 0.45; }
 .god-order .god-target, .god-order .god-nl, .god-order .god-who select { width: 100%; margin-top: 6px; }
 .god-order .hint { font-size: 11px; color: var(--muted); margin: 3px 0 6px; }
+.god-order .god-preview { font-size: 12px; color: #ffe08a; margin: 4px 0 6px; padding: 6px 8px;
+  background: rgba(255,210,74,0.08); border: 1px solid rgba(255,210,74,0.28); border-radius: 8px; }
 .god-order .god-send { width: 100%; margin-top: 2px; }
 .god-order .god-send:disabled { opacity: 0.5; }
 .god-order-msg { margin-top: 8px; font-size: 12px; color: #ffcf99; }
 .god-order-msg.err { color: #ff9d9d; }
+.god-order .god-last { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.god-order .god-last-title { font-size: 11px; color: var(--muted); margin: 0 0 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.god-order .god-last ul { list-style: none; margin: 0; padding: 0; }
+.god-order .god-last li { font-size: 11px; color: var(--text); margin: 3px 0; line-height: 1.35; opacity: 0.9; }
+.god-order .god-last-out { font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.03em; }
+.god-order .god-last-out.assigned { color: #9dffb0; }
+.god-order .god-last-out.queued { color: #ffe08a; }
+.god-order .god-last-out.refused { color: #ff9d9d; }
 @media (max-width: 720px) {
   .god-order { top: auto; bottom: 72px; right: 8px; left: 8px; width: auto; max-height: 55vh; overflow: auto; }
   .god-order .verb-btns button { font-size: 10px; padding: 3px 6px; }

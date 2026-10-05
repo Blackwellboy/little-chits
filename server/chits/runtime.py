@@ -1383,8 +1383,10 @@ class Runtime:
         act = (action or "").strip().lower()
         parsed_target: Optional[str] = None
         try:
-            if not act and text:
+            # NL field wins when non-empty (UI preview matches Send; never silent chip/text mismatch)
+            if text and str(text).strip():
                 act, parsed_target = orders.parse_order(text)
+                target = parsed_target  # NL owns the target too
             if target is None:
                 target = parsed_target
             if act not in orders.ORDERS:

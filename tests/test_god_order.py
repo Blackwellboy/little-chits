@@ -116,6 +116,15 @@ def test_text_order_is_parsed_like_possess(tmp_path, monkeypatch):
     assert r.worlds["A"].agents[rsp["agent_id"]].goal.startswith("mine iron")
 
 
+def test_text_overrides_action_when_both_sent(tmp_path, monkeypatch):
+    """Matus bug: Build chip + typed 'mine iron' — NL must win, never silent mismatch."""
+    r = _rt(tmp_path, monkeypatch)
+    rsp = r.god_order("A", action="build", text="mine iron")
+    assert rsp["action"] == "mine"
+    assert rsp["outcome"] == "assigned"
+    assert r.worlds["A"].agents[rsp["agent_id"]].goal.startswith("mine iron")
+
+
 def test_cancel_auto_finds_a_side_quest_to_drop(tmp_path, monkeypatch):
     r = _rt(tmp_path, monkeypatch)
     w = r.worlds["A"]
