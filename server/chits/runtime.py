@@ -127,6 +127,7 @@ class Runtime:
         self.contact = (self.store.get_meta("contact") or os.environ.get("CHITS_CONTACT", "0")) in ("1", "true")
         self.pack: Optional[Dict[str, Any]] = self._starting_pack()  # a content pack: every world of the match gets it
         self.mind.strict = self.contract == "experiment"
+        self.mind.model_only = False  # (a diagnostic, switched on by hand in play: never kept over a restart)
         self.mind.on_decision = self.store.save_decision
         self.worlds: Dict[str, World] = {}
         self.forks: Dict[str, Dict[str, Any]] = {}  # 🔀 what-if copies stepping alongside (self.fork); in memory only
@@ -320,6 +321,8 @@ class Runtime:
 
     def _attach(self, w: World) -> None:
         self.worlds[w.id] = w
+        if self.mind.model_only:  # (a restored save, a rewind or a loaded file: its saved instinct steps go too)
+            self.mind.start_model_only(w)
         w._scored_from = w.tick  # the scorecard's decisions are kept in memory from here (diag.scorecard)
         if not hasattr(w, "_durable_tick"):
             w._durable_tick = -1
@@ -348,6 +351,9 @@ class Runtime:
         self._resetting = True
         try:
             self.mind.new_match()
+            # a new game is a new match: the model-only diagnostic doesn't carry over into it unnoticed, as it doesn't
+            # over a restart or into an experiment. Turned on again by hand, it sanitizes the new worlds as usual
+            self.set_model_only(False)
             self.pack = new_pack
             self._reset(seed, chits, size, mode, brains, contract, contact)
         finally:
@@ -393,6 +399,7 @@ class Runtime:
         self.mind.strict = contract == "experiment"
         if contract == "experiment":
             self.pace_to_brain = True
+            self.set_model_only(False)  # an experiment never runs the model-only diagnostic
         elif self.contract == "experiment":
             self.pace_to_brain = _pace_default()  # leaving an experiment: back to the normal default
         self.contract = contract
@@ -519,6 +526,18 @@ class Runtime:
         if any(i != infos[0] for i in infos):  # (never by design: every world is made with the match's one pack)
             return {"mismatch": {wid: (i or {}).get("sha256") for wid, i in seen.items()}}
         return infos[0]
+
+    def set_model_only(self, on: bool) -> None:
+        """The model-only diagnostic (brain/mind.py): no instinct menu, fallback or reflexes, in every world."""
+        from . import diag
+
+        was, self.mind.model_only = self.mind.model_only, bool(on)
+        for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:
+            if on and not was:
+                self.mind.start_model_only(w)  # (nothing from before the switch may act after it)
+            elif not on:
+                diag.model_only_from(w, None)
+            w.model_only = bool(on)
 
     def write_manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:
         m = self.manifest(chits)
@@ -1062,6 +1081,8 @@ class Runtime:
         f.is_fork = True  # (a trader in the copy doesn't sail off: there is nowhere to go)
         for a in f.agents.values():
             a.brain = brain
+        if self.mind.model_only:  # (a copy runs under the same switch as the world it copies)
+            self.mind.start_model_only(f)
         self.forks[f.id] = {"world": f, "of": wid, "from_day": w.day + 1, "brain": brain, "culture": f.culture}
         return self.fork_view(f.id)
 

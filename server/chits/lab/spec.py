@@ -64,6 +64,9 @@ class ExperimentSpec:
     # paired card swaps (research item 72): model brain id -> its server on the other card. On every other seed
     # (the 2nd, 4th, ...) each model runs there instead, so a card's own effect cancels out over the pairs.
     card_swap: Dict[str, str] = field(default_factory=dict)
+    # a diagnostic, never a comparison: every arm runs without the body's reflexes, and a model arm without anything
+    # from instinct (the full prompt, no menu): what the model does on its own. Recorded in the manifest.
+    model_only: bool = False
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ExperimentSpec":
@@ -191,6 +194,8 @@ class ExperimentSpec:
         for name, ev in self.events.items():
             if "metric" not in ev or "at_least" not in ev:
                 raise SpecError(f"event {name}: needs 'metric' and 'at_least'")
+        if not isinstance(self.model_only, bool):
+            raise SpecError("model_only is true or false")
         if self.card_swap:
             if len(model_ids) < 2 or set(self.card_swap) != set(model_ids):
                 raise SpecError(f"card_swap names the other server of every model brain ({', '.join(model_ids) or 'none'}),"
@@ -221,4 +226,4 @@ class ExperimentSpec:
         return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
 
 
-LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}}  # options added after protocols were sealed, at their "off" value
+LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False}  # options added after protocols were sealed, at their "off" value

@@ -137,6 +137,10 @@ class Mind:
         self._tasks: set = set()
         self.plans_out: Counter = Counter()  # brain id -> plan requests spawned and not finished (queued or running)
         self.strict = False  # experiment contract: a model's chits never get instinct plans
+        # model-only (a diagnostic, never a comparison): nothing from instinct covers for the model. No instinct plans,
+        # as strict; the full prompt whatever a brain's style (no menu of instinct's options); its plans as written
+        # (no tools_first); and the worlds it drives run without the body's reflexes (sim/actions.py REFLEXES)
+        self.model_only = False
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
         self.decisions: deque = deque(maxlen=5000)  # one record per model request (F2)
@@ -210,6 +214,8 @@ class Mind:
         for a in targets:
             a.brain = brain_id
             a.pending_plan = None
+            if self.model_only:
+                self._became_model_driven(world, a)
         self.save()
 
     def brain_for(self, a: Agent) -> Optional[LLMBrain]:
@@ -220,6 +226,10 @@ class Mind:
     # ------------------------------------------------------------ per-tick hook
     def hook(self, world, a: Agent) -> None:
         world.__dict__["_mind_strict"] = self.strict  # (the prompt's loop note is for play only)
+        if self.model_only or world.__dict__.get("model_only"):
+            world.__dict__["model_only"] = self.model_only  # (the body's reflexes follow the mind's switch)
+        if self.model_only:
+            self._became_model_driven(world, a)
         brain = self.brain_for(a)
         if brain is not None:
             dg = diag.of(world)
@@ -227,7 +237,7 @@ class Mind:
             if a.thinking and (not a.plan or a.plan[0].get("_filler")):
                 dg.waiting_ticks += 1
         if a.brain != INSTINCT and brain is None:
-            if self.strict:
+            if self.no_stand_in():
                 if not a.plan:
                     self._wait(a)
                 return
@@ -246,7 +256,7 @@ class Mind:
             if brain is not None and ask and ask.get("leader") == a.id and not ask.get("sent"):
                 diag.chief(world, "blocked: the chief's brain unavailable", ask)
             if not a.plan:
-                if self.strict and a.brain != INSTINCT:
+                if self.no_stand_in() and a.brain != INSTINCT:
                     self._wait(a)
                 else:
                     self._instinct_plan(world, a, "instinct" if brain is None else f"instinct ({brain.label} unavailable)")
@@ -259,7 +269,7 @@ class Mind:
             diag.chief(world, "sent", ask, queued_behind=brain.stats.queued)
             self._ask_chief(world, a, brain, ask)
         # a pioneer's duty comes before its model's plans: World B's model-minded pioneers founded 1 village in 14 tries
-        if not self.strict and (not a.plan or a.plan[0].get("_filler")) and self._duty(world, a):
+        if not self.no_stand_in() and (not a.plan or a.plan[0].get("_filler")) and self._duty(world, a):
             if a.pending_plan:
                 rec = getattr(a, "_decision", None)
                 a.pending_plan = None
@@ -273,14 +283,18 @@ class Mind:
             a.pending_plan = None
             rec = getattr(a, "_decision", None)
             too_old = STALE_TICKS * max(1.0, getattr(self, "speed_scale", 1.0))
-            if rec is not None and (a.rev != rec["rev_requested"] or world.tick - rec["tick_requested"] > too_old):
-                # the world moved on while the model was thinking: don't act on an out-of-date intention
-                rec["stale_why"] = a.rev_why if a.rev != rec["rev_requested"] else "too old"
+            menu = self.model_only and rec is not None and rec.get("parse") == "choice"
+            if rec is not None and (menu or a.rev != rec["rev_requested"]
+                                    or world.tick - rec["tick_requested"] > too_old):
+                # the world moved on while the model was thinking: don't act on an out-of-date intention (and in a
+                # model-only run never on instinct's drafted option, even one asked for before the switch)
+                rec["stale_why"] = ("model-only: a menu choice" if menu else
+                                    a.rev_why if a.rev != rec["rev_requested"] else "too old")
                 self._resolve(rec, "stale", world.tick)
                 if not a.thinking:
                     self._ask(world, a, brain)
                 return
-            a.plan = tools_first(world, a, p["steps"])  # a pick before the ore
+            a.plan = p["steps"] if self.model_only else tools_first(world, a, p["steps"])  # a pick before the ore
             origin = "model_selected" if rec and rec.get("parse") == "choice" else "model_generated"
             if rec and rec.get("style") == "repair":
                 origin = "model_repaired"
@@ -317,7 +331,7 @@ class Mind:
             if not a.plan and self.focused(brain) and self._routine(world, a):
                 return  # eating and sleeping don't need the model
             slots = max(1, brain.cfg.max_concurrency)
-            if not self.strict and (brain.stats.queued >= QUEUE_PER_SLOT * slots
+            if not self.no_stand_in() and (brain.stats.queued >= QUEUE_PER_SLOT * slots
                                     or self.plans_out[brain.id] >= (QUEUE_PER_SLOT + 1) * slots):
                 # the model is far behind: a request now would wait a minute and come back stale (live, 229 queued
                 # behind the 3090's 8 slots, 65 s each, 311 plans stale). Instinct now; ask again next time.
@@ -326,7 +340,7 @@ class Mind:
                 return
             self._ask(world, a, brain)
         if not a.plan and a.thinking and world.tick - a.think_started > self.patience_ticks:
-            if self.strict:
+            if self.no_stand_in():
                 self._wait(a)
             else:
                 self._instinct_plan(world, a, "instinct (while thinking)", filler=True)
@@ -379,7 +393,49 @@ class Mind:
         return rep
 
     def focused(self, brain: LLMBrain) -> bool:
-        return bool(getattr(brain.cfg, "focus", False)) and not self.strict  # an experiment's model decides everything
+        return bool(getattr(brain.cfg, "focus", False)) and not self.no_stand_in()  # an experiment's model decides everything
+
+    def start_model_only(self, world) -> int:
+        """Model-only switched on mid-game: every chit drops the steps its model didn't write itself (instinct,
+        reflex, filler, routine, duty, fallback and menu choices) and every request in flight goes stale (its rev is
+        bumped), so nothing from before the switch acts after it. The moment is recorded (diag.model_only_from).
+        Returns how many steps were dropped."""
+        dropped = sum(self._model_only_clean(world, a, "model-only switched on") for a in world.agents.values())
+        world.model_only = True
+        diag.model_only_from(world, dropped)
+        return dropped
+
+    def _model_only_clean(self, world, a: Agent, why: str) -> int:
+        """One chit, under model-only: drop the steps its model didn't write and any menu choice waiting to be
+        adopted, and stale what is in flight. Marked with its brain, so it isn't cleaned twice under the same one.
+        Returns the steps dropped."""
+        own = ("model_generated", "model_repaired")
+        keep = [s for s in a.plan if s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler")]
+        dropped = len(a.plan) - len(keep)
+        a.plan = keep
+        if a.pending_plan is not None:
+            rec = getattr(a, "_decision", None)
+            if rec is not None and rec.get("parse") == "choice":
+                a.pending_plan = None
+                rec["stale_why"] = "model-only: a menu choice"
+                self._resolve(rec, "stale", world.tick)
+        a.bump_rev(why)
+        a.__dict__["_model_only_brain"] = a.brain
+        return dropped
+
+    def _became_model_driven(self, world, a: Agent) -> None:
+        """Under model-only, a chit that has just come under a model (assigned one, or arriving where one drives
+        it) leaves its instinct plan behind before it acts."""
+        if a.brain != INSTINCT and a.__dict__.get("_model_only_brain") != a.brain:
+            diag.model_only_dropped(world, self._model_only_clean(world, a, "model-only: a model took over"))
+
+    def no_stand_in(self) -> bool:
+        """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""
+        return self.strict or self.model_only
+
+    def style_of(self, brain: LLMBrain) -> str:
+        """The prompt style a request goes out in: the brain's own, or full in a model-only run (no instinct menu)."""
+        return "full" if self.model_only else (getattr(brain.cfg, "prompt_style", "full") or "full")
 
     def _duty(self, world, a: Agent) -> bool:
         """A pioneer (sim/pioneers.py) lights the new village's fire and builds its home there on instinct, whatever its
@@ -458,7 +514,8 @@ class Mind:
             t.add_done_callback(lambda _t: self.plans_out.subtract([bid]))
 
     def _ask(self, world, a: Agent, brain: LLMBrain) -> None:
-        style = getattr(brain.cfg, "prompt_style", "full") or "full"
+        # the brain's own prompt_style, or full in a model-only run (no instinct menu): the same rule as style_of
+        style = "full" if self.model_only else (getattr(brain.cfg, "prompt_style", "full") or "full")
         if style in ("choose", "cascade"):
             return self._ask_choice(world, a, brain, cascade=style == "cascade")
         rep = self._repair_note(world, a)
@@ -817,7 +874,8 @@ class Mind:
             if speed and b.id in speed:
                 row["speed"] = speed[b.id]
             out.append(row)
-        return {"brains": out, "assign": self.world_brain, "presets": PRESETS, "log": self.log[-30:], "narrator": self.narrator}
+        return {"brains": out, "assign": self.world_brain, "presets": PRESETS, "log": self.log[-30:], "narrator": self.narrator,
+                "model_only": self.model_only}
 
     async def close(self) -> None:
         for t in list(self._tasks):
