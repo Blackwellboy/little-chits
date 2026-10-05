@@ -122,6 +122,12 @@ requests in a row (`brain_unavailable`). That run alone stops, and the rest of t
     without the scheme and trailing slash, and as host:port. They are matched as whole words, in any case. A string
     two arms share becomes `an arm`. This matters because a `brain_unavailable` break names the model that stopped
     answering, and a server or client may change the case of a model or host name.
+  - Only the free text is redacted: what broke, each break's text, and each last call's error and reply. The
+    structure (seed, label, kind, tick, counts) is never touched, so an arm or brain called `A` or `B` can't rewrite
+    a record's label.
+  - A brain with no `model` runs the first model its server lists, and its label falls back to that name. The run
+    records it as `resolved_model` in `server.json`, and the redaction covers it too, along with everything that
+    brain's servers listed in the manifest.
   - Records written before this (a single raw `invalid.json`, or `invalid-attempt-N.json`) are migrated on the first
     resume, analyze or CLI listing. The raw record moves to its sealed name, and a redacted copy takes its place.
     Both are marked `migrated`, with the time, and say that such records kept at most 20 breaks.

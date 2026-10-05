@@ -164,24 +164,57 @@ LAST_CALLS = 5  # an invalid run keeps its last model calls (from its tape), for
 _PLAIN_WORDS = {"the", "and", "arm", "model", "models", "server", "brain", "instruct", "chat", "base", "http", "https"}
 
 
-def identities(spec: ExperimentSpec, arm: Arm) -> List[str]:
+def _model_spellings(model: str) -> set:
+    """A model's name, its file name without the path or extension, and the name before the first dash."""
+    if not model:
+        return set()
+    stem = model.rsplit("/", 1)[-1]
+    stem = stem.rsplit(".", 1)[0] if "." in stem and stem.rsplit(".", 1)[1].isalpha() else stem
+    out = {model, stem}
+    head = stem.split("-", 1)[0]
+    if len(head) >= 3 and any(c.isalpha() for c in head):
+        out.add(head)
+    return out
+
+
+def served_models(out) -> Dict[str, set]:
+    """brain id -> the models its servers actually ran: each run's resolved_model (server.json) and, for a brain that
+    names no model (so its server chooses: LLMBrain.resolve_model), every model its servers listed (the manifest)."""
+    out = Path(out)
+    found: Dict[str, set] = {}
+    for p in out.glob("runs/*_*/server.json"):
+        try:
+            s = json.loads(p.read_text())
+        except ValueError:
+            continue
+        if s.get("resolved_model"):
+            found.setdefault(s.get("brain") or "", set()).add(s["resolved_model"])
+    man = out / "manifest.json"
+    if man.exists():
+        m = json.loads(man.read_text())
+        listed = m.get("servers") or {}
+        for bid, cfg in ((m.get("protocol") or {}).get("brains") or {}).items():
+            if cfg.get("model"):
+                continue
+            urls = [cfg.get("base_url"), ((m.get("protocol") or {}).get("card_swap") or {}).get(bid)]
+            for u in urls:
+                found.setdefault(bid, set()).update(listed.get(u or "", []))
+    return found
+
+
+def identities(spec: ExperimentSpec, arm: Arm, models: Optional[set] = None) -> List[str]:
     """Every string that would tell which arm a run belongs to, and its common spellings: the arm's name; its
     brain's id; its label, and each word of it; its model file, without its extension too, and the name before the
-    first dash ("gemma" of gemma-4-12b-it.gguf); every server it may use (card swap included), with and without the
-    scheme and trailing slash, and its host:port. Matched in any case (redact). Longest first, so a URL goes before
-    its host and a label before its words."""
+    first dash ("gemma" of gemma-4-12b-it.gguf), and the same for every model its server actually ran (`models`:
+    served_models); every server it may use (card swap included), with and without the scheme and trailing slash,
+    and its host:port. Matched in any case (redact). Longest first, so a URL goes before its host and a label before
+    its words."""
     out = {arm.name, arm.brain} - {"instinct", ""}
     cfg = spec.brains.get(arm.brain) or {}
     out |= {str(cfg.get(k) or "") for k in ("id", "label")}
     out |= {w for w in str(cfg.get("label") or "").split() if len(w) >= 3 and any(c.isalpha() for c in w)}
-    model = str(cfg.get("model") or "")
-    if model:
-        stem = model.rsplit("/", 1)[-1]
-        stem = stem.rsplit(".", 1)[0] if "." in stem and stem.rsplit(".", 1)[1].isalpha() else stem
-        out |= {model, stem}
-        head = stem.split("-", 1)[0]
-        if len(head) >= 3 and any(c.isalpha() for c in head):
-            out.add(head)
+    for m in {str(cfg.get("model") or "")} | set(models or ()):
+        out |= _model_spellings(m)
     for u in (cfg.get("base_url") or "", spec.card_swap.get(arm.brain, "")):
         if u:
             bare = u.split("//", 1)[-1]
@@ -189,18 +222,40 @@ def identities(spec: ExperimentSpec, arm: Arm) -> List[str]:
     return sorted((s for s in out if s.strip() and s.lower() not in _PLAIN_WORDS), key=len, reverse=True)
 
 
-def blind_names(spec: ExperimentSpec) -> Dict[str, str]:
+def blind_names(spec: ExperimentSpec, out=None) -> Dict[str, str]:
     """Every arm's identities (lower-cased) -> "arm <its label>". A blind record redacts all of them, not only its own
-    arm's: a run's text can name another arm's model too. A string two arms share names neither: "an arm"."""
+    arm's: a run's text can name another arm's model too. A string two arms share names neither: "an arm". With the
+    experiment's directory `out`, the models its servers actually ran count too (served_models)."""
     from . import assign
 
-    out: Dict[str, str] = {}
+    ran = served_models(out) if out is not None else {}
+    names: Dict[str, str] = {}
     for label, name in assign.labels(spec).items():
         arm = next(a for a in spec.arms if a.name == name)
-        for s in identities(spec, arm):
+        for s in identities(spec, arm, ran.get(arm.brain)):
             k = s.lower()
-            out[k] = "an arm" if k in out and out[k] != f"arm {label}" else f"arm {label}"
-    return out
+            names[k] = "an arm" if k in names and names[k] != f"arm {label}" else f"arm {label}"
+    return names
+
+
+FREE_TEXT = {"what", "error", "text"}  # the only fields a blind record redacts; never its seed, label, kind or counts
+
+
+def redact_record(rec: Dict[str, Any], names: Dict[str, str]) -> Dict[str, Any]:
+    """A blind copy of an invalid run's record: the free text (what broke, each break's text, each last call's
+    error and reply) redacted; the structure (seed, label, kind, tick, counts, ids) as it was. Redacting the whole
+    record rewrote the label itself when an arm or brain was called "A" or "B" (Codex on #123)."""
+
+    def go(x, key=None):
+        if isinstance(x, dict):
+            return {k: go(v, k) for k, v in x.items()}
+        if isinstance(x, list):
+            return [go(v, key) for v in x]
+        if isinstance(x, str) and key in FREE_TEXT:
+            return redact(x, names)
+        return x
+
+    return go(rec)
 
 
 def redact(obj: Any, names: Dict[str, str]) -> Any:
@@ -257,7 +312,7 @@ def _record_invalid(spec: ExperimentSpec, rd: Path, seed: int, label: str, arm: 
            "breaks": len(broken), "by_kind": by_kind, "broken": list(broken), "wall_s": round(time.monotonic() - t0, 1),
            "tape_calls": n, "last_calls": last}
     _write_json(rd / "invalid-sealed.json", raw)  # (first: invalid.json is what marks the run as done)
-    blind = redact({k: v for k, v in raw.items() if k not in ("arm", "brain")}, blind_names(spec))
+    blind = redact_record({k: v for k, v in raw.items() if k not in ("arm", "brain")}, blind_names(spec, rd.parent.parent))
     _write_json(rd / "invalid.json", blind)
     return {"invalid": True, **blind}
 
@@ -359,9 +414,9 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     raw["extra_body"] = {**SAMPLING, **(raw.get("extra_body") or {})}
     cfg = BrainConfig(**raw)
     # which server answered is kept apart from result.json, like a treatment: the blind report never reads it
-    _write_json(rd / "server.json", {"brain": cfg.id, "base_url": cfg.base_url, "model": cfg.model,
-                                     "card_swapped": spec.swapped(spec.seeds.index(seed)),
-                                     "extra_body": cfg.extra_body})
+    served = {"brain": cfg.id, "base_url": cfg.base_url, "model": cfg.model,
+              "card_swapped": spec.swapped(spec.seeds.index(seed)), "extra_body": cfg.extra_body}
+    _write_json(rd / "server.json", served)
     mind = Mind(None)
     mind.strict = True
     mind.repair = False
@@ -400,6 +455,10 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
         wait_s += time.monotonic() - waited
     finally:
         await mind.close()
+        # the model the server chose, when the config names none (LLMBrain.resolve_model): recorded before an
+        # invalid run's record is written, so its blind copy redacts that name too (served_models)
+        if brain.stats.resolved_model and brain.stats.resolved_model != served.get("resolved_model"):
+            _write_json(rd / "server.json", dict(served, resolved_model=brain.stats.resolved_model))
     with open(rd / "daily.jsonl", "w") as f:
         for row in daily:
             f.write(json.dumps(row) + "\n")
@@ -464,7 +523,7 @@ def migrate_legacy(out) -> List[str]:
         if spec is None:
             spec = ExperimentSpec.from_dict(json.loads(man.read_text())["protocol"])
         label = str(raw.get("label") or p.parent.name.split("_", 1)[-1])
-        names = blind_names(spec)
+        names = blind_names(spec, out)
         # (and the record's own arm, should the protocol no longer name it)
         own = Arm(name=str(raw.get("arm") or ""), brain=str(raw.get("brain") or "instinct"))
         for s in identities(spec, own):
@@ -478,7 +537,7 @@ def migrate_legacy(out) -> List[str]:
                "migrated": {"at": when, "from": p.name, "note": "a record from before invalid runs were kept blind; "
                                                                  "it kept at most 20 breaks"}}
         _write_json(sealed, raw)
-        blind = redact({k: v for k, v in raw.items() if k not in ("arm", "brain")}, names)
+        blind = redact_record({k: v for k, v in raw.items() if k not in ("arm", "brain")}, names)
         _write_json(p, blind)
         moved.append(str(p.relative_to(out)))
     return moved

@@ -217,3 +217,71 @@ def test_every_break_is_kept_however_many(tmp_path, monkeypatch):
         sealed = json.loads((rd / "invalid-sealed.json").read_text())
         assert bad["breaks"] == 25 and bad["by_kind"] == {"negative_stock": 25}
         assert len(sealed["broken"]) == 25 and sealed["broken"][-1]["what"] == "c24 holds -1 wood"
+
+
+def test_arms_named_like_blind_labels_keep_their_own_label(tmp_path, monkeypatch):
+    """Arms named "A" and "B", sealed crosswise (arm "B" is label A): the structural label is never rewritten, and the
+    break's text names each arm by its own label."""
+    from chits.lab import assign
+    from chits.lab.spec import ExperimentSpec
+
+    def proto(k):
+        return {"name": "crossed", "arms": [{"name": "A"}, {"name": "B", "culture": "stigmergy"}], "seeds": [3],
+                "days": 2, "size": 64, "population": 4, "assign_seed": k}
+
+    k = next(k for k in range(50) if assign.labels(ExperimentSpec.from_dict(proto(k)))["A"] == "B")
+    spec = ExperimentSpec.from_dict(proto(k))
+    real = INV.check
+
+    def fake(world, contract="play", world_brain=None):
+        found = real(world, contract, world_brain)
+        if world.tick >= TICKS_PER_DAY:
+            found.append({"kind": "negative_stock", "level": "hard", "tick": world.tick, "what": "A took B's wood"})
+        return found
+
+    monkeypatch.setattr(INV, "check", fake)
+    run.run(spec, tmp_path)
+    for rd in (tmp_path / "runs").glob("*_*"):
+        label = rd.name.split("_")[1]
+        bad = json.loads((rd / "invalid.json").read_text())
+        assert bad["label"] == label  # (never "arm B", never the other arm's)
+        assert bad["what"] == "arm B took arm A's wood"  # arm "A" is label B, arm "B" is label A
+    text = report.write_pack(tmp_path).read_text()
+    assert "| 3 | A | 2 |" in text and "| 3 | B | 2 |" in text
+
+
+def test_a_model_the_server_chose_is_redacted_too(secret_server, tmp_path, monkeypatch):
+    """A brain with no `model` runs the first one its server lists (LLMBrain.resolve_model), and its label falls back
+    to that name. That name is recorded (server.json) and redacted like the configured ones."""
+    import fake_llm as F
+
+    chosen = "Hiddenpick-7b-Q4_K_M.gguf"
+    F.STATE["models"] = [chosen, "fake-chit-7b", "fake", MODEL]
+    F.STATE["latency"] = 0.002
+    monkeypatch.setenv("CHITS_LAB_ALLOW_MODELS", "1")
+    real = INV.check
+
+    def fake(world, contract="play", world_brain=None):
+        found = real(world, contract, world_brain)
+        if world.tick >= 10:
+            found.append({"kind": "negative_stock", "level": "hard", "tick": world.tick,
+                          "what": f"{chosen.lower()} said {chosen.rsplit('.', 1)[0].upper()}"})
+        return found
+
+    monkeypatch.setattr(INV, "check", fake)
+    from chits.lab.spec import ExperimentSpec
+
+    spec = ExperimentSpec.from_dict({"name": "chosen", "arms": [{"name": ARM, "brain": BRAIN}, {"name": "baseline"}],
+                                     "allow_models": True, "seeds": [3], "days": 1, "size": 64, "population": 4,
+                                     "brains": {BRAIN: {"id": BRAIN, "base_url": secret_server, "model": "",
+                                                        "max_concurrency": 4, "max_tokens": 100}}})
+    try:
+        run.run(spec, tmp_path)
+    finally:
+        F.STATE["models"] = ["fake-chit-7b", "fake", MODEL]
+    served = json.loads(next(tmp_path.glob("runs/*/server.json")).read_text())
+    assert served["resolved_model"] == chosen
+    report.write_pack(tmp_path)
+    for where, text in _blind_files(tmp_path).items():
+        for s in (chosen, chosen.rsplit(".", 1)[0], "Hiddenpick"):
+            assert s.lower() not in text.lower(), f"{s!r} in {where}"
