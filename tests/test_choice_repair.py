@@ -186,3 +186,25 @@ def test_a_protocol_sealed_before_arm_repair_existed_keeps_its_fingerprint():
     root = Path(__file__).resolve().parents[1]
     spec = ExperimentSpec.load(root / "docs" / "protocols" / "jevk5-vs-gemma.json") if hasattr(ExperimentSpec, "load")         else ExperimentSpec.from_dict(json.loads((root / "docs" / "protocols" / "jevk5-vs-gemma.json").read_text()))
     assert spec.fingerprint() == "6fc60a4faaa15742"
+
+
+def test_a_repaired_plan_counts_only_its_corrective_first_step():
+    """Codex on #142: every step of a repaired plan was counted, so a good first step's followers inflated the
+    repair's success. Only each repaired decision's first finished step counts."""
+    from chits import diag
+    from chits.sim.world import World
+
+    w = World("A", "A", 3, "direct", 64, 2)
+    a = next(iter(w.agents.values()))
+    plan = [{"do": "rest", "_origin": "model_repaired", "_decision_id": "r1"},
+            {"do": "rest", "_origin": "model_repaired", "_decision_id": "r1"},
+            {"do": "rest", "_origin": "model_repaired", "_decision_id": "r1"}]
+    for s in plan:
+        diag.action_finished(w, a, dict(s), "done")
+    diag.action_finished(w, a, {"do": "craft", "_origin": "model_repaired", "_decision_id": "r2"}, "missing wood")
+    d = diag.of(w)
+    assert d.repaired_first == {"ok": 1, "fail": 1}
+    from chits.lab.run import repair_outcomes
+
+    out = repair_outcomes(w)
+    assert out["repaired_steps_ok"] == 1 and out["repaired_steps_failed"] == 1
