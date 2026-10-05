@@ -77,7 +77,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | Item | What | What it still needs |
 |---|---|---|
 | Zones (`buildings.NEED_SITING`, `buildings.TOWN_GATE`, both off) | Its 24-seed A/B switched on, against main with the hunger margin: discoveries 69.7 > 69.3 / 71.2 > 65.3, era 7.92 > 7.75 / 8.0 > 7.58, one starvation (seed 12) | Find what costs discoveries before turning it on: compare `fired` counts and per-seed autopsies with the harness |
-| `dev/rng-streams` (local only, `~/projects/lc-rng` on the main PC) | A separate random stream per system, to cut A/B noise | Stopped partway. Restart it |
+| `dev/rng-streams2` (`world.RNG_STREAMS`, on) | A random stream per system, chit and tick, to cut A/B noise. Noise check, 12 seeds × 60 days, per-seed discovery change from one harmless extra draw: an unused draw in gathering, spread (sd) 12.9 off > 0.0 on; the builder rolling once more, 10.0 off > 0.55 on. 24-seed A/B against main: discoveries 74.25 > 77.6 / 73.9 > 75.3, era 8.92 > 8.5 / 8.33 > 8.58, population even, one starvation (seed 42, a store emptied while the chit walked to it) | Review and merge. Rebase every open A/B on it: their per-seed swings should shrink |
 
 **Switching the features on.** A feature turns on after a 24-seed harness A/B with its switch on, against the main of the day, clears the bar below. Results against main with the hunger margin (#100, #105):
 
