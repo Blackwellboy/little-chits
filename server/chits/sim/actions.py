@@ -3411,11 +3411,17 @@ def _do_plant(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def harvest_source(world, a: Agent, target: Any = None):
+    """The farm a harvest step takes: the one named by id, or the nearest ripe one within 35 tiles (also for a target
+    that names no farm by id, such as "farm"). The harvest step, and the options' reservation in brain.instinct."""
+    return _find_structure(world, a, target, 35, lambda x: x.design == "farm" and x.functional and x.planted
+                           and x.growth >= 1.0 and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+
+
 def _do_harvest(world, a: Agent, step, s) -> str:
     if s.get("redirect"):
         return _redirect(world, a, s)
-    st = _find_structure(world, a, step.get("target"), 35, lambda x: x.design == "farm" and x.functional and x.planted
-                         and x.growth >= 1.0 and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+    st = harvest_source(world, a, step.get("target"))
     if not st:
         # nothing ripe. World A's model harvested unripe or empty farms 483 times in 160 days, and each failure
         # threw the rest of its plan away while 32 farms lay empty: sow an empty one, or just say how it's growing

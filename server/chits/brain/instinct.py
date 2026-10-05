@@ -60,10 +60,8 @@ def _harvest_open(world, a: Agent) -> bool:
     ripe = _ripe_farms(world, a)
     if not ripe:
         return False
-    taken = set()
-    for o in world.agents.values():
-        if o.id != a.id:
-            taken.add(_farm_taken_by(world, o))
+    # (this chit too: asked ahead, it may still have a harvest of its own to run before the option starts)
+    taken = {_farm_taken_by(world, o) for o in world.agents.values()}
     return any(st.id not in taken for st in ripe)
 
 
@@ -74,16 +72,16 @@ def _ripe_farms(world, a: Agent) -> List[Any]:
 
 
 def _farm_taken_by(world, o: Agent) -> Optional[str]:
-    """The farm a chit set on a harvest (its plan's next steps, or the plan it is about to adopt) will take: the one it
-    names, or with none named the nearest ripe one to it."""
+    """The farm a chit set on a harvest (its plan's next steps, or the plan it is about to adopt) will take, found as
+    the step finds it (sim.actions.harvest_source): the one it names by id, or the nearest ripe one to it."""
+    from ..sim.actions import harvest_source
+
     steps = list(o.plan[:2]) + list(((o.pending_plan or {}).get("steps") or [])[:2])
     step = next((s for s in steps if s.get("do") == "harvest"), None)
     if step is None:
         return None
-    if step.get("target"):
-        return str(step["target"]).strip()
-    near = _ripe_farms(world, o)
-    return near[0].id if near else None
+    st = harvest_source(world, o, step.get("target"))
+    return st.id if st is not None else None
 
 
 def _can_run(world, a: Agent, p: Dict[str, Any]) -> bool:

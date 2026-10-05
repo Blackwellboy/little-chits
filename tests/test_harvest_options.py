@@ -71,8 +71,12 @@ def _is_harvest_and_store(w, o):
 
 def test_a_chit_harvesting_some_other_named_farm_takes_nothing_from_this_one():
     # (Codex on #113): a harvest names its farm, or takes the nearest ripe one to its harvester
+    # (an id that names no structure is no farm of its own: the step takes the nearest ripe one, so name a real one)
     w, a, b, farm = _farm_world()
-    b.plan = [{"do": "harvest", "target": "s9999"}, {"do": "store", "what": "grain"}]
+    pos = w.find_site("farm", a.x - 12, a.y, 10)
+    elsewhere = w.place_site("farm", pos[0], pos[1], a)
+    w.complete_structure(elsewhere, a)
+    b.plan = [{"do": "harvest", "target": elsewhere.id}, {"do": "store", "what": "grain"}]
     assert _can_run(w, a, HARVEST_AND_STORE)
 
 
@@ -92,4 +96,18 @@ def test_two_chits_naming_the_same_farm_leave_the_other_ripe_farm_free():
         o.plan = [{"do": "harvest", "target": farms[0].id}]
     assert _can_run(w, a, HARVEST_AND_STORE)  # (the second farm is nobody's)
     c.plan = [{"do": "harvest", "target": farms[1].id}]
+    assert not _can_run(w, a, HARVEST_AND_STORE)
+
+
+def test_a_chits_own_harvest_still_to_run_takes_its_farm():
+    # (Codex on #113): asked ahead, the chit's own last steps run first and leave the only farm harvested
+    w, a, b, farm = _farm_world()
+    a.plan = [{"do": "harvest"}, {"do": "store", "what": "grain"}]
+    assert not _can_run(w, a, HARVEST_AND_STORE)
+
+
+def test_a_harvest_naming_its_farm_by_kind_takes_the_farm_the_step_would_find():
+    # (Codex on #113): {"target": "farm"} is the nearest ripe farm to its harvester, not a farm called "farm"
+    w, a, b, farm = _farm_world()
+    b.plan = [{"do": "harvest", "target": "farm"}, {"do": "store", "what": "grain"}]
     assert not _can_run(w, a, HARVEST_AND_STORE)
