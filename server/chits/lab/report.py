@@ -54,7 +54,8 @@ def analyze(out, unblind: bool = False) -> Dict[str, Any]:
     for m in metrics:
         table[m] = {}
         for l in labels:
-            xs = [r["final"].get(m, 0) for r in by[l].values()]
+            # (a run that didn't measure a metric, one recorded before it existed, is left out: never read as 0)
+            xs = [v for r in by[l].values() if (v := r["final"].get(m)) is not None]
             d = stats.describe(xs)
             d["ci"] = stats.bootstrap_ci(xs, seed=1)
             table[m][l] = d
@@ -63,8 +64,8 @@ def analyze(out, unblind: bool = False) -> Dict[str, Any]:
     for l in labels[1:]:
         pairs[l] = {}
         for m in metrics:
-            a = {s: r["final"].get(m, 0) for s, r in by[ref].items()}
-            b = {s: r["final"].get(m, 0) for s, r in by[l].items()}
+            a = {s: v for s, r in by[ref].items() if (v := r["final"].get(m)) is not None}
+            b = {s: v for s, r in by[l].items() if (v := r["final"].get(m)) is not None}
             p = stats.paired(a, b, seed=2)
             p["cliffs_delta"] = stats.cliffs_delta(list(a.values()), list(b.values()))
             p["mann_whitney_p"] = stats.mann_whitney(list(a.values()), list(b.values()))["p"]

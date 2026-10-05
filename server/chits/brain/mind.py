@@ -153,6 +153,7 @@ class Mind:
         # model that is down leaves its chits finishing their plan, then waiting visibly, never on instinct
         self.model_led = False
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
+        self.native_sampling = False  # a Lab run with sampling: "native": every call at the brain's own temperature
         self.choice_repair: Optional[bool] = None  # ... for choosing brains too: None = the module's CHOICE_REPAIR
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
         self.decisions: deque = deque(maxlen=5000)  # one record per model request (F2)
@@ -939,7 +940,8 @@ class Mind:
             return P.reflection_messages(world, a)
 
         try:
-            res = await brain.chat(at_send, max_tokens=450, temperature=0.6)
+            # (a native-sampling Lab run's model reflects at its own sealed temperature too: Codex on #151)
+            res = await brain.chat(at_send, max_tokens=450, temperature=brain.cfg.temperature if self.native_sampling else 0.6)
         except Exception:
             return
         if self.match != match:

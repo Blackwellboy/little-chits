@@ -470,7 +470,8 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     _write_json(rd / "server.json", served)
     mind = Mind(None)
     mind.strict = True
-    mind.repair = mind.choice_repair = arm.repair  # (declared per arm, never on by default: research plan item 40)
+    mind.repair = mind.choice_repair = arm.repair
+    mind.native_sampling = spec.sampling == "native"  # (declared per arm, never on by default: research plan item 40)
     mind.model_only = spec.model_only
     brain = mind.upsert(dict(cfg.__dict__))
     mind.assign(w, cfg.id)

@@ -24,6 +24,12 @@ FAIR_MODEL_FIELDS = (
 ARCHITECTURE_FIELDS = ("prompt_style", "escalate_below", "escalate_share", "escalate_to")
 # a model's own sampling (its card's temperature and sampler settings): what sampling: "native" lets differ, declared
 SAMPLING_FIELDS = ("temperature", "extra_body")
+# the extra_body keys native sampling may vary: samplers only. Anything else there (max_tokens, seed, a chat template,
+# a response format) must still match, or an arm could change more than its sampling (Codex on #151)
+SAMPLER_KEYS = frozenset({"top_p", "top_k", "min_p", "typical_p", "presence_penalty", "frequency_penalty",
+                          "repeat_penalty", "repetition_penalty", "repeat_last_n", "mirostat", "mirostat_tau",
+                          "mirostat_eta", "tfs_z", "dry_multiplier", "dry_base", "dry_allowed_length",
+                          "xtc_probability", "xtc_threshold"})
 
 
 class SpecError(ValueError):
@@ -191,6 +197,11 @@ class ExperimentSpec:
                 for field_name in fair:
                     if getattr(cfg, field_name) != getattr(ref, field_name):
                         mismatches.append(field_name)
+                if self.sampling == "native":  # (only sampler keys may differ in extra_body)
+                    rest = lambda c: {k: v for k, v in (c.extra_body or {}).items() if k not in SAMPLER_KEYS}
+                    if rest(cfg) != rest(ref):
+                        mismatches.append("extra_body (beyond samplers: " + ", ".join(sorted(
+                            set(rest(cfg)) ^ set(rest(ref)) | {k for k in rest(cfg) if rest(cfg)[k] != rest(ref).get(k)})) + ")")
             if mismatches:
                 names = ", ".join(sorted(set(mismatches)))
                 raise SpecError(

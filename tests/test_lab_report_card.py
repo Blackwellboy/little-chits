@@ -81,3 +81,59 @@ def test_food_across_the_water_does_not_make_a_starvation_preventable(monkeypatc
     monkeypatch.setattr(w, "same_land", lambda x, y: False)  # (the store is on another shore)
     w.kill(a, "starvation")
     assert [s["preventable"] for s in found] == [False]
+
+
+def test_an_unmeasured_metric_is_left_out_of_the_report_never_read_as_zero(tmp_path):
+    """Codex on #151: a run recorded before `preventable` existed was averaged in as 0."""
+    from chits.lab import report, run
+    from chits.lab.spec import ExperimentSpec
+
+    spec = ExperimentSpec.from_dict({"name": "card", "arms": [{"name": "a"}, {"name": "b"}], "seeds": [3, 4],
+                                     "days": 1, "size": 64, "population": 4})
+    run.run(spec, tmp_path / "out")
+    for p in (tmp_path / "out" / "runs").glob("*/result.json"):  # (as if every run were from before the field)
+        r = json.loads(p.read_text())
+        r["final"].pop("preventable")
+        p.write_text(json.dumps(r))
+    text = report.write_pack(tmp_path / "out").read_text()
+    row = next(l for l in text.splitlines() if l.startswith("| preventable"))
+    assert "0.00" not in row, row  # (nothing measured: no zero mean)
+
+
+def test_native_sampling_varies_samplers_only():
+    from chits.lab.spec import ExperimentSpec, SpecError
+
+    url = "http://127.0.0.1:9/v1"
+    a = {"id": "a", "base_url": url, "model": "m1", "temperature": 0.05, "max_tokens": 120,
+         "extra_body": {"top_k": 20, "seed": 1}}
+    proto = {"name": "native", "allow_models": True, "seeds": [1], "days": 1, "size": 64, "population": 3,
+             "sampling": "native", "arms": [{"name": "x", "brain": "a"}, {"name": "y", "brain": "b"}]}
+    ok = dict(a, id="b", model="m2", temperature=1.0, extra_body={"top_k": 64, "top_p": 0.95, "seed": 1})
+    ExperimentSpec.from_dict(dict(proto, brains={"a": a, "b": ok}))
+    sneaky = dict(ok, extra_body={"top_k": 64, "seed": 7})  # (a seed isn't a sampler)
+    with pytest.raises(SpecError, match="seed"):
+        ExperimentSpec.from_dict(dict(proto, brains={"a": a, "b": sneaky}))
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_reflection_samples_at_the_brains_own_temperature_under_native_sampling(native):
+    import asyncio
+
+    from chits.brain.mind import Mind
+
+    w = World("A", "A", 3, "direct", 64, 2)
+    a = next(iter(w.agents.values()))
+    for i in range(8):
+        a.remember(w.tick, f"memory {i}", 3, "note")
+    m = Mind(None)
+    b = m.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1", "temperature": 0.05})
+    m.native_sampling = native
+    seen = {}
+
+    async def chat(msgs, **kw):
+        seen.update(kw)
+        return {"text": '{"lessons": [], "ambition": "to build"}', "latency_ms": 1.0}
+
+    b.chat = chat
+    asyncio.run(m._reflect(w, a, b))
+    assert seen["temperature"] == (0.05 if native else 0.6)
