@@ -64,3 +64,11 @@ def test_a_listed_name_ending_in_a_station_is_one_name():
     assert st["with"] == ["Stone Mill", "clay pot"] and "at" not in st
     st = parse_plan('{"plan":[{"do":"experiment","with":["clay","at fire"]}]}')["steps"][0]
     assert st["with"] == ["clay"] and st["at"] == "fire"  # (just a station: no invention takes a building's name)
+
+
+def test_a_naming_clause_after_the_last_input_with_no_comma():
+    # (Codex on #113): "stone called Cart" was read as one input, and the invention had no name
+    st = parse_plan('{"plan":["invent wood and stone called Cart"]}')["steps"][0]
+    assert st["with"] == ["wood", "stone"] and st["name"] == "Cart"
+    st = parse_plan('{"plan":[{"do":"experiment","with":"clay, sand at kiln name it"}]}')["steps"][0]
+    assert st["with"] == ["clay", "sand"] and st["at"] == "kiln" and "name" not in st

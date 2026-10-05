@@ -149,6 +149,19 @@ _STATION_WORDS = {"campfire": "fire", "bench": "workshop", "workbench": "worksho
 _NAME_WORDS = ("name", "named", "call", "called")
 _NO_NAME = ("", "it", "them", "this", "that")
 _INPUT_FILLER = ("some", "a", "an", "the", "of", "with", "for", "more")
+_NAMING = re.compile(r"(?:\s*,)?\s*(?:\band\s+)?\b(?:called|named|name\s+it|call\s+it)\b(.*)$", re.I | re.S)
+
+
+def _name_clause(text: str, step: Dict[str, Any]) -> str:
+    """Inputs written as words with a naming clause after them, comma or not ("wood and stone called Cart", "glass,
+    sand, name it"): the clause becomes the step's name (none for "it"), and the text before it the inputs."""
+    m = _NAMING.search(text)
+    if not m:
+        return text
+    name = m.group(1).strip().strip(".,;:\"'").strip()
+    if name.lower() not in _NO_NAME:
+        step.setdefault("name", name)
+    return text[:m.start()]
 
 
 def _verb_tail(raw: Any, verb: str) -> str:
@@ -245,7 +258,7 @@ def _step_from_string(s: str) -> Optional[Dict[str, Any]]:
             clean.append(w)
     if verb in ("experiment", "invent"):
         # (the words "at" and "and" matter here: "berries, iron ore at fire")
-        body = " ".join(w for w in rest if not re.match(r"^x?(\d+)x?$", w.lower()))
+        body = _name_clause(" ".join(w for w in rest if not re.match(r"^x?(\d+)x?$", w.lower())), step)
         segs = [" ".join(w for w in seg.split() if w.lower() not in _INPUT_FILLER)
                 for seg in re.split(r",|\+|;|\band\b", body, flags=re.I)]
         step["with"] = _inputs([sg for sg in segs if sg], step) or clean
@@ -371,6 +384,7 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
     if verb in ("experiment", "invent"):
         ingredients = step.get("with")
         if isinstance(ingredients, str):  # "berries iron ore fire", "glass, copper ore at furnace"
+            ingredients = _name_clause(ingredients, step)
             ingredients = _inputs([x for x in re.split(r",|\+|;|\band\b", ingredients, flags=re.I) if x.strip()], step)
         elif isinstance(ingredients, list):
             ingredients = _inputs(ingredients, step, listed=True)
