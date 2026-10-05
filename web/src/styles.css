@@ -319,6 +319,7 @@ button.danger { color: var(--bad); }
 .saga-btn { background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; margin: 0 6px 6px 0; font-size: 12px; }
 .saga { white-space: pre-wrap; font-family: inherit; font-size: 13px; line-height: 1.5; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 8px; }
 .narrator-pick { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 8px 0; }
+.model-only { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; margin: 8px 0; }
 .modal.thread { width: min(560px, 100%); }
 .post { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin: 0 0 8px; }
 .post p { margin: 0 0 6px; white-space: pre-wrap; line-height: 1.45; }

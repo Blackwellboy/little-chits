@@ -45,6 +45,22 @@ function ago(t: number): string {
   return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : `${Math.round(s / 3600)} h ago`;
 }
 
+function ModelOnlyRow({ on, reload }: { on: boolean; reload: () => void }) {
+  const control = useUI((s) => s.control);
+  const [msg, setMsg] = useState("");
+  if (control?.contract === "experiment") return null;
+  const flip = async (v: boolean) => {
+    try { await api("/api/model-only", { on: v }); setMsg(""); reload(); } catch (e) { setMsg(errorText(e)); }
+  };
+  return (
+    <label className="model-only" title="A diagnostic, not for comparing models. The models' chits get nothing from instinct: no menu of drafted options, no instinct plans while a model is slow, no body reflexes (eat, sleep, shelter, warm up, store). Shows what a model does on its own; its chits may die of neglect. Off on restart.">
+      <input type="checkbox" checked={on} onChange={(e) => flip(e.target.checked)} />
+      <b>🩺 Model only</b> <small className="muted">diagnostic: no instinct menu, fallback or reflexes. Chits may die of neglect.</small>
+      {msg && <small className="err">{msg}</small>}
+    </label>
+  );
+}
+
 export function BrainsModal() {
   const { brainsOpen, set, worlds: metas } = useUI(useShallow((s) => ({ brainsOpen: s.brainsOpen, set: s.set, worlds: s.worlds })));
   const [status, setStatus] = useState<any>(null);
@@ -160,6 +176,7 @@ export function BrainsModal() {
             {brains.map((b) => <option key={b.config.id} value={b.config.id}>{b.label}</option>)}
           </select>
         </label>
+        <ModelOnlyRow on={!!status?.model_only} reload={reload} />
         <PopCapRow />
         <h3>Endpoints</h3>
         <div className="brain-list">
