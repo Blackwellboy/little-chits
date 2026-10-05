@@ -73,7 +73,8 @@ def test_a_broken_run_is_recorded_and_the_batch_carries_on(tmp_path, monkeypatch
             bad = json.loads((rd / "invalid.json").read_text())
             assert bad["kind"] == "negative_stock" and bad["what"] == "x holds -1 wood"
             assert bad["tick"] == TICKS_PER_DAY and bad["day"] == 2
-            assert bad["seed"] == int(rd.name.split("_")[0]) and bad["arm"] == "silent" and bad["label"] == rd.name.split("_")[1]
+            assert bad["seed"] == int(rd.name.split("_")[0]) and bad["label"] == rd.name.split("_")[1]
+            assert json.loads((rd / "invalid-sealed.json").read_text())["arm"] == "silent"  # (named only when sealed)
             assert bad["broken"][0]["kind"] == "negative_stock"
     text = report.write_pack(out).read_text()
     assert "## Invalid runs" in text and "negative_stock" in text and "x holds -1 wood" in text
@@ -143,8 +144,9 @@ def test_a_model_server_that_stops_answering_invalidates_only_its_run(slow_fake,
                                            allow_models=True, brains={"m1": brain}, seeds=[3], days=1))
     res = run.run(spec, tmp_path, jobs=2)  # (through the process pool, as the study ran)
     assert res["invalid"] == 1
-    bad = json.loads(next(tmp_path.glob("runs/*/invalid.json")).read_text())
+    path = next(tmp_path.glob("runs/*/invalid.json"))
+    bad = json.loads(path.read_text())
     assert bad["kind"] == "brain_unavailable" and "12 requests failed in a row" in bad["what"]
-    assert bad["arm"] == "model" and bad["tape_calls"] >= 12
+    assert json.loads(path.with_name("invalid-sealed.json").read_text())["arm"] == "model" and bad["tape_calls"] >= 12
     assert len(bad["last_calls"]) == 5 and all("Timeout" in c["error"] for c in bad["last_calls"])
     assert len(list(tmp_path.glob("runs/*/result.json"))) == 1  # the instinct arm finished
