@@ -35,6 +35,7 @@ def row(w, founders: int = 0) -> Dict[str, Any]:
         "loose": sum(n for pile in getattr(w, "ground", {}).values() for k, n in pile.items() if k != "_t"),
         "forgotten": w.lifetime("forgotten"),  # (whole run: the event window holds only the last 4,000 events)
         "births": max(0, st["population"] + st["deaths"] - founders) if founders else 0,
+        "starved": sum(1 for a in w.dead.values() if "starv" in (a.cause_of_death or "")),
     }
 
 

@@ -254,6 +254,16 @@ real GPU experiments without the owner's go-ahead; no major research work merged
   decision has `style: "repair"`, `repair_of` (the failed plan's decision), `repair_step` and `repair_reason`.
   Nothing judges the plan. On in play; an experiment has it only when declared (`--repair`, recorded in the
   manifest). With the fake model server, a 1-day run made 5 repairs in 56 decisions with it on, 0 with it off.
+- **R1, model arms ready for a first study (items 29, 39, 43, 72):** `make lab` runs the Lab from the repository
+  root. Model arms send the same explicit sampling as `make experiment` (a brain's own `extra_body` wins), record a
+  BrainTape per run (`runs/*/tape.jsonl`), and report thinking opportunities per chit-day (`requests_per_chit_day`,
+  `waiting_share`, `wait_seconds_per_chit_day`, `model_step_share`; a "Thinking opportunities" table in the report), reported and never
+  equalised. `starved` joins every run's row. `card_swap` (paired card swaps, item 72) runs each model on its other
+  card on every other seed. `--url BRAIN=URL` sets a server at run time, sealed in the manifest. Every server is
+  checked before a run, and must answer and list the brain's `model`. Which server answered goes to
+  `runs/*/server.json`, apart from the blind result. First study: `docs/protocols/jevk5-vs-gemma.json`; how to run
+  it, and how to serve two models on one card: `docs/research/lab-model-vs-model.md`. Not done: replaying a Lab run
+  from its tape, and an equal-budget cap.
 
 ## From an outside code review (2026-09-30)
 
