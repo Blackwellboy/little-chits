@@ -68,6 +68,9 @@ def main(argv):
     from chits.sim import items
     if hasattr(items, "ITEM_USES"):
         items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
+    from chits.sim import world as world_mod
+    if hasattr(world_mod, "RNG_STREAMS"):  # streams per system, chit and tick: off, the running streams of old trees
+        world_mod.RNG_STREAMS = False
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()

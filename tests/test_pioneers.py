@@ -117,7 +117,7 @@ def test_a_full_village_still_has_children_the_world_cap_is_the_limit():
         x.last_birth_tick = -10 ** 6
     b.x, b.y = a.x, a.y
     rng = Always(1)
-    w.rng_for = lambda name: rng
+    w.rng_for = lambda name, key=None: rng
     n = len(w.agents)
     w._births()
     assert len(w.agents) == n + 1

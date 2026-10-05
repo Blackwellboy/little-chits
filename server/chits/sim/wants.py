@@ -96,7 +96,7 @@ def choose(world, a: Agent) -> Dict[str, Any]:
     opts = options(world, a)
     old = a.want.get("text")
     opts = [(w, o) for w, o in opts if o["text"] != old] or opts
-    rng = world.rng_for("wants")
+    rng = world.rng_for("wants", a.id)
     r = rng.random() * sum(w for w, _ in opts)
     pick = opts[-1][1]
     for w, o in opts:
