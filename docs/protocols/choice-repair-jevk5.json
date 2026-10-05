@@ -1,0 +1,26 @@
+{
+  "name": "Choice repair off vs on, JevK5 9B cascade",
+  "notes": "Does telling a choosing model why its last step failed help? Plan section 8; research plan item 40; issue #112. One model (JevK5 9B, its own letter interface: cascade), the same seeds, island, culture, rules and sampling; the arms differ only in `repair` (the simulator's exact reason, once, in the next choice scene and in an escalated full plan). Pre-registered outcomes, in order: model step failure rate (model_steps_failed / model steps), failure loops, repaired plans' first steps ok vs failed (repaired_steps_ok/failed count only each repaired decision's first finished step), requests per chit-day (the cost), then discoveries, population, starved. A repair that only trades one failure for another shows as a high repaired_steps_failed share. The decision bench cannot answer this (its scenes never follow a failed choice). Runs on the RTX 5090 after the JevK5-vs-Gemma study; blind until the report is frozen. Shared-world systems as in that study (beliefs, last-keeper reminders, library hints) are on in both arms.",
+  "arms": [
+    {"name": "repair_off", "culture": "direct", "brain": "jevk5"},
+    {"name": "repair_on", "culture": "direct", "brain": "jevk5", "repair": true}
+  ],
+  "allow_models": true,
+  "brains": {
+    "jevk5": {"id": "jevk5", "label": "JevK5 9B Q8_0 (cascade)", "base_url": "http://127.0.0.1:18195/v1",
+              "model": "jevk5-9b-v0.3.3-Q8_0.gguf", "max_concurrency": 4, "timeout": 180.0, "temperature": 0.7,
+              "max_tokens": 600, "json_mode": true, "disable_thinking": true,
+              "extra_body": {"top_p": 0.95, "top_k": 40, "min_p": 0.05}, "prompt_style": "cascade"}
+  },
+  "seeds": [42, 7, 99, 1, 2, 3],
+  "days": 25,
+  "size": 128,
+  "population": 12,
+  "blind": true,
+  "metrics": ["model_step_failure_rate", "model_steps_failed", "failure_loops", "repairs_asked", "repaired_steps_ok",
+              "repaired_steps_failed", "requests_per_chit_day", "discoveries", "population", "starved", "era",
+              "model_step_share"],
+  "events": {
+    "20 discoveries": {"metric": "discoveries", "at_least": 20}
+  }
+}

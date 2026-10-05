@@ -341,7 +341,8 @@ def test_a_reply_say_answers_whoever_spoke():
     a.pending_plan = {"steps": [{"do": "rest"}], "goal": "g", "say": "Hello back"}
     a.plan = []
     m.hook(w, a)
-    assert a.plan[0] == {"do": "say", "to": b.name, "text": "Hello back"}
+    say = {k: v for k, v in a.plan[0].items() if not k.startswith("_")}  # (its bookkeeping: provenance.py)
+    assert say == {"do": "say", "to": b.name, "text": "Hello back"} and a.plan[0]["_origin"] == "model_generated"
     asyncio.run(m.close())
 
 

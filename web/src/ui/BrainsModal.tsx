@@ -61,6 +61,22 @@ function ModelOnlyRow({ on, reload }: { on: boolean; reload: () => void }) {
   );
 }
 
+function ModelLedRow({ on, reload }: { on: boolean; reload: () => void }) {
+  const control = useUI((s) => s.control);
+  const [msg, setMsg] = useState("");
+  if (control?.contract === "experiment") return null;
+  const flip = async (v: boolean) => {
+    try { await api("/api/model-led", { on: v }); setMsg(""); reload(); } catch (e) { setMsg(errorText(e)); }
+  };
+  return (
+    <label className="model-only" title="A way to play: the model supplies the intelligence and the chit keeps its body. A model's chits get no instinct plans, no filler while it thinks and no instinct stand-in when it is slow or down; their bodies still eat, sleep and shelter, and the simulator still walks and carries out each step. A model that is down leaves its chits finishing their plan, then waiting (shown), never on instinct. Kept with the game.">
+      <input type="checkbox" checked={on} onChange={(e) => flip(e.target.checked)} />
+      <b>🧠 Model-led</b> <small className="muted">the model decides; the body keeps its reflexes. No hidden instinct.</small>
+      {msg && <small className="err">{msg}</small>}
+    </label>
+  );
+}
+
 export function BrainsModal() {
   const { brainsOpen, set, worlds: metas } = useUI(useShallow((s) => ({ brainsOpen: s.brainsOpen, set: s.set, worlds: s.worlds })));
   const [status, setStatus] = useState<any>(null);
@@ -176,6 +192,7 @@ export function BrainsModal() {
             {brains.map((b) => <option key={b.config.id} value={b.config.id}>{b.label}</option>)}
           </select>
         </label>
+        <ModelLedRow on={!!status?.model_led} reload={reload} />
         <ModelOnlyRow on={!!status?.model_only} reload={reload} />
         <PopCapRow />
         <h3>Endpoints</h3>

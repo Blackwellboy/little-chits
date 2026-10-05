@@ -132,6 +132,9 @@ class Runtime:
         self.rules: WorldRules = WorldRules.from_dict(json.loads(kept_rules)) if kept_rules else WorldRules()
         self.mind.strict = self.contract == "experiment"
         self.mind.model_only = False  # (a diagnostic, switched on by hand in play: never kept over a restart)
+        # model-led is a way to play, not a diagnostic: the game keeps its choice (never in an experiment, which is
+        # stricter still)
+        self.mind.model_led = self.store.get_meta("model_led") == "1" and self.contract != "experiment"
         self.mind.on_decision = self.store.save_decision
         self.worlds: Dict[str, World] = {}
         self.forks: Dict[str, Dict[str, Any]] = {}  # 🔀 what-if copies stepping alongside (self.fork); in memory only
@@ -331,6 +334,8 @@ class Runtime:
             self.store.set_meta("rules", json.dumps(w.rules.to_dict()))
         if self.mind.model_only:  # (a restored save, a rewind or a loaded file: its saved instinct steps go too)
             self.mind.start_model_only(w)
+        elif self.mind.model_led:  # (likewise: instinct's saved plans don't run on under model-led)
+            self.mind.start_model_led(w)
         w._scored_from = w.tick  # the scorecard's decisions are kept in memory from here (diag.scorecard)
         if not hasattr(w, "_durable_tick"):
             w._durable_tick = -1
@@ -350,11 +355,13 @@ class Runtime:
     def reset(self, seed: Optional[int] = None, chits: Optional[int] = None, size: Optional[int] = None,
               mode: Optional[str] = None, brains: Optional[Dict[str, str]] = None,
               contract: Optional[str] = None, contact: Optional[bool] = None,
-              pack: Optional[Dict[str, Any]] = None, rules: Optional[Dict[str, Any]] = None) -> None:
+              pack: Optional[Dict[str, Any]] = None, rules: Optional[Dict[str, Any]] = None,
+              model_led: Optional[bool] = None) -> None:
         """Start a new match (see _reset). The loop stops stepping meanwhile: it used to keep stepping the old
         worlds, so the new A and B started ticks apart and old decisions landed in the new run's records.
         `pack`: a content pack for the new match (None keeps the current one, {} plays without).
-        `rules`: the new match's world rules (sim/rules.py), fixed for its life (None keeps the current ones)."""
+        `rules`: the new match's world rules (sim/rules.py), fixed for its life (None keeps the current ones).
+        `model_led`: play the new match model-led (docs/MODEL_LED.md); None keeps the current choice."""
         self._check_reset(mode, contract, contact)  # a rejected reset leaves the running match untouched
         new_rules = WorldRules.from_dict(rules) if rules is not None else self.rules  # (a bad set raises: no reset)
         new_pack = self._new_pack(pack, contract or self.contract)  # (so does a pack that doesn't validate)
@@ -367,6 +374,9 @@ class Runtime:
             self.pack = new_pack
             self.rules = new_rules
             self.store.set_meta("rules", json.dumps(new_rules.to_dict()))
+            eff = contract if contract is not None else self.contract  # (left out, the game keeps its contract)
+            if model_led is not None or eff == "experiment":  # (an experiment is stricter: never model-led)
+                self.set_model_led(bool(model_led) and eff != "experiment")
             self._reset(seed, chits, size, mode, brains, contract, contact)
         finally:
             self._resetting = False
@@ -510,6 +520,7 @@ class Runtime:
         if len(schemes) > 1:  # (twins run one algorithm: _load_or_create sees to it, so this is a defect, not a state)
             raise RuntimeError(f"the worlds of this run use different random-number schemes: {sorted(schemes)}")
         return {"run_id": self.run_id, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "contract": self.contract,
+                "model_led": self.mind.model_led,
                 "mode": self.mode, "seed": first.seed if first else None, "size": first.w if first else None,
                 "chits": chits if chits is not None else (len(first.agents) if first else None),
                 "pop_cap": getattr(first, "cap", None) if first else None,
@@ -539,9 +550,29 @@ class Runtime:
             return {"mismatch": {wid: (i or {}).get("sha256") for wid, i in seen.items()}}
         return infos[0]
 
+    def set_model_led(self, on: bool) -> None:
+        """Model-led (brain/mind.py, docs/MODEL_LED.md): a model's chits get no instinct plans, filler or fallback;
+        their bodies' reflexes and the executor stay. Kept by the game; recorded in diagnostics and the manifest."""
+        from . import diag
+
+        if on and self.mind.model_only:
+            raise ValueError("model-only is on: switch it off before playing model-led (they are different modes)")
+        was, self.mind.model_led = self.mind.model_led, bool(on)
+        self.store.set_meta("model_led", "1" if on else "0")
+        for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:
+            if on and not was:
+                self.mind.start_model_led(w)  # (no instinct plan from before the switch runs on after it)
+            elif not on:
+                diag.model_led_from(w, None)
+        if was != self.mind.model_led and self.worlds and not getattr(self, "_resetting", False):
+            self.write_manifest()  # (the run's manifest says how it is driven: a change mid-game is written there too)
+
     def set_model_only(self, on: bool) -> None:
         """The model-only diagnostic (brain/mind.py): no instinct menu, fallback or reflexes, in every world."""
         from . import diag
+
+        if on and self.mind.model_led:
+            raise ValueError("model-led is on: switch it off before the model-only diagnostic (they are different modes)")
 
         was, self.mind.model_only = self.mind.model_only, bool(on)
         for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:
@@ -1095,6 +1126,8 @@ class Runtime:
             a.brain = brain
         if self.mind.model_only:  # (a copy runs under the same switch as the world it copies)
             self.mind.start_model_only(f)
+        elif self.mind.model_led:
+            self.mind.start_model_led(f)
         self.forks[f.id] = {"world": f, "of": wid, "from_day": w.day + 1, "brain": brain, "culture": f.culture}
         return self.fork_view(f.id)
 

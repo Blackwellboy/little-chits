@@ -147,7 +147,13 @@ class Mind:
         # as strict; the full prompt whatever a brain's style (no menu of instinct's options); its plans as written
         # (no tools_first); and the worlds it drives run without the body's reflexes (sim/actions.py REFLEXES)
         self.model_only = False
+        # model-led (a way to play, docs/MODEL_LED.md): the model supplies the intelligence and the chit keeps its body.
+        # No instinct plans, filler, fallback, duty or routine for a model's chits (as strict); the body's reflexes and
+        # the deterministic executor stay; the brain's own prompt style (a cascade's menu is its own architecture); a
+        # model that is down leaves its chits finishing their plan, then waiting visibly, never on instinct
+        self.model_led = False
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
+        self.choice_repair: Optional[bool] = None  # ... for choosing brains too: None = the module's CHOICE_REPAIR
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
         self.decisions: deque = deque(maxlen=5000)  # one record per model request (F2)
         self.adopted: Counter = Counter()  # world id -> plan decisions adopted this match (the scorecard's denominator)
@@ -220,7 +226,7 @@ class Mind:
         for a in targets:
             a.brain = brain_id
             a.pending_plan = None
-            if self.model_only:
+            if self.model_only or self.model_led:
                 self._became_model_driven(world, a)
         self.save()
 
@@ -234,7 +240,7 @@ class Mind:
         world.__dict__["_mind_strict"] = self.strict  # (the prompt's loop note is for play only)
         if self.model_only or world.__dict__.get("model_only"):
             world.__dict__["model_only"] = self.model_only  # (the body's reflexes follow the mind's switch)
-        if self.model_only:
+        if self.model_only or self.model_led:
             self._became_model_driven(world, a)
         brain = self.brain_for(a)
         if brain is not None:
@@ -261,9 +267,11 @@ class Mind:
             ask = (getattr(world, "civic", None) or {}).get("ask")
             if brain is not None and ask and ask.get("leader") == a.id and not ask.get("sent"):
                 diag.chief(world, "blocked: the chief's brain unavailable", ask)
+            if brain is not None:
+                diag.of(world).unavailable_ticks += 1  # (a model's chit whose mind is down: shown, never hidden)
             if not a.plan:
                 if self.no_stand_in() and a.brain != INSTINCT:
-                    self._wait(a)
+                    self._wait(a, unavailable=brain is not None)
                 else:
                     self._instinct_plan(world, a, "instinct" if brain is None else f"instinct ({brain.label} unavailable)")
             return
@@ -328,7 +336,9 @@ class Mind:
                 # a reply's "say" answers whoever just spoke to this chit (it went to "all" and never counted)
                 heard = a.spoken_to or {}
                 to = heard.get("name") if heard.get("id") in world.agents and world.tick - heard.get("tick", 0) < 240 else "all"
-                a.plan.insert(0, {"do": "say", "to": to, "text": p["say"]})
+                # (the model's own words: they carry its plan's provenance, provenance.py; untagged, they were unknown)
+                a.plan.insert(0, {"do": "say", "to": to, "text": p["say"], "_origin": origin,
+                                  "_decision_id": rec.get("request_id") if rec else None})
             return
         # ask ahead of time: on the last step, or two steps before the end when the model is slow to answer (the
         # 5090's replies took 12.7 s at the median, 25 ticks, while a step often takes fewer)
@@ -376,10 +386,11 @@ class Mind:
             except Exception as e:  # recording must never break the world
                 log.warning("decision record failed: %s", e)
 
-    def _wait(self, a: Agent) -> None:
-        """Experiment contract: no instinct stand-in. The chit simply waits for its own mind."""
+    def _wait(self, a: Agent, unavailable: bool = False) -> None:
+        """No instinct stand-in (an experiment, model-led, model-only): the chit waits for its own mind, and says so
+        when that mind is down (in its activity: plan_source stays "waiting", as the run contract's F1 test says)."""
         a.plan_source = "waiting"
-        a.activity = "waiting for its mind"
+        a.activity = "its mind is unavailable" if unavailable else "waiting for its mind"
 
     def lead(self, brain: LLMBrain) -> int:
         """How many steps before a plan runs out to ask for the next one: 2 for a model slower than SLOW_TICKS."""
@@ -411,21 +422,26 @@ class Mind:
         diag.model_only_from(world, dropped)
         return dropped
 
-    def _model_only_clean(self, world, a: Agent, why: str) -> int:
+    def _model_only_clean(self, world, a: Agent, why: str, led: bool = False) -> int:
         """One chit, under model-only: drop the steps its model didn't write and any menu choice waiting to be
         adopted, and stale what is in flight. Marked with its brain, so it isn't cleaned twice under the same one.
-        Returns the steps dropped."""
-        own = ("model_generated", "model_repaired")
-        keep = [s for s in a.plan if s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler")]
+        Under model-led (`led`) its body's reflex steps and its model's menu choices stay: only instinct's own plans,
+        filler, fallback, duty and routine go. Returns the steps dropped."""
+        own = ("model_generated", "model_repaired") + (("model_selected", "model_repaired_choice") if led else ())
+        keep = [s for s in a.plan if (s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler"))
+                or (led and s.get("_reflex"))]
         dropped = len(a.plan) - len(keep)
+        if a.plan and (not keep or keep[0] is not a.plan[0]):  # the step under way went: its progress goes with it,
+            a.path, a.work_acc = [], 0.0  # or the model's next step would finish on work done for it (Codex on #140)
         a.plan = keep
-        if a.pending_plan is not None:
+        if a.pending_plan is not None and not led:
             rec = getattr(a, "_decision", None)
             if rec is not None and rec.get("parse") == "choice":
                 a.pending_plan = None
                 rec["stale_why"] = "model-only: a menu choice"
                 self._resolve(rec, "stale", world.tick)
-        a.bump_rev(why)
+        if not led:  # (model-only stales what is in flight; model-led keeps the model's own work, so a plan or a
+            a.bump_rev(why)  # choice already back and waiting is adopted, not thrown away as stale: Codex on #140)
         a.__dict__["_model_only_brain"] = a.brain
         return dropped
 
@@ -436,11 +452,23 @@ class Mind:
         if a.brain == INSTINCT:
             a.__dict__.pop("_model_only_brain", None)
         elif a.__dict__.get("_model_only_brain") != a.brain:
-            diag.model_only_dropped(world, self._model_only_clean(world, a, "model-only: a model took over"))
+            if self.model_only:
+                diag.model_only_dropped(world, self._model_only_clean(world, a, "model-only: a model took over"))
+            else:
+                diag.model_led_dropped(world, self._model_only_clean(world, a, "model-led: a model took over", led=True))
+
+    def start_model_led(self, world) -> int:
+        """Model-led switched on: every model-driven chit drops the plans instinct made for it (its reflex steps and its
+        model's own plans and choices stay), so no instinct plan runs on under the new mode. Recorded
+        (diag.model_led_from). Returns the steps dropped."""
+        dropped = sum(self._model_only_clean(world, a, "model-led switched on", led=True)
+                      for a in world.agents.values() if a.brain != INSTINCT)
+        diag.model_led_from(world, dropped)
+        return dropped
 
     def no_stand_in(self) -> bool:
         """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""
-        return self.strict or self.model_only
+        return self.strict or self.model_only or self.model_led
 
     def style_of(self, brain: LLMBrain) -> str:
         """The prompt style a request goes out in: the brain's own, or full in a model-only run (no instinct menu)."""
@@ -543,6 +571,7 @@ class Mind:
                "parse": None, "rejected_steps": 0, "outcome": "pending", "tick_resolved": None, "plan_id": None}
         rec["match"] = self.match
         if rep:  # both attempts are on record: this one points at the decision whose step failed
+            diag.of(world).repairs_asked += 1
             rec.update(style="repair", repair_of=rep.get("decision_id"), repair_step=rep["failed"],
                        repair_reason=rep["reason"])
         self.decisions.append(rec)
@@ -577,8 +606,9 @@ class Mind:
                "latency_ms": None, "tokens_in": None, "tokens_out": None, "response_hash": None,
                "parse": None, "rejected_steps": 0, "outcome": "pending", "tick_resolved": None, "plan_id": None,
                "match": self.match}
-        rep = self._repair_note(world, a) if CHOICE_REPAIR else None
+        rep = self._repair_note(world, a) if (CHOICE_REPAIR if self.choice_repair is None else self.choice_repair) else None
         if rep:  # as in _ask: its choice is then "model_repaired", and a repaired choice that fails isn't repaired again
+            diag.of(world).repairs_asked += 1
             rec.update(style="repair", repair_of=rep.get("decision_id"), repair_step=rep["failed"],
                        repair_reason=rep["reason"])
         self.decisions.append(rec)
@@ -919,7 +949,7 @@ class Mind:
                 row["speed"] = speed[b.id]
             out.append(row)
         return {"brains": out, "assign": self.world_brain, "presets": PRESETS, "log": self.log[-30:], "narrator": self.narrator,
-                "model_only": self.model_only}
+                "model_only": self.model_only, "model_led": self.model_led}
 
     async def close(self) -> None:
         for t in list(self._tasks):
