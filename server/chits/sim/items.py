@@ -239,9 +239,10 @@ ACTION_USES: Dict[str, str] = {
 }
 # ...of which these are a second use of something gathered or made for something else: no reason for a station to make
 # it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
-ITEM_USES = False  # F35's item uses and fixes (fuel, mending, a sharp stone, meal cheer, arms wear and defence, lights,
-# the plough kept in hand). Off until a 24-seed A/B settles them (docs/FIXES_2026-09-30.md, F35): off, the simulator
-# behaves as before them; their tests switch them on. tests/identity_runner.py also sets it False. Read at call time.
+ITEM_USES = True  # F35's item uses and fixes (fuel, mending, a sharp stone, meal cheer, arms wear and defence, lights,
+# the plough kept in hand). On since 2026-10-05: the 24-seed A/B against main with the hunger margin (#100) was even
+# (discoveries 69.7 > 70.2 and 71.2 > 71.3, no starvation). Off, the simulator behaves as before them;
+# tests/identity_runner.py sets it False. Read at call time.
 SIDE_USES: Tuple[str, ...] = ("wood", "charcoal", "stone", "fiber", "clay", "cord", "brick", "sharp_stone")
 
 FUEL_VALUE: Dict[str, int] = {"wood": 35, "charcoal": 60}  # what one piece adds to a campfire's fuel (of 100)
