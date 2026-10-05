@@ -51,12 +51,19 @@ HUNGER_REACH = True
 HARVEST_REACH = 35  # how far a harvest step looks for a ripe farm (sim.actions._do_harvest)
 
 
-def _harvest_open(world, a: Agent) -> bool:
+def _harvest_open(world, a: Agent, target: Any = None) -> bool:
     """Whether a harvest whose grain goes to the stores can bring any home: a ripe farm the harvest step would find
     that the chits already set on a harvest don't account for. The 2026-10-05 live game offered it to every chit near
     a ripe farm: in its last week 14 of 20 such plans found the farm harvested by others first and sowed instead, and
     "store grain" failed ("I'm not carrying any grain", 159 times by day 107). (Room in hand for the grain is
-    _drafted_runs's: _Hands projects the harvest's yield into the room there is.)"""
+    _drafted_runs's: _Hands projects the harvest's yield into the room there is.) An option that names its farm takes
+    that one, so that one must be free: a communal harvest of a farm another chit had taken was offered while some
+    other farm stood free (Codex on #113, issue #128)."""
+    if target is not None and str(target) in world.structures:
+        from ..sim.actions import harvest_source
+
+        st = harvest_source(world, a, target)
+        return st is not None and st.id not in {_farm_taken_by(world, o) for o in world.agents.values()}
     ripe = _ripe_farms(world, a)
     if not ripe:
         return False
@@ -90,7 +97,7 @@ def _can_run(world, a: Agent, p: Dict[str, Any]) -> bool:
     for i, s in enumerate(steps):
         if s.get("do") == "harvest" and any(t.get("do") == "store" and world.norm_item(t.get("what")) == "grain"
                                             for t in steps[i + 1:]):
-            return _harvest_open(world, a)
+            return _harvest_open(world, a, s.get("target"))
     return True
 
 
