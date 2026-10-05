@@ -40,7 +40,7 @@ Each comes after the one before, on the RTX 5090. Later rounds are designed afte
 | 1 | JevK5 9B vs Gemma 4 12B (full prompt) | `docs/protocols/jevk5-vs-gemma.json` | **Running.** Which builds more on one island and culture? (JevK5 is a letter model run on full JSON prompts: a stated limitation.) |
 | 2 | Choice repair off vs on (JevK5 cascade) | `docs/protocols/choice-repair-jevk5.json` | Does telling a choosing model why it failed help, or just change the failures? Decides `CHOICE_REPAIR`. |
 | 3 | Two-level mind | `docs/protocols/two-level-jev-gemma.json` | Planner only vs Jev + Gemma vs cascades vs menu-only. |
-| 4 | Winner vs Qwen3.5-9B | to write after 1-3 | JevK5's own base model, so the cleanest test of the fine-tune |
+| 4 | JevK5 9B vs Qwen3.5-9B, its own base | to write after 1-3 | Does the fine-tune help? Same prompt architecture (cascade, JevK5's letter interface), same quantization (Q8_0), same sampling: only the fine-tune differs. Whatever wins studies 1-3 is a separate benchmark arm, not this comparison |
 | 5 | Winner vs Qwen3.5-4B, Granite 4.2 8B | after stage A/B | the efficiency end |
 | 6 | Best general planner vs the best two-level mind | after 3-5 | architecture against size |
 | 7 | Best efficiency model vs best absolute model (Gemma 4 26B-A4B, Qwen3.6-35B-A3B, Qwen3.8-27B) | after stage A/B | what the 5090's biggest models buy, and at what cost |
