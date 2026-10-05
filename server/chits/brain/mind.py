@@ -472,7 +472,8 @@ class Mind:
             t.add_done_callback(lambda _t: self.plans_out.subtract([bid]))
 
     def _ask(self, world, a: Agent, brain: LLMBrain) -> None:
-        style = self.style_of(brain)
+        # the brain's own prompt_style, or full in a model-only run (no instinct menu): the same rule as style_of
+        style = "full" if self.model_only else (getattr(brain.cfg, "prompt_style", "full") or "full")
         if style in ("choose", "cascade"):
             return self._ask_choice(world, a, brain, cascade=style == "cascade")
         rep = self._repair_note(world, a)
