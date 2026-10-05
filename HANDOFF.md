@@ -67,7 +67,48 @@ Continue from `origin/main`. (Until 2026-09-30 this said `claude/dazzling-dijkst
 
 Every change still clears the bar in "How to judge a change" below.
 
-## Work in flight (updated 2026-10-06)
+## The civilisation-rules and model programme (owner request, 2026-10-06)
+
+The goal: worlds whose rules the owner chooses, minds that are truly model-driven, and a model-testing programme where nothing hidden is mistaken for the model. Docs:
+- docs/WORLD_RULES.md
+- docs/PROVENANCE.md
+- docs/MODEL_LED.md
+- docs/TWO_LEVEL.md
+- docs/research/model-landscape-2026-10.md
+- docs/research/model-programme.md
+
+| PR | What | State |
+|---|---|---|
+| #135 | Lab: an interrupted invalid-record migration is finished blind (#125); the retry command carries `CHITS_LAB_ALLOW_MODELS=1` (#134) | merged |
+| #136 | The menu projection remembers a sown farm and a fed fire (#133) | merged |
+| #137 | **WorldRules**: a frozen, versioned record of what a world allows, chosen at New Game, in a Lab protocol or in the harness. Saved with the world, in the API, in the manifest, and in the fingerprint when set. Old saves load as the legacy set. **Religion** is the first rule: off closes every path (founding, conversion, prayer, preaching, scripture, the holy book, belief mood and affinity, the shrine, prompts) | merged |
+| #138 | The small-model landscape survey (no downloads) | merged |
+| #139 | **Provenance**: every plan and step in one category (model_plan, model_choice, model_repair, body_reflex, routine, instinct_plan, fallback, filler), shown on the scorecard and in Lab results | merged |
+| #140 | **Model-led play**: no instinct plans, filler or fallback for a model's chits; reflexes and the executor stay; a model that is down leaves its chits visibly waiting. Exclusive with model-only | merged |
+| #142 | **Repair as a Lab arm** (`"repair": true`), its outcomes recorded (the first step of each repaired plan; the model's own loops); `docs/protocols/choice-repair-jevk5.json` pre-registered | merged |
+| #143 | **World rules 2**: invention, library hints, lore rescue, storyteller and wanderers; presets (Standard, Model-led, Research Clean, Sandbox); New Game Rules section; read-only 📜 Rules panel | merged (follow-up: issue #145) |
+| #144 | **Two-level mind**: `escalate_to` hands a cascade's escalations to a planner model, never another model in its place. Lab support, and declared `compare: "architecture"`. `docs/protocols/two-level-jev-gemma.json` pre-registered | merged (follow-up: issue #146) |
+
+Open follow-ups:
+- #141: per-model sampling options in the harness
+- #145 and #146: the last-round findings on #143 and #144, fixed in the review-follow-ups PR
+
+**Switches and rules that stay off, and why.**
+- `CHOICE_REPAIR` stays off until the choice-repair study answers.
+- `RIPE_TARGET`, `NEED_SITING` and `TOWN_GATE` are unchanged (see below).
+- Every world rule defaults to the legacy behaviour (all on).
+
+**Known limitation for the running study.** JevK5 is a letter-readout decision model trained on inputs of at most 2,048 tokens (its model card). The JevK5-vs-Gemma study runs both models on the full 3-5k-token JSON-plan prompt (`prompt_style: full`). The report must lead with this. JevK5's natural interface is tested in the choice-repair and two-level studies.
+
+**Queue after the study** (one GPU, so in order):
+1. Analyse it blind, freeze the report, then unblind and publish.
+2. The choice-repair study.
+3. The two-level study.
+4. Stage A screening of new models, which needs the owner's OK to download (below).
+
+The studies after that are listed in docs/research/model-programme.md.
+
+## Work in flight (updated 2026-10-07)
 
 This section lets anyone, person or agent, pick up the current queue from GitHub alone. Update it in the same PR as any change that moves the queue.
 
@@ -122,7 +163,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | Zones (`buildings.NEED_SITING`, `buildings.TOWN_GATE`, both off) | Its 24-seed A/B switched on, against main with the hunger margin: discoveries 69.7 > 69.3 / 71.2 > 65.3, era 7.92 > 7.75 / 8.0 > 7.58, one starvation (seed 12) | Find what costs discoveries before turning it on: compare `fired` counts and per-seed autopsies with the harness |
 | Ripe harvest target (`actions.RIPE_TARGET`, **off**; merged in #124) | A physics bug, fixed but off until its A/B passes: a harvest step that names a farm took 6 grain from it unripe or empty, because `_find_structure` skips the ripeness check for an id. With the switch on, the named farm must be ripe or the step looks for a ripe one, keeps to the farm it chose, and a hunger reflex whose farm was harvested first chooses its food again. 18-seed A/B (60 days, random streams) against main: discoveries 76.7 > 73.4, era 8.6 > 8.1, population 58.8 > 58.3, starved 1 > 0, harvests 682 > 503, plantings 175 > 247, food 1285 > 1381. (Before random streams, 24 seeds: discoveries 74.1 > 76.9.) The same branch offers a model's menu a way to store or put down its load when options were left out for want of room (no instinct change) | A 24-seed A/B with the switch on; find what costs discoveries (fewer harvests, more sowing) before turning it on |
 | JevK5 9B vs Gemma 4 12B, Lab study (`docs/protocols/jevk5-vs-gemma.json`) | Plan steps 2 and 3: the model choice re-run pre-registered, blinded and in lockstep: 6 seeds × 25 days, 12 chits. **Restarted 2026-10-06 on main d3882f3** (worktree `lc-study2`, output `runs/jevk5-vs-gemma`), detached, on two study model servers on the RTX 5090 (4 slots each) beside the live game. The first attempt (67ac618) is set aside unanalysed: it predates the live-loop fixes (#113) and the menu fixes (#130, #132), so it measured a model path known to be broken (Codex on #129). About a day and a half in all | When every run has `result.json`: `make lab ARGS="analyze runs/jevk5-vs-gemma"`, freeze the blind report, then unblind and publish it under `docs/research/`. A run that goes invalid for a server cause is rerun with `CHITS_LAB_ALLOW_MODELS=1 make lab ARGS="resume runs/jevk5-vs-gemma --retry-invalid --jobs 2"` (a model study refuses to resume without the variable) |
-| Choice repair (`mind.CHOICE_REPAIR`, **off**, #126) | Merged | Whether it helps a real model: a Lab run that compares repair on and off. The Lab needs that as an arm setting first: `lab/run.py` sets `mind.repair = False` for every run. `tools/decbench.py` cannot tell (its scenes are independent and never follow a failed choice). Then decide the switch |
+| Choice repair (`mind.CHOICE_REPAIR`, **off**, #126) | Merged; the Lab can now run repair as an arm (#142) | Run `docs/protocols/choice-repair-jevk5.json` after the JevK5-vs-Gemma study (`tools/decbench.py` can't tell: its scenes never follow a failed choice), then decide the switch |
 
 **Switching the features on.** A feature turns on after a 24-seed harness A/B with its switch on, against the main of the day, clears the bar below. Results against main with the hunger margin (#100, #105):
 
@@ -174,6 +215,15 @@ python -m pytest tests plan/acceptance -q > /tmp/suite.txt 2>&1; s=$?; tail -1 /
 - The loop-guard tests wait for `paused`, not `loop_error`.
 
 **Open decisions for the owner:**
+
+- **Model downloads for stage A screening.** About 41 GB to `D:\gguf\`, all Apache-2.0, all from Hugging Face:
+  - `Qwen3.5-9B-Q8_0.gguf` (unsloth, 9.53 GB)
+  - `granite-4.2-8b-Q8_0.gguf` (ibm-granite, 9.35 GB)
+  - `gemma-4-12b-it-Q8_0.gguf` (unsloth, 12.67 GB)
+  - `Ministral-3-14B-Instruct-2512-Q5_K_M.gguf` (mistralai, 9.62 GB)
+
+  Plus a llama.cpp upgrade: gemma4 needs ≥ b8637, and the Qwen DeltaNet CUDA fix needs about b10450. Not started: it needs the owner's OK.
+- Whether WorldRules should also be written into the frozen build plan (a plan-author step; Codex raised it on #137).
 
 - Done 2026-10-05: the RTX 5090 serves JevK5 9B, and a new single-world game started (20 founders). The 2026-10-04 game died out of old age at about day 161.
 - Dual-GPU strict comparison (issue #13).
