@@ -26,6 +26,10 @@ class WorldDiag:
         self.authorship: Counter = Counter()
         self.step_sources: Counter = Counter()
         self.redirects = 0                       # steps the executor turned into another (build -> feed the fire)
+        self.origin_outcomes: Counter = Counter()  # (step origin, "ok"|"fail") -> finished steps
+        self.repairs_asked = 0                     # requests that carried the simulator's reason for a failed step
+        self.repaired_first: Counter = Counter()   # "ok"|"fail" -> the corrective first step of each repaired plan
+        self._repair_decisions: set = set()        # (repaired decisions whose first step is counted already)
         self.recent_steps: deque = deque(maxlen=200)
         self.model_ticks = 0                     # agent-ticks with a model brain
         self.waiting_ticks = 0                   # ... of which idle, waiting on a reply
@@ -329,6 +333,12 @@ def action_finished(world, a, step, result: str) -> None:
     d.step_sources[origin] += 1
     if redirect:
         d.redirects += 1
+    d.origin_outcomes[(origin, "ok" if result == "done" else "fail")] += 1
+    if origin in ("model_repaired", "model_repaired_choice"):  # (only a repaired plan's first finished step answers
+        did = step.get("_decision_id")  # whether the repair worked: its later steps would inflate it, Codex #142)
+        if did is not None and did not in d._repair_decisions:
+            d._repair_decisions.add(did)
+            d.repaired_first["ok" if result == "done" else "fail"] += 1
     d.outcomes[("model" if str(origin).startswith("model") else "other", "ok" if result == "done" else "fail")] += 1
     d.recent_steps.append(record)
     callback = getattr(world, "on_action_outcome", None)

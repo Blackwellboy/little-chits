@@ -54,7 +54,7 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "",
                       # model arms: every call of a tick answered before the next, each request seeded from the run's
                       # seed and its prompt, and this sampling unless a brain's extra_body sets its own
                       "lockstep": True, "request_seeds": True, "sampling": dict(SAMPLING), "servers": servers,
-                      "model_only": spec.model_only,
+                      "model_only": spec.model_only, "world_rules": spec.world_rules().to_dict(),
                       **({"model_only_note": MODEL_ONLY_NOTE} if spec.model_only else {}),
                       "runs": [{"seed": s, "labels": assign.run_order(spec, i),
                                 **({"card_swapped": spec.swapped(i)} if spec.card_swap else {})}
@@ -336,7 +336,7 @@ def _run_one(spec: ExperimentSpec, arm: Arm, rd: Path, seed: int, label: str, t0
     from ..brain.instinct import Instinct
     from ..sim.world import World
 
-    w = World("A", label, seed, arm.culture, spec.size, spec.population)
+    w = World("A", label, seed, arm.culture, spec.size, spec.population, rules=spec.world_rules())
     w.flags.update(arm.flags)
     w.model_only = spec.model_only  # (a diagnostic: the body's reflexes off, sim/actions.py)
     if arm.treatment:  # (kept apart from result.json, which the blind report reads: who was told names the arm)
@@ -378,6 +378,24 @@ def _run_one(spec: ExperimentSpec, arm: Arm, rd: Path, seed: int, label: str, t0
               "interventions": log, **summ, **_model_only(spec, w)}
     _write_json(rd / "result.json", result)  # last: its presence means the run is complete
     return result
+
+
+def repair_outcomes(w) -> Dict[str, Any]:
+    """What became of the model's failed steps (research plan item 40): how many of its steps failed, how many
+    requests carried the simulator's reason (0 unless the arm declares repair), how each repaired plan's first step fared,
+    and how often a model's own step failed the same way LOOP_N times in a row. For a model arm."""
+    from .. import diag
+
+    d = diag.of(w)
+    oo = d.origin_outcomes
+    model_failed = sum(n for (o, r), n in oo.items() if str(o).startswith("model") and r == "fail")
+    model_ok = sum(n for (o, r), n in oo.items() if str(o).startswith("model") and r == "ok")
+    return {"model_steps_failed": model_failed,
+            "model_step_failure_rate": round(model_failed / (model_failed + model_ok), 3) if model_failed + model_ok else 0.0,
+            # the corrective first step of each repaired plan (its later steps would inflate the count, Codex #142)
+            "repairs_asked": d.repairs_asked, "repaired_steps_ok": d.repaired_first["ok"],
+            "repaired_steps_failed": d.repaired_first["fail"],
+            "failure_loops": d.loops.get("model", 0)}  # (the model's own loops: a reflex's are not its doing, Codex #142)
 
 
 def opportunities(w, chit_ticks: int, requests: int, wait_s: float = 0.0) -> Dict[str, Any]:
@@ -435,7 +453,7 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     _write_json(rd / "server.json", served)
     mind = Mind(None)
     mind.strict = True
-    mind.repair = False
+    mind.repair = mind.choice_repair = arm.repair  # (declared per arm, never on by default: research plan item 40)
     mind.model_only = spec.model_only
     brain = mind.upsert(dict(cfg.__dict__))
     mind.assign(w, cfg.id)
@@ -481,6 +499,7 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     st = brain.stats
     summ = extract.summary(w, daily, founders, blind=spec.blind)
     summ["final"].update(opportunities(w, chit_ticks, st.requests, wait_s))
+    summ["final"].update(repair_outcomes(w))
     result = {"seed": seed, "label": w.name, "days": spec.days, "wall_s": round(time.monotonic() - t0, 1),
               "interventions": log,
               "compute": {"requests": st.requests, "failed_requests": st.failed, "tokens_in": st.tokens_in,

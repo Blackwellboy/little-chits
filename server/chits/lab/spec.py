@@ -32,6 +32,10 @@ class Arm:
     brain: str = "instinct"  # anything else is a model arm (refused without the owner's go-ahead)
     flags: Dict[str, bool] = field(default_factory=dict)  # capability flags over the culture's own
     treatment: str = ""  # a TreatmentPack id from the protocol's `treatments` (lab/treatment.py)
+    # bounded action repair for this arm's model (research plan item 40): a step of its own that fails is answered,
+    # once, with the simulator's exact reason, in a full brain's next prompt and in a choosing brain's next choice
+    # scene (mind.choice_repair). Off by default, as every experiment ran before it could be declared
+    repair: bool = False
 
 
 @dataclass
@@ -67,6 +71,9 @@ class ExperimentSpec:
     # a diagnostic, never a comparison: every arm runs without the body's reflexes, and a model arm without anything
     # from instinct (the full prompt, no menu): what the model does on its own. Recorded in the manifest.
     model_only: bool = False
+    # the world rules every arm's worlds are made with (sim/rules.py, docs/WORLD_RULES.md): {} is the legacy set. In
+    # the fingerprint whenever it is set, and written out in full in the manifest
+    rules: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ExperimentSpec":
@@ -172,6 +179,10 @@ class ExperimentSpec:
             bad = set(a.flags) - {"say", "teach", "write"}
             if bad:
                 raise SpecError(f"arm {a.name}: unknown flags {', '.join(sorted(bad))}")
+            if not isinstance(a.repair, bool):
+                raise SpecError(f"arm {a.name}: repair is true or false")
+            if a.repair and a.brain == "instinct":
+                raise SpecError(f"arm {a.name}: repair answers a model's failed step; an instinct arm has no model")
             if a.brain != "instinct" and not self.allow_models:
                 raise SpecError(f"arm {a.name} thinks with a model: set allow_models (and the owner's go-ahead)")
         for i in self.interventions:
@@ -196,12 +207,27 @@ class ExperimentSpec:
                 raise SpecError(f"event {name}: needs 'metric' and 'at_least'")
         if not isinstance(self.model_only, bool):
             raise SpecError("model_only is true or false")
+        rules = self.world_rules()
+        for pid, pack in self.treatments.items():  # (nothing in an experiment is dropped quietly: a pack the rules
+            for p in pack.get("practices") or []:  # rule out is refused, not half-applied)
+                if not rules.allows_knowledge(str(p.get("knowledge", ""))):
+                    raise SpecError(f"treatment {pid!r} teaches {p.get('knowledge')}, which these world rules rule out")
         if self.card_swap:
             if len(model_ids) < 2 or set(self.card_swap) != set(model_ids):
                 raise SpecError(f"card_swap names the other server of every model brain ({', '.join(model_ids) or 'none'}),"
                                 " and needs at least two")
             if not all(isinstance(u, str) and u.strip() for u in self.card_swap.values()):
                 raise SpecError("card_swap: each model's other server is a base URL")
+
+    def world_rules(self):
+        from ..sim.rules import WorldRules
+
+        if not isinstance(self.rules, dict):
+            raise SpecError("rules is an object of world rules (docs/WORLD_RULES.md)")
+        try:
+            return WorldRules.from_dict(self.rules or None)
+        except ValueError as e:
+            raise SpecError(f"rules: {e}") from None
 
     def brain_for(self, brain_id: str, seed_index: int) -> Dict[str, Any]:
         """The sealed config a model arm runs with on this seed: on a card-swapped seed, its other server."""
@@ -223,7 +249,12 @@ class ExperimentSpec:
         for k, default in LATER_OPTIONS.items():
             if d.get(k) == default:
                 d.pop(k, None)
+        for arm in d.get("arms") or []:  # (an arm's options added later count only when used, likewise)
+            for k, default in ARM_LATER_OPTIONS.items():
+                if arm.get(k) == default:
+                    arm.pop(k, None)
         return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
 
 
-LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False}  # options added after protocols were sealed, at their "off" value
+ARM_LATER_OPTIONS: Dict[str, Any] = {"repair": False}  # arm options added after protocols were sealed
+LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False, "rules": {}}  # options added after protocols were sealed, at their "off" value

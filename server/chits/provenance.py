@@ -42,6 +42,7 @@ LABELS = {
 
 _ORIGINS = {
     "model_generated": "model_plan", "model_selected": "model_choice", "model_repaired": "model_repair",
+    "model_repaired_choice": "model_choice",  # (a repaired choice: still instinct's plan, picked by the model)
     "reflex": "body_reflex", "routine": "routine", "instinct": "instinct_plan", "duty": "instinct_plan",
     "fallback": "fallback", "shed": "fallback", "filler": "filler",
     # a chit's plan_source, for a step with no label of its own (an instinct-only Lab run installs plans directly)

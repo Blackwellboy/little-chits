@@ -154,3 +154,32 @@ def test_an_instinct_only_report_shows_who_drove_it_and_a_partial_mean_says_so(t
     r["final"].pop("instinct_step_share")
     p.write_text(json.dumps(r))
     assert "(1 of 2 runs)" in report.write_pack(tmp_path / "out").read_text()
+
+
+def test_a_repaired_menu_choice_is_the_models_choice_not_its_plan(monkeypatch):
+    """Codex on #139: with choice repair on, a repaired letter pick was tagged model_repaired and counted as written by
+    the model. It is a model_choice (instinct wrote it), still counted as a repair, and gets no second repair."""
+    from chits import diag
+    from chits.brain import mind as M
+    from chits.brain.mind import Mind
+    from chits.sim import actions
+
+    w = World("A", "A", 3, "direct", 64, 2)
+    a = next(iter(w.agents.values()))
+    m = Mind(None)
+    m.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1", "prompt_style": "cascade"})
+    m.assign(w, "m")
+    rec = {"request_id": "r9", "style": "repair", "parse": "choice", "rev_requested": a.rev, "tick_requested": w.tick,
+           "outcome": "pending", "world": w.id}
+    a._decision = rec
+    a.plan = []
+    a.pending_plan = {"goal": "g", "thought": "", "steps": [{"do": "craft", "what": "no_such_thing"}]}
+    m.hook(w, a)
+    assert a.plan[0]["_origin"] == "model_repaired_choice" and PV.of_step(a.plan[0]) == "model_choice"
+    for _ in range(50):
+        actions.run(w, a)
+        w.tick += 1
+        if not a.plan:
+            break
+    assert "_repair" not in a.__dict__  # (no second repair)
+    assert diag.of(w).repaired_first["fail"] == 1  # (and still counted as what the repair came to)
