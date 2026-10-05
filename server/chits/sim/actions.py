@@ -253,8 +253,12 @@ FOOD_SLACK = 12  # ...plus this many ticks to take, pick or harvest it and start
 MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is looked up (SNACK_BELOW)
 MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
 MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise give way to food below hunger 16
-RIPE_TARGET = True  # a harvest step that names a farm needs it ripe, or looks for a ripe one as with no name. Before,
-# a named farm was harvested as it stood: 6 grain from an empty plot (False: as before, for the identity test)
+# A harvest step that names a farm needs it ripe, or looks for a ripe one as with no name; it keeps to the farm it
+# chose, and a hunger reflex whose farm was harvested first chooses its food again. Without it a named farm is
+# harvested as it stands: 6 grain from an empty plot, a physics bug. OFF pending a 24-seed A/B: on 18 seeds (60 days,
+# with random streams) against main it gave discoveries 76.7 > 73.4, era 8.6 > 8.1, pop 58.8 > 58.3, starved 1 > 0,
+# harvests 682 > 503, plantings 175 > 247, food 1285 > 1381. (False: as before; tests/identity_runner.py keeps it off)
+RIPE_TARGET = False
 PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
 
 

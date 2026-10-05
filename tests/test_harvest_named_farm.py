@@ -1,7 +1,15 @@
-"""A harvest step that named a farm took grain from it ripe or not: 6 grain from an empty plot."""
+"""A harvest step that named a farm took grain from it ripe or not: 6 grain from an empty plot. The fix is behind
+actions.RIPE_TARGET, off until its A/B passes; these tests switch it on."""
+
+import pytest
 
 from chits.sim import actions
 from chits.sim.world import World
+
+
+@pytest.fixture(autouse=True)
+def _ripe_target_on(monkeypatch):
+    monkeypatch.setattr(actions, "RIPE_TARGET", True)
 
 
 def _farm(w, a, dx):
