@@ -45,7 +45,7 @@ export function fixBody(config: { id: string; base_url: string }, fix: Fix): Rec
 /** What a new brain's form sends: JSON mode and the thinking switch are left out until the user sets them, so the
  *  server starts the brain plain and its first Test finds what the model server takes. */
 export function saveBody(form: Record<string, any>): Record<string, unknown> {
-  const body: Record<string, unknown> = { ...form, max_concurrency: +form.max_concurrency, temperature: +form.temperature, max_tokens: +form.max_tokens };
+  const body: Record<string, unknown> = { ...form, max_concurrency: +form.max_concurrency, max_ai_chits: +form.max_ai_chits || 0, temperature: +form.temperature, max_tokens: +form.max_tokens };
   if (form.detect !== false && !form.touched) { delete body.json_mode; delete body.disable_thinking; }
   delete body.detect; delete body.touched;
   return body;

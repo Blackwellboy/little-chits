@@ -988,6 +988,7 @@ class BrainBody(BaseModel):
     model: Optional[str] = ""
     api_key: Optional[str] = ""
     max_concurrency: Optional[int] = 6
+    max_ai_chits: Optional[int] = 0  # 0 = unlimited: cap how many living chits this brain may ask at once
     timeout: Optional[float] = 90
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 600

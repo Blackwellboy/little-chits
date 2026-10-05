@@ -35,6 +35,7 @@ class BrainConfig:
     # Tuned for 8-30B instruct models driving ~18 chits: enough parallelism to keep a GPU busy,
     # warm enough to vary plans, room for a plan plus a short thought without truncation.
     max_concurrency: int = 6
+    max_ai_chits: int = 0  # 0 = unlimited: cap how many living chits this brain may ask at once (the rest stay on instinct)
     timeout: float = 90.0
     temperature: float = 0.7
     max_tokens: int = 600

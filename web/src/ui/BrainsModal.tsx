@@ -10,7 +10,7 @@ import { Fix, TestResult, fixBody, saveBody, testLines } from "./brainTest";
 type Speed = { level: "good" | "ok" | "slow" | "unknown"; capacity: number; chits: number; text: string };
 type BrainRow = { config: any; stats: any; label: string; healthy: boolean; speed?: Speed; capacity?: Capacity };
 
-const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, temperature: 0.7, max_tokens: 600 };  // (JSON mode and the thinking switch: found by the first Test)
+const BLANK = { id: "", label: "", base_url: "http://127.0.0.1:18090/v1", model: "", api_key: "", max_concurrency: 6, max_ai_chits: 0, temperature: 0.7, max_tokens: 600 };  // (JSON mode and the thinking switch: found by the first Test)
 
 function Thought({ l }: { l: any }) {
   const t = thoughtLine(l);
@@ -255,6 +255,7 @@ export function BrainsModal() {
             <label>API key <input value={form.api_key} placeholder="optional · or env:MY_KEY_VAR" onChange={(e) => setForm({ ...form, api_key: e.target.value })} /></label>
             <div className="grid3">
               <label title="How many chits can think at once. Match your server’s slots (llama-server -np N); detected automatically.">Parallel requests <input type="number" min={1} max={64} value={form.max_concurrency} onChange={(e) => setForm({ ...form, max_concurrency: e.target.value })} /></label>
+              <label title="How many living chits may ask this model at once. Others keep their brain but act on instinct, so a small or local model can keep up. 0 = unlimited.">Max AI chits <input type="number" min={0} max={256} value={form.max_ai_chits ?? 0} onChange={(e) => setForm({ ...form, max_ai_chits: e.target.value })} /></label>
               <label title="0.7 is the sweet spot: varied plans, still valid JSON.">Temperature <input type="number" step={0.1} min={0} max={2} value={form.temperature} onChange={(e) => setForm({ ...form, temperature: e.target.value })} /></label>
               <label title="600 fits a plan plus a short thought. Raise for chatty reasoning models.">Max tokens <input type="number" min={100} max={4000} value={form.max_tokens} onChange={(e) => setForm({ ...form, max_tokens: e.target.value })} /></label>
             </div>

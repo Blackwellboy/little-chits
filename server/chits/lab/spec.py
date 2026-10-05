@@ -16,7 +16,7 @@ LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 # R1 item 71: fields that can change what a model decides or whether a request succeeds must match across
 # model arms. Identity/routing (id, label, model, base_url, api_key) may differ because those are the treatment.
 FAIR_MODEL_FIELDS = (
-    "max_concurrency", "timeout", "temperature", "max_tokens", "json_mode", "disable_thinking",
+    "max_concurrency", "max_ai_chits", "timeout", "temperature", "max_tokens", "json_mode", "disable_thinking",
     "extra_body", "prompt_style", "escalate_below", "escalate_share", "focus",
 )
 
