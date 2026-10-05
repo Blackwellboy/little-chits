@@ -25,6 +25,8 @@ def normal(d):
             skip.update(m)
         civ["project"], civ["skip"] = (live[0] if len(live) == 1 else live or None), skip
     d["civic"] = civ
+    if "traffic" in d:  # (saved exactly since a restored world must walk as the original did; older trees rounded it)
+        d["traffic"] = [round(v, 1) for v in d["traffic"]]
     return _unlabel(d)
 
 
@@ -70,6 +72,9 @@ def main(argv):
     from chits.sim import items
     if hasattr(items, "ITEM_USES"):
         items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
+    from chits.sim import world as world_mod
+    if hasattr(world_mod, "RNG_STREAMS"):  # streams per system, chit and tick: off, the running streams of old trees
+        world_mod.RNG_STREAMS = False
     min_adults = getattr(projects, "PROJECT_MIN_ADULTS", 4)
     w = World("A", "A", seed, culture, size, chits)
     ins = Instinct()

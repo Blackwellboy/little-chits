@@ -197,13 +197,13 @@ def _physics(w):
 
 def test_a_checkpoint_carries_on_as_the_world_it_was_taken_from():
     w, back = _checkpointed()
-    # everything but traffic (what makes roads; saved to one decimal, see the xfail below) carries on identically
+    # everything but traffic (checked exactly below) carries on identically
     assert _physics(back) == _physics(w)
 
 
-@pytest.mark.xfail(strict=True, reason="checkpoint gap: World.to_dict rounds traffic to 1 decimal, so a restored world's "
-                                       "road-forming traffic drifts from the original's (a road can appear a tick apart)")
 def test_a_checkpoint_keeps_traffic_exactly():
+    """Traffic was saved to one decimal, so a restored world's walking costs (traffic over 30 is quicker going) and
+    roads drifted from the original's: with the random streams on, seed 8 walked a step slower 129 ticks after."""
     w, back = _checkpointed(days=1)
     assert _state(back)["traffic"] == _state(w)["traffic"]
 

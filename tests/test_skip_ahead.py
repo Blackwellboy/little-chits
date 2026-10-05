@@ -96,7 +96,7 @@ def test_a_skipped_day_is_the_same_day_as_one_played_step_by_step(env, tmp_path)
         loop.cancel()
 
     def picture(r):
-        return {wid: (w.tick, w.to_dict()["rng_state"], w.stats(), sorted(w.first),
+        return {wid: (w.tick, w.to_dict()["rng_state"], w.to_dict().get("rng_tick"), w.stats(), sorted(w.first),
                       [(a.id, a.x, a.y, round(a.hunger, 6), a.activity) for a in w.agents.values()])
                 for wid, w in r.worlds.items()}
 

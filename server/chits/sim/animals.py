@@ -21,8 +21,8 @@ def targets(world) -> Dict[str, int]:
     return {"deer": max(2, area // 1500), "sheep": max(1, area // 3000), "wolf": max(1, area // 6000)}
 
 
-def _rng(world):
-    return world.rng_for("animals")
+def _rng(world, key=None):
+    return world.rng_for("animals", key)  # (key: each animal's own stream with world.RNG_STREAMS on)
 
 
 def _tiles(world, kinds) -> List[Tuple[int, int]]:
@@ -40,7 +40,7 @@ def _add(world, kind: str, x: int, y: int) -> Dict[str, Any]:
 def spawn(world, kind: str, n: int) -> int:
     if n <= 0:
         return 0
-    rng = _rng(world)
+    rng = _rng(world, "spawn:" + kind)
     if kind == "wolf":
         spots = [p for p in _tiles(world, (T.FOREST,))
                  if all(max(abs(p[0] - c.x), abs(p[1] - c.y)) >= 15 for c in world.agents.values())]
@@ -103,9 +103,9 @@ def _near_fire(world, x: int, y: int, r: int = 4) -> bool:
 
 def move(world) -> None:
     """Every 4 ticks."""
-    rng = _rng(world)
     night = world.is_night
     for a in world.animals.values():
+        rng = _rng(world, a["id"])  # (streams off: the one shared stream, as before)
         kind = a["kind"]
         if kind == "sheep" and a["tame"]:
             pen = world.structures.get(a["pen"])
@@ -200,8 +200,8 @@ def weapon_odds(world, o) -> float:
 def _defend(world, w: Dict[str, Any], c, night: int) -> bool:
     """A chit with a spear (or anyone armed close by) fights back. Wolves bit 51 chits in World B, which carried
     40 spears and never used one. Driven off, the wolf flees and keeps its distance until morning."""
-    rng = _rng(world)
-    armed = [o for o in world.agents.values() if max(abs(o.x - c.x), abs(o.y - c.y)) <= 3
+    rng = _rng(world, "defend:" + w["id"])
+    armed =[o for o in world.agents.values() if max(abs(o.x - c.x), abs(o.y - c.y)) <= 3
              and (o.best_tool("spear") or o.best_tool("weapon"))]
     if not armed:
         return False

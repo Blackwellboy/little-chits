@@ -1,7 +1,8 @@
 """A model was offered fetches of heavy ore and charcoal its full hands could not take: "my hands are full", 95 tries by
-day 107 of the 2026-10-05 live game."""
+day 107 of the 2026-10-05 live game. Instinct.options leaves such options out (#119, _drafted_runs); with them left
+out, a chit whose hands are nearly full is offered to store or put down its load instead."""
 
-from chits.brain.instinct import Instinct, _fits_in_hand
+from chits.brain.instinct import Instinct
 from chits.sim.world import World
 
 
@@ -15,21 +16,6 @@ def _world():
 def _full_but(a, room):
     while a.free_space() > room:
         a.add("stone", 1)
-
-
-def test_a_fetch_of_ore_is_not_offered_without_room_for_one():
-    w, a = _world()
-    _full_but(a, 1)
-    assert not _fits_in_hand(w, a, [{"do": "take", "what": "iron_ore", "qty": 2}, {"do": "smelt"}])
-    assert not _fits_in_hand(w, a, [{"do": "go", "to": "1,1"}, {"do": "gather", "what": "copper ore"}])
-    assert _fits_in_hand(w, a, [{"do": "take", "what": "cord", "qty": 2}])  # (one cord weighs 1)
-
-
-def test_the_second_fetch_counts_what_the_first_one_took():
-    w, a = _world()
-    _full_but(a, 4)
-    assert _fits_in_hand(w, a, [{"do": "take", "what": "charcoal", "qty": 2}, {"do": "take", "what": "iron_ore", "qty": 1}])
-    assert not _fits_in_hand(w, a, [{"do": "take", "what": "charcoal", "qty": 4}, {"do": "take", "what": "iron_ore", "qty": 1}])
 
 
 def test_a_models_menu_has_no_fetch_that_cannot_fit():

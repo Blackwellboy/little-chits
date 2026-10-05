@@ -1,7 +1,7 @@
 # Test harness
 
 Runs instinct worlds without a model and reports what happened in them: the usual per-seed numbers, plus what went
-wrong and what never happened at all. It watches from outside. The game gains no code and no cost, and a run with
+wrong and what never happened at all. With `--mind` it runs the model path too (below). It watches from outside. The game gains no code and no cost, and a run with
 the harness comes out the same as a run without it.
 
 Run everything from the repo root with the project's Python (`.venv/bin/python`). Nothing outside the standard
@@ -32,6 +32,128 @@ had marked it unreachable. Examples of stuck chits follow.
 
 The mechanisms are listed in one place: `MECHANISMS` in `probe.py`. Each one is counted from the world's events
 (`w.listeners`) or from the chits' own lifetime counters (`Agent.stats`). To count a new mechanism, add a line there.
+
+## The model in the loop: `run.py --mind`
+
+An instinct run never builds a prompt, parses a reply, repairs a plan or escalates a choice, so it can't see what goes
+wrong there. The live game can: `/api/why` has shown "gather None" 96 times, experiments with items that don't exist
+and failed stores, none of which an instinct run produces. `--mind` runs the same world with every chit on one brain,
+driven through the game's own Mind (`brain/mind.py`), and reports the model path's health.
+
+```bash
+python tools/harness/run.py 42 --days 20 --mind scripted              # the scripted model: no GPU, deterministic
+python tools/harness/run.py 42 --days 20 --mind scripted --autopsy     # plus the model-path autopsy
+python tools/harness/run.py 42 --days 2 --mind scripted --style full --bad-rate 0.3 --bad-kinds none_what,prose
+python tools/harness/run.py 42 --days 5 --mind http://127.0.0.1:18191/v1   # a real server, only when given one
+```
+
+**The scripted model** (`scripted.py`) answers every request the game makes: a letter for a choice (with logprobs,
+so the cascade's confidence gate and escalation run), a JSON plan for a full request, lessons for a reflection, a
+letter for a vote. It reads only the prompt (full, compact or choice format), as a model does: it eats when hungry with
+food in hand, builds a hut when homeless, tries an untried combination the scene lists only when it can gather every
+input it lacks (repeats counted) and has room for them, crafts what it can gather for, gathers what is near. So a good
+answer's failures are the world's, and only `--bad-rate` adds the model's own. At `--bad-rate` (default 0.15) it
+answers in one of the ways live models have gone wrong (`--bad-kinds` picks among them):
+
+| Kind | What it sends |
+|---|---|
+| `bad_letter` | a choice answer that is no option's letter |
+| `none_what` | a step with `"what": null` |
+| `unreal_item` | an experiment, gather or craft with an item no world has |
+| `cant_run` | a step that can't run here: take or store iron, help site s9999, work at a factory |
+| `unknown_verb` | a verb that doesn't exist (dropped by the parser) |
+| `truncated` | a plan cut off mid-JSON |
+| `prose` | no JSON at all (the mind asks once more) |
+
+It plugs in below the game's model client, as an `httpx.MockTransport` on the brain: the request body, reply parsing,
+the priority gate and the brain's counters all run as they do against a server, and nothing goes over a network. A
+reply takes `--plan-ticks` (default 8) or `--choice-ticks` (default 1) world ticks, and the world waits each tick for
+every request to reach that clock. So a scripted run is the same on every machine: `run.py` pins `PYTHONHASHSEED=0`
+for a `--mind` run, because a prompt's text depends on string hashing (`world.village_failed` counts a set, and its
+ties come out in hash order).
+
+The game gains no code (apart from the model-only switch, below). Without `--mind` the harness is what it was: instinct only, no brain, no network. `--mind`
+takes `scripted` or an `http(s)://` URL and nothing else. A run against a URL is not deterministic: the world moves
+on at `--tick-seconds` per tick (0.5, the game at 1x) and replies land when they land.
+
+The JSON line gains a `mind` section:
+
+- `steps_by_source` (and `_pct`): every finished step by who planned it: `model_selected` (a choice),
+  `model_generated` (a written plan), `model_repaired`, `routine`, `filler`, `reflex`, `instinct`, `duty`.
+- `plans`, `decisions`: plans by source; each model request by style (`choose`, `cascade-full`, `full`, `repair`,
+  `vote`...), parse (`ok`, `retried`, `repaired`, `failed`, `choice`, `invalid_choice`) and outcome (`adopted`,
+  `stale`, `failed`). `rejected_steps`: steps the parser dropped. `brain`: the brain's own counters (parse failures,
+  retries, repairs).
+- `escalation`: cascade choices that asked for a full plan, granted or denied (budget, queue). `repairs`: plans asked
+  for after a model step failed, and whether the repaired plan's first step worked. `reply_ticks`: ticks from asking
+  a chit's mind to its answer.
+- `model_steps`: model steps done and failed, and `failed_at_once` (failed within a tick of starting: they could not
+  run at all), by verb and by reason. `failed_by_origin` splits them: `model_selected` is a plan instinct drafted
+  and the model picked by letter, `model_generated` one the model wrote, `model_repaired` one written after a
+  failure. At `--bad-rate 0` the scripted model's own written plans should barely fail; what fails there is the
+  world's (a deer that got away) or instinct's drafted options. `model_failures`: the most common failed model steps.
+- `loops`: the same step (verb and object as written, so a null `what` shows as `None`) failing for the same reason
+  more than `--loop-after` (3) times in a row for one chit, by origin, with episodes, the longest run and how many
+  chits. `diag_loops` is the game's own loop detector (`diag.LOOP_N`).
+- `why`: the `/api/why` sentences for the world. `planted`: what the scripted model got wrong on purpose, to set
+  against what was caught.
+
+`--autopsy` adds the model-path failures: for each model loop, and the first 12 model steps that failed at once, the
+plan, its source (style, parse, letter chosen), the step, the result and the reply the plan came from.
+
+### The rule
+
+**Any change to prompts (`brain/prompt.py`), the parser (`brain/parse.py`) or plan handling (`brain/mind.py`,
+`sim/actions.py` repair and adoption) also runs `--mind scripted` on a few seeds**, at least 42, 7 and 99 for 10-20
+days, before and after the change. Compare `decisions`, `model_steps`, `loops` and `why`. A new model loop, a parse
+or adoption rate that falls, or a planted kind that stops being caught is a regression even when instinct A/Bs are
+even. The scripted model can't say whether a change helps a real model choose better; that is the decision bench's job.
+
+### Model only: `--model-only` (diagnostic)
+
+```bash
+python tools/harness/run.py 42 --days 10 --mind scripted --model-only --autopsy
+```
+
+A "true run": what the model does on its own, with nothing from instinct covering for it. It finds model-path
+problems to fix. It is not for comparing models or changes. Instinct normally does three jobs in a `--mind` run, and
+`--model-only` turns off all three:
+
+- **the menu**: the prompt is the full one whatever `--style` says, so the model writes every plan. No choice among
+  instinct's drafted options (`Instinct.options`), and no tool step added in front of its plan (`tools_first`).
+- **the fallback**: no instinct plan while the model is slow, down or queued, no routine plans and no pioneer's duty.
+  The chit waits, as under the experiment contract (`Mind.no_stand_in`).
+- **the reflexes**: the body's eat, sleep, shelter, warm-up, store and room reflexes (`sim/actions.py`
+  `_reflexes`) are off (`world.model_only`, or `actions.REFLEXES = False` for every world). A chit acts only on its
+  model's plans and may die of neglect; the run records that, it doesn't prevent it.
+
+The reflexes still look each tick, without acting, and the `mind` section gains `reflex_would`: what they would have
+done, by the verb of the step they would have put first (`ticks`: chit-ticks the need stood; `onsets`: times it began),
+and `onsets_by_kind` (`food`, `sleep`, `shelter`, `warm_up`, `room`). That is where the model fails to look after
+its chits. `model_only` says whether the run was one; `steps_by_source` should hold nothing but `model_*`.
+
+Comparisons keep the reflexes on, in both arms. They are the body, not the mind: the same for every arm, they keep a
+chit from dying of what no model of any size would think to plan every tick, so a difference between arms is the
+models' and not which one happens to plan meals. The Lab has the same switch (`"model_only": true` in a protocol,
+recorded in the manifest), and the game has it as a play-only toggle in the Brains settings (🩺 Model only), off on
+every restart.
+
+### Model choices: `tools/decbench.py`
+
+The decision bench scores a real model's one-letter choices on the game's own choice scenes (216 of them: real scenes
+from instinct worlds on seeds 42, 7 and 24, plus clear-cut ones: starving with food in hand should eat, exhausted at
+night should sleep). About 2 minutes per model. Run it from `server/`:
+
+```bash
+python ../tools/decbench.py build . items.json                              # the scenes, once per tree
+python ../tools/decbench.py ask items.json http://127.0.0.1:18191/v1 jevk5 g 8   # one server, the game's prompt (g)
+python ../tools/decbench.py score items.json items.json.ref.g.json items.json.jevk5.g.json
+```
+
+`score` prints the valid-letter share, accuracy on the clear-cut scenes, agreement with a reference model, mean
+confidence and speed. Use it for prompt and model questions about *choosing*; use `--mind` for whether the model path
+*works* (parsing, repair, escalation, adoption, steps that can't run); use versus runs on 3+ seeds for whether a model
+builds a better civilisation. Bench agreement has not predicted in-game results.
 
 ## Two trees: `ab.py`
 

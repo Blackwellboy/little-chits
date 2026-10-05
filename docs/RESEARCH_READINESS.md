@@ -99,6 +99,30 @@ Play also runs the storyteller, wanderers, boats, forks, pop caps and god-mode e
 affinity bonuses), the last-keeper rescue nudge, library hints drawn from the hidden recipe table, or scheduled T26
 elections. Plan item 50 assigns all of these to the strict contract, and none of it is built.
 
+## Model-only runs (a diagnostic, not a contract)
+
+Even in experiment mode, instinct still does part of the work: the body's reflexes (`sim/actions.py` `_reflexes`:
+eat, sleep, shelter, warm up, store, make room) run in every mode (20% of steps in the live game on 2026-10-05, 12-13%
+in scripted harness runs of seed 42), and in choose and cascade style the model picks from instinct's drafted
+options (47% and 56-64% of steps respectively). **Model-only** turns all of it off: the
+full prompt whatever a brain's style, no instinct plans of any kind, the model's plans as written (no `tools_first`),
+and no reflexes. What a reflex would have done is counted instead (`diag.reflex_would`: chit-ticks and onsets by
+verb, onsets by kind), to show where a model fails to look after its chits. Chits may die of neglect, and the run
+records it.
+
+- Harness: `python tools/harness/run.py SEED --mind scripted|URL --model-only` (`tools/harness/README.md`).
+- Lab: `"model_only": true` in a protocol. Every arm runs without reflexes, model arms also without the menu. The
+  manifest records `model_only` and says the run is diagnostic; each run's `result.json` gains `model_only` with the
+  would-have-fired counts. The option is left out of the fingerprint when off, so older protocols keep theirs.
+- Game: the 🩺 Model only toggle in the Brains settings (`POST /api/model-only`). Play only (409 in an experiment, and
+  an experiment run turns it off), never saved, so a restart turns it off; `/api/diagnostics` warns while it is on.
+
+It is off by default everywhere, and it is for finding model-path problems, not for comparisons. **Real comparisons
+keep the reflexes on in both arms.** The reflexes act like the body: they are identical for every arm and read only
+what the chit's own body and surroundings show, so they add the same floor to each arm. Turning them off measures how
+well a model plans meals and sleep tick by tick, which is not the question a model-vs-model study asks, and it makes
+deaths from neglect swamp every other difference. Report the model's share of steps (`model_step_share`) alongside.
+
 ## What can honestly be claimed today
 
 - Instinct-only comparisons through the Lab are reproducible, pre-registered, blind until unsealed, matched on
