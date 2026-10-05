@@ -15,11 +15,12 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim.actions import _farm_ready, _stockpile_with  # (what the eat and harvest steps use)
-from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, WORK_RADIUS, _tablet_new,
-                           food_items, mend_material, plan_bill, remembered_place, stockpile_room, village_stores)
+from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, STORES, WORK_RADIUS,
+                           _tablet_new, build_could_start, food_items, mend_material, plan_bill, remembered_place,
+                           stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim import items as IT
-from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
+from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name, normalize_design
 from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
 from . import outposts as OP
@@ -362,6 +363,105 @@ def _fetch_steps(world, a: Agent, key: str, n: int, room: Optional[float] = None
     return steps
 
 
+def _n(step: Dict[str, Any], default: int) -> int:
+    try:
+        return max(1, int(float(step.get("qty") or default)))
+    except (TypeError, ValueError):
+        return default
+
+
+def _hand_uses(world, steps: List[Dict[str, Any]]) -> Tuple[Dict[str, int], bool]:
+    """What these steps will take out of the chit's hands, by item, and whether one stores everything it carries."""
+    from ..sim.actions import _experiment_bag
+
+    out: Dict[str, int] = {}
+    everything = False
+    for s in steps:
+        do = s.get("do")
+        if do in ("invent", "experiment"):
+            for k in _experiment_bag(s, world):
+                if k:
+                    out[k] = out.get(k, 0) + 1
+        elif do == "craft":
+            r = world.recipe(world.norm_item(s.get("what")) or "")
+            for k, m in (r.inputs if r else ()):
+                out[k] = out.get(k, 0) + m * _n(s, 1)
+        elif do in ("build", "help"):  # (what the site still needs goes in from the builder's hands)
+            site = world.structures.get(str(s.get("site") or s.get("target") or ""))
+            key = site.design if site is not None else normalize_design(s.get("what"))
+            for k, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                out[k] = out.get(k, 0) + m
+        elif do in ("store", "give", "drop"):
+            if do == "store" and str(s.get("what") or "all").lower() in ("all", "everything", "extra", "surplus", "materials"):
+                everything = True
+            elif k := world.norm_item(s.get("what")):
+                out[k] = out.get(k, 0) + _n(s, 99)
+    return out, everything
+
+
+def _drafted_runs(world, a: Agent, plan: Dict[str, Any]) -> bool:
+    """Whether a plan drafted for a model to choose (Instinct.options) can run from where the chit stands. It is drafted
+    while the chit's own plan still has a step or two to go (brain.mind asks ahead), so what those steps will use up
+    is not counted as in hand, nor what they take from the stores or the ground. Then, step by step: what an invention,
+    an experiment or a store needs must be in hand by then, a take must find a store holding the thing, a pickup a pile
+    of it, the first fetch room in hand (unless something is put down or used first), and a build must find clear
+    ground (sim.actions.build_could_start). With --mind scripted (tools/harness),
+    most failed model steps were drafted options failing at once like this: "I'm not carrying enough wood", "I'm not
+    carrying any grain", "there's no clear ground within 28 tiles"."""
+    ahead = [s for s in a.plan if not s.get("_filler")]
+    used, everything = _hand_uses(world, ahead)
+    held = {} if everything else {k: n - used.get(k, 0) for k, n in a.inventory.items() if n - used.get(k, 0) > 0}
+    taken = {}
+    picked = set()
+    for s in ahead:
+        k = world.norm_item(s.get("what"))
+        if s.get("do") == "take" and k:
+            taken[k] = taken.get(k, 0) + _n(s, 3)
+        elif s.get("do") == "pickup" and k:
+            picked.add(k)
+    built = False
+    freed = any(s.get("do") in ("store", "drop", "eat", "give", "craft") for s in ahead)
+    for s in plan.get("steps") or []:
+        do = s.get("do")
+        k = world.norm_item(s.get("what")) if isinstance(s.get("what"), str) else None
+        if do in ("store", "drop", "eat", "give", "craft"):
+            freed = True  # (from here on the room in its hands is anyone's guess)
+        elif do in ("take", "pickup", "gather") and k and not freed:
+            it = world.item(k)
+            if it is not None and a.free_space() < it.weight:
+                return False  # "my hands are full"
+        if do == "take" and k:
+            stored = sum(st.storage.get(k, 0) for st in world.structures_near(a.x, a.y, 30)
+                         if st.design in STORES + ("pen",) and st.functional and world.same_land(a, st)
+                         and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick)
+            if stored - taken.get(k, 0) <= 0:
+                return False
+            taken[k] = taken.get(k, 0) + _n(s, 3)
+            held[k] = held.get(k, 0) + _n(s, 3)
+        elif do == "pickup" and k:
+            if k in picked or not any(pile.get(k, 0) > 0 for _, _, pile in world.piles_near(a.x, a.y, 20)):
+                return False
+            picked.add(k)
+            held[k] = held.get(k, 0) + 99
+        elif do in ("gather", "craft", "work") and k:
+            held[k] = held.get(k, 0) + _n(s, 1)
+        elif do == "harvest":
+            held["grain"] = held.get("grain", 0) + 1
+        elif do in ("invent", "experiment", "store"):
+            need, everything = _hand_uses(world, [s])
+            if everything:
+                continue
+            for item, n in need.items():
+                if held.get(item, 0) < (1 if do == "store" else n):
+                    return False
+                held[item] = max(0, held[item] - n)
+        elif do == "build" and not built:
+            built = True
+            if not build_could_start(world, a, s):
+                return False
+    return True
+
+
 WORK_NEAR = STATION_NEAR  # instinct offers a spare shift at a station this close, by choice
 
 
@@ -438,11 +538,16 @@ class Instinct:
         seen: set = set()
         out: List[Dict[str, Any]] = []
 
-        def add(p):
+        def add(p, check: bool = True) -> Optional[bool]:
+            """True when added; False when it can't run from here (the next of its kind may); None otherwise."""
             if p and p.get("steps") and p["goal"] not in seen and len(out) < k:
-                seen.add(p["goal"])
                 p["steps"] = [dict(s) for s in p["steps"] if s][:6]
+                if check and not _drafted_runs(world, a, p):
+                    return False  # (it would fail at once: an option the model can't run is no choice)
+                seen.add(p["goal"])
                 out.append(p)
+                return True
+            return None
 
         needy = a.hunger < 40 or a.energy < 25 or a.warmth < 40
         best = self.plan(world, a)
@@ -465,13 +570,18 @@ class Instinct:
         if exp:
             pool.setdefault("experiment", []).insert(0, exp)
         for kind in ("experiment", "build", "make", "social", "explore", "other"):
-            for p in pool.get(kind, [])[:1]:
-                add(p)
+            for p in pool.get(kind, []):
+                if add(p) is not False:
+                    break  # (one of each kind: the first that can run)
         if needy:
             add(self._survive(world, a, random.Random(seed + 3)))
         chores = pool.get("chore", [])
         if chores and not any(self._kind(o.get("goal", "")) == "chore" for o in out):
-            add(chores[0])  # one chore, if nothing else is one
+            for p in chores:  # one chore, if nothing else is one
+                if add(p) is not False:
+                    break
+        if not out:
+            add(best, check=False)  # (a model must have something to choose)
         return out
 
     @staticmethod

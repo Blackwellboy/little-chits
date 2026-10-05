@@ -32,7 +32,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**144** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**146** occurrences in 21 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
@@ -40,7 +40,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `app.py` | 1 | 167 |
 | `brain/builder.py` | 12 | 64, 71, 83, 103, 104, 145, 260, 390, 405, 411, 467, 474 |
 | `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
-| `brain/instinct.py` | 21 | 569, 579, 608, 675, 697, 716, 730, 731, 739, 747, 758, 825, 826, 862, 909, 926, 1034, 1040, 1071 |
+| `brain/instinct.py` | 22 | 569, 579, 608, 675, 697, 716, 730, 731, 739, 747, 758, 825, 826, 862, 909, 926, 1034, 1040, 1071 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
 | `brain/prompt.py` | 8 | 395, 410, 411, 485, 716, 734 |
@@ -48,7 +48,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 482, 564 |
 | `runtime.py` | 1 | 1052 |
-| `sim/actions.py` | 31 | 632, 838, 1103, 1197, 1317, 1351, 1352, 1374, 1393, 1640, 1996, 2204, 2221, 2251, 2285, 2287, 2289, 2291, 2303, 2326, 2385, 2415, 2789, 2791, 2946, 2950, 3336, 3354 |
+| `sim/actions.py` | 32 | 632, 838, 1103, 1197, 1317, 1351, 1352, 1374, 1393, 1640, 1996, 2204, 2221, 2251, 2285, 2287, 2289, 2291, 2303, 2326, 2385, 2415, 2789, 2791, 2946, 2950, 3336, 3354 |
 | `sim/agent.py` | 1 | 373 |
 | `sim/buildings.py` | 21 | 183, 184, 200, 213, 219, 220, 222, 274, 275, 287, 289, 294, 296, 298, 369, 383, 396, 521, 962, 963, 1059 |
 | `sim/hall.py` | 1 | 30 |

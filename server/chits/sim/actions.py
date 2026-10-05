@@ -2436,6 +2436,57 @@ def _do_build(world, a: Agent, step, s) -> str:
     return _do_help(world, a, step, s)
 
 
+def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
+    """Whether a build step could start from where the chit stands: _do_build's own checks, in its order, up to the
+    search for clear ground (has_site, not find_site: nothing random is drawn and nothing changes). For the options a
+    model chooses from (brain.instinct.Instinct.options), where "build a brick house" with no clear ground was the
+    commonest drafted option that failed at once (81 times in 20 scripted days, tools/harness seed 42)."""
+    if step.get("site"):
+        return True  # (help at a site: not a search for ground)
+    key = normalize_design(step.get("what"))
+    if not key or not a.knows_design(key):
+        return False
+    if key == "bridge" or BLD.upgrade_instead(world, a, key, step):
+        return True
+    ox, oy = a.x, a.y
+    near = step.get("near") or step.get("at")
+    if near:
+        tgt = _resolve_place(world, a, near)
+        if tgt:
+            ox, oy = tgt
+    elif key in BLD.TOWN_CENTRE:
+        hall = BLD.hall_near(world, a)
+        if hall is not None:
+            ox, oy = hall.x + hall.w // 2, hall.y + hall.h // 2
+    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
+    serves = _serving(step, key, within)
+    if any(not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st)
+           and (serves is None or serves(st.x, st.y))
+           for st in world.structures_near(ox, oy, min(12, within) if within else 12, key)):
+        return True  # it joins that site
+    radius = reuse_within(key)
+    if radius and any(st.complete and world.same_land(a, st) for st in world.structures_near(ox, oy, radius, key)):
+        return True  # it uses the one standing there
+    cap = step.get("_cap")
+    if cap and sum(1 for x in world.structures.values() if x.design == key) >= cap:
+        return True  # (done: there are enough)
+    need_pop = DESIGNS[key].min_pop
+    if (need_pop and len(world.agents) < need_pop) or (key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None) \
+            or BLD.town_only(world, key, ox, oy):
+        return False
+    from . import pioneers as PI
+
+    home = world.structures.get(a.home or "")
+    crowded = home is not None and sum(o.home == home.id for o in world.agents.values()) > BLD.HOME_CAP.get(home.design, 3)
+    if key == "hut" and home is not None and home.design in BLD.HOMES and home.functional \
+            and not (crowded and home.founder != a.id) and not PI.builds_home_at(world, a, ox, oy):
+        return False
+    radii = (3,) if key == "road" else (8,) if key in ("boat", "lighthouse", "mine") else (8, 16, 28)
+    if within:
+        radii = tuple(r for r in radii if r < within) + (within,)
+    return world.has_site(key, ox, oy, max(radii), reach=(a.x, a.y), widen=not within, serves=serves)
+
+
 def _do_upgrade(world, a: Agent, step, s) -> str:
     """Rebuild your home bigger where it stands (hut -> longhouse or brick house, and on to a two-storey house)."""
     return BLD.do_upgrade(world, a, step, s)

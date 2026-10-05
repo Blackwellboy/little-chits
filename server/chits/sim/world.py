@@ -1302,6 +1302,24 @@ class World:
         across a river was chosen 8 tiles away and 140 on foot, and chits failed to reach it 1,684 times. With
         `widen` off, no farther than `radius` (a building sited to serve something there: a harbour for its fish);
         with `serves`, only a spot whose top-left corner passes it (one from which it reaches those it is for)."""
+        cands = []
+        for nx, ny, dist in self._site_spots(design, x, y, radius, reach, widen, serves):
+            # like to build near existing settlement
+            near = sum(1 for s in self.structures.values() if s.dist(nx, ny) <= 5)
+            cands.append((dist - min(near, 4) * 1.5 + self.rng_for("sites").random() * 0.5, nx, ny))
+        if not cands:
+            return None
+        cands.sort()
+        return cands[0][1], cands[0][2]
+
+    def has_site(self, design: str, x: int, y: int, radius: int = 7, reach: Optional[Tuple[int, int]] = None,
+                 widen: bool = True, serves: Optional[Callable[[int, int], bool]] = None) -> bool:
+        """Whether find_site would find a spot, without choosing one: it draws nothing random and changes nothing."""
+        return next(self._site_spots(design, x, y, radius, reach, widen, serves), None) is not None
+
+    def _site_spots(self, design: str, x: int, y: int, radius: int, reach: Optional[Tuple[int, int]], widen: bool,
+                    serves: Optional[Callable[[int, int], bool]]):
+        """Every free spot find_site considers, in its order, with its distance."""
         d = DESIGNS[design]
         w, h = d.size
         margin = 0 if design in ("road", "boat") else 1
@@ -1313,7 +1331,6 @@ class World:
             radius = max(radius, 30)  # the rocks may be a walk from the village
         comp = self._components() if reach and self.inb(*reach) and not self.block[reach[1] * self.w + reach[0]] else None
         home = comp[reach[1] * self.w + reach[0]] if comp else 0
-        cands = []
         # (with `serves`, a footprint whose top-left corner is up to its own size past the radius to the left or above
         # still reaches through its far side: `serves` is what decides, Codex #95)
         lx, ly = (w - 1, h - 1) if serves is not None else (0, 0)
@@ -1329,14 +1346,7 @@ class World:
                 if serves is not None and not serves(nx, ny):
                     continue
                 if self.footprint_free(nx, ny, w, h, margin):
-                    dist = abs(dx) + abs(dy)
-                    # like to build near existing settlement
-                    near = sum(1 for s in self.structures.values() if s.dist(nx, ny) <= 5)
-                    cands.append((dist - min(near, 4) * 1.5 + self.rng_for("sites").random() * 0.5, nx, ny))
-        if not cands:
-            return None
-        cands.sort()
-        return cands[0][1], cands[0][2]
+                    yield nx, ny, abs(dx) + abs(dy)
 
     def place_site(self, design: str, x: int, y: int, founder: Agent) -> Structure:
         d = DESIGNS[design]
