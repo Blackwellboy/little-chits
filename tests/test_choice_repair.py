@@ -162,7 +162,8 @@ def test_only_the_repair_arm_hears_why_its_step_failed(monkeypatch, tmp_path, la
     assert told == {"a": True, "b": False}, told
     res = {names[r["label"]]: r["final"] for r in run.results(tmp_path / "run")}
     assert res["a"]["repairs_asked"] > 0 and res["b"]["repairs_asked"] == 0  # (recorded, for the study)
-    assert res["a"]["repaired_steps_ok"] + res["a"]["repaired_steps_failed"] > 0
+    assert res["b"]["repaired_steps_ok"] == res["b"]["repaired_steps_failed"] == 0  # (no repair, no repaired steps;
+    # whether a repaired plan runs a step before the run ends depends on the fake model's replies, so arm a's isn't fixed)
     assert all(0 <= f["model_step_failure_rate"] <= 1 and f["model_steps_failed"] >= 0 for f in res.values())
 
 
