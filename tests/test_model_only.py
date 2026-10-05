@@ -280,3 +280,44 @@ def test_switching_model_only_on_mid_game_drops_instinct_plans_and_stales_menu_r
     assert all(str(s.get("_origin")).startswith("model") for s in b_.plan)  # and no instinct plan in its place
     rt.set_model_only(False)
     assert diag.of(w).model_only_since is None
+
+
+def _game(tmp_path, monkeypatch):
+    monkeypatch.setenv("CHITS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CHITS_SPEED", "0")
+    monkeypatch.setenv("CHITS_AUTODETECT", "0")
+    monkeypatch.delenv("CHITS_MODEL_URL", raising=False)
+
+
+def test_every_world_put_in_place_under_model_only_is_sanitized_and_a_new_game_turns_it_off(tmp_path, monkeypatch):
+    """Codex P2 on #118: a save point restored while model-only was on came back with its saved instinct, filler and
+    reflex steps (model_only isn't saved, and the mind only restored the flag). Every way a world is put in place
+    runs the same sanitizing: a restore (rewinds and loaded save files go through it too) and a fork."""
+    from fastapi.testclient import TestClient
+
+    _game(tmp_path, monkeypatch)
+    from chits.app import R, app
+
+    instinct = [{"do": "eat", "_reflex": True}, {"do": "gather", "what": "wood", "_origin": "instinct"},
+                {"do": "rest", "_filler": True, "_origin": "filler"}]
+    with TestClient(app) as c:
+        r = R()
+        for w in r.worlds.values():
+            for a in w.agents.values():
+                a.plan = [dict(s) for s in instinct]
+        sid = r.save_point("before")["id"]
+        assert c.post("/api/model-only", json={"on": True}).status_code == 200
+        assert r.restore_point(sid)
+        for w in r.worlds.values():
+            assert w.model_only is True
+            assert all(a.plan == [] for a in w.agents.values()), "saved instinct steps came back"
+            assert diag.of(w).model_only_since == w.tick and diag.of(w).model_only_dropped == 3 * len(w.agents)
+        wid = next(iter(r.worlds))
+        next(iter(r.worlds[wid].agents.values())).plan = [dict(s) for s in instinct]  # (as if left by a stale tick)
+        f = r.fork(wid)
+        fw = r.forks[f["id"]]["world"]
+        assert fw.model_only is True and all(a.plan == [] for a in fw.agents.values())
+        # a new game is a new match: the diagnostic doesn't carry over into it unnoticed (as an experiment, it's off)
+        assert c.post("/api/reset", json={"seed": 7, "chits": 4, "size": 64}).status_code == 200
+        assert r.mind.model_only is False and not any(getattr(w, "model_only", False) for w in r.worlds.values())
+        assert c.get("/api/brains").json()["model_only"] is False
