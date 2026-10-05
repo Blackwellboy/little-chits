@@ -2308,10 +2308,11 @@ def reuse_within(key: str) -> Optional[int]:
     return r
 
 
-def reuse_choice(world, a: Agent, key: str, x: Optional[int] = None, y: Optional[int] = None):
+def reuse_choice(world, a: Agent, key: str, x: Optional[int] = None, y: Optional[int] = None, sown=()):
     """What _use_existing does instead of building a `key` at (x, y), without doing it: ("plenty", None), ("refuel",
     a campfire), ("plant", an empty farm), ("room", None) or ("use", the one standing there); None when it builds.
-    One predicate for the step and for the options preflight (build_could_start), so the two can't drift."""
+    One predicate for the step and for the options preflight (build_could_start), so the two can't drift. `sown`: farms
+    to count as sown already (the options' projection, after an earlier step of the same plan sowed them)."""
     x, y = (a.x, a.y) if x is None else (x, y)
     radius = reuse_within(key)
     if not radius:
@@ -2330,7 +2331,7 @@ def reuse_choice(world, a: Agent, key: str, x: Optional[int] = None, y: Optional
         st = near[0]
         return None if st.ruined else ("refuel", st)  # (a ruin: build a new one)
     if key == "farm":
-        empty = next((x for x in near if x.functional and not x.planted), None)
+        empty = next((x for x in near if x.functional and not x.planted and x.id not in sown), None)
         return ("plant", empty) if empty is not None else None  # (every farm nearby is sown: a new one is fine)
     if key == "stockpile" and any(stockpile_room(x, None, world.catalog) > 20 for x in near if x.functional):
         return "room", None
@@ -2493,7 +2494,7 @@ def _do_build(world, a: Agent, step, s) -> str:
     return _do_help(world, a, step, s)
 
 
-def build_course(world, a: Agent, step: Dict[str, Any]):
+def build_course(world, a: Agent, step: Dict[str, Any], sown=()):
     """What a build step does before it looks for ground, as _do_build decides it and in its order, without doing it:
     ("site", None) helps at the site it names; ("unknown", None) fails; ("redirect", None) a bridge or a bigger home;
     ("join", the site going up there); ("reuse", (how, the one standing there)) as reuse_choice; ("cap", None) there
@@ -2523,7 +2524,7 @@ def build_course(world, a: Agent, step: Dict[str, Any]):
         if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
                 and (serves is None or serves(st.x, st.y)):
             return "join", st
-    reuse = reuse_choice(world, a, key, ox, oy)
+    reuse = reuse_choice(world, a, key, ox, oy, sown)
     if reuse is not None:
         return "reuse", reuse
     cap = step.get("_cap")

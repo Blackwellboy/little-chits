@@ -378,3 +378,56 @@ def test_a_sowing_that_cannot_start_keeps_its_one_seed():
     a.plan = [{"do": "build", "what": "farm"}]
     one = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds"]}]}
     assert "experiment" in _menu(w, a, one)
+
+
+def _real_hands(w, a, plan):
+    """What a chit really holds after running these steps, on a copy of its world."""
+    from chits.sim import actions
+    from chits.sim.world import World
+
+    c = World.from_dict(w.to_dict())
+    ca = c.agents[a.id]
+    ca.plan = [dict(s) for s in plan]
+    for _ in range(3000):
+        if not ca.plan:
+            break
+        actions.run(c, ca)
+        c.tick += 1
+    assert not ca.plan, ca.plan
+    return {k: n for k, n in ca.inventory.items() if n > 0}
+
+
+def test_two_builds_beside_one_empty_farm_sow_it_once_then_build(monkeypatch):
+    # (Codex on #130, issue #133) the projection sowed the same empty farm for both builds; the simulator, finding it
+    # sown, builds a new farm with the second, and that takes the farm's materials
+    from chits.brain.instinct import _Hands
+    from chits.sim import actions
+
+    monkeypatch.setattr(actions, "REFLEXES", False)
+    w, a = _world()
+    a.learn("design:farm", "taught", w.tick)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    farm.planted = False
+    a.inventory.update({"seeds": 2, **DESIGNS["farm"].material_map})
+    plan = [{"do": "build", "what": "farm"}, {"do": "build", "what": "farm"}]
+    h = _Hands(w, a)
+    assert all(h.run(dict(s)) for s in plan)
+    assert {k: n for k, n in h.held.items() if n > 0} == _real_hands(w, a, plan)
+
+
+def test_two_builds_beside_one_campfire_feed_it_by_what_the_first_left(monkeypatch):
+    from chits.brain.instinct import _Hands
+    from chits.sim import actions
+
+    monkeypatch.setattr(actions, "REFLEXES", False)
+    w, a = _world()
+    a.learn("design:campfire", "taught", w.tick)
+    fire = w.place_site("campfire", *w.find_site("campfire", a.x + 2, a.y, 8), a)
+    w.complete_structure(fire, a)
+    fire.fuel = 0
+    a.inventory.update({"wood": 6})
+    plan = [{"do": "build", "what": "campfire"}, {"do": "build", "what": "campfire"}]
+    h = _Hands(w, a)
+    assert all(h.run(dict(s)) for s in plan)
+    assert {k: n for k, n in h.held.items() if n > 0} == _real_hands(w, a, plan)
