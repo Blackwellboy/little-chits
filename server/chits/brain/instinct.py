@@ -16,8 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim.actions import _farm_ready, _stockpile_with  # (what the eat and harvest steps use)
 from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, STORES, WORK_RADIUS,
-                           _tablet_new, build_could_start, food_items, mend_material, plan_bill, remembered_place,
-                           stockpile_room, village_stores)
+                           FUEL_VALUE, _tablet_new, build_could_start, build_course, food_items, mend_material,
+                           plan_bill, remembered_place, stockpile_room, store_place, village_stores)
 from ..sim.agent import Agent
 from ..sim import items as IT
 from ..sim import world as W
@@ -504,8 +504,9 @@ class _Hands:
             for x, n in bag.items():
                 self._use(x, n)
         elif do == "store" and str(s.get("what") or "all").lower() in ALL_WORDS:
-            self.held = {x: n for x, n in self.held.items() if (it := w.item(x)) is not None and it.tool}
-            self.unsure = True
+            if s.get("target") or store_place(w, a) is not None:  # (with nowhere to store, the step keeps the load)
+                self.held = {x: n for x, n in self.held.items() if (it := w.item(x)) is not None and it.tool}
+                self.unsure = True
         elif do in ("store", "give", "drop") and k:
             if do == "store" and self.held.get(k, 0) <= 0:
                 return False  # "I'm not carrying any ..."
@@ -514,9 +515,30 @@ class _Hands:
             self.unsure = True
         elif do in ("build", "help"):  # what the site still needs goes in from the builder's hands
             site = w.structures.get(str(s.get("site") or s.get("target") or ""))
-            key = site.design if site is not None else normalize_design(s.get("what"))
-            for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
-                self._use(x, m)
+            kind, got = build_course(w, a, s) if do == "build" and site is None else ("new", None)
+            if kind == "join":
+                site = got
+            if kind == "reuse":  # it uses the one standing there instead: only a fire fed or a farm sown takes anything
+                how, st = got
+                if how == "refuel":  # (_do_refuel: wood first, then charcoal, as much as the fire takes, at most 3)
+                    fuel = next((x for x in (FUEL_VALUE if IT.ITEM_USES else ("wood",)) if self.held.get(x, 0) > 0), None)
+                    if fuel is not None:
+                        self._use(fuel, min(max(1, int((100 - st.fuel) // FUEL_VALUE[fuel]) or 1), 3))
+                elif how == "plant":  # (_do_plant: short of 2 seeds, it fetches up to 4 from a store, or else gathers 2)
+                    if self.held.get("seeds", 0) < 2:
+                        pile = _stockpile_with(w, a, ["seeds"], 30)
+                        if pile is not None:
+                            got = self._fits("seeds", min(4, pile.storage.get("seeds", 0) - self.drawn.get((pile.id, "seeds"), 0)))
+                            self.drawn[(pile.id, "seeds")] = self.drawn.get((pile.id, "seeds"), 0) + got
+                            self._add("seeds", got)
+                        elif w.nearest_resource(a.x, a.y, "seeds", 20):
+                            self._add("seeds", self._fits("seeds", 2))
+                    if self.held.get("seeds", 0) >= 2:  # (short of two, the sowing fails and uses none)
+                        self._use("seeds", 2)
+            elif kind in ("site", "join", "redirect", "new"):
+                key = site.design if site is not None else normalize_design(s.get("what"))
+                for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                    self._use(x, m)
         return True
 
 

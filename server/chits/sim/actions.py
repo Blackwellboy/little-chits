@@ -2491,18 +2491,20 @@ def _do_build(world, a: Agent, step, s) -> str:
     return _do_help(world, a, step, s)
 
 
-def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
-    """Whether a build step could start from where the chit stands: _do_build's own checks, in its order, up to the
-    search for clear ground (has_site, not find_site: nothing random is drawn and nothing changes). For the options a
-    model chooses from (brain.instinct.Instinct.options), where "build a brick house" with no clear ground was the
-    commonest drafted option that failed at once (81 times in 20 scripted days, tools/harness seed 42)."""
+def build_course(world, a: Agent, step: Dict[str, Any]):
+    """What a build step does before it looks for ground, as _do_build decides it and in its order, without doing it:
+    ("site", None) helps at the site it names; ("unknown", None) fails; ("redirect", None) a bridge or a bigger home;
+    ("join", the site going up there); ("reuse", (how, the one standing there)) as reuse_choice; ("cap", None) there
+    are enough; or ("new", (x, y)): it builds a new one there. For build_could_start, and for what the options'
+    projection in brain.instinct takes from the builder's hands (Codex on #119: it took a whole new building's
+    materials from a chit that would only feed the campfire beside it)."""
     if step.get("site"):
-        return True  # (help at a site: not a search for ground)
+        return "site", None
     key = normalize_design(step.get("what"))
     if not key or not a.knows_design(key):
-        return False
+        return "unknown", None
     if key == "bridge" or BLD.upgrade_instead(world, a, key, step):
-        return True
+        return "redirect", None
     ox, oy = a.x, a.y
     near = step.get("near") or step.get("at")
     if near:
@@ -2515,15 +2517,31 @@ def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
             ox, oy = hall.x + hall.w // 2, hall.y + hall.h // 2
     within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
     serves = _serving(step, key, within)
-    if any(not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st)
-           and (serves is None or serves(st.x, st.y))
-           for st in world.structures_near(ox, oy, min(12, within) if within else 12, key)):
-        return True  # it joins that site
-    if reuse_choice(world, a, key, ox, oy) is not None:
-        return True  # it uses the one standing there (or refuels it, sows it, or has enough)
+    for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
+        if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
+                and (serves is None or serves(st.x, st.y)):
+            return "join", st
+    reuse = reuse_choice(world, a, key, ox, oy)
+    if reuse is not None:
+        return "reuse", reuse
     cap = step.get("_cap")
     if cap and sum(1 for x in world.structures.values() if x.design == key) >= cap:
-        return True  # (done: there are enough)
+        return "cap", None
+    return "new", (ox, oy)
+
+
+def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
+    """Whether a build step could start from where the chit stands: _do_build's own checks, in its order, up to the
+    search for clear ground (has_site, not find_site: nothing random is drawn and nothing changes). For the options a
+    model chooses from (brain.instinct.Instinct.options), where "build a brick house" with no clear ground was the
+    commonest drafted option that failed at once (81 times in 20 scripted days, tools/harness seed 42)."""
+    kind, where = build_course(world, a, step)
+    if kind != "new":
+        return kind != "unknown"  # (it helps, joins, reuses, redirects or has enough)
+    key = normalize_design(step.get("what"))
+    ox, oy = where
+    within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
+    serves = _serving(step, key, within)
     need_pop = DESIGNS[key].min_pop
     if (need_pop and len(world.agents) < need_pop) or (key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None) \
             or BLD.town_only(world, key, ox, oy):
@@ -2673,6 +2691,15 @@ def _do_help(world, a: Agent, step, s) -> str:
         s["note"] = f"Finished the {d.name}!"
         return DONE
     return RUNNING
+
+
+def store_place(world, a: Agent):
+    """Where an untargeted store step puts things: the nearest stockpile with room, or else the nearest store within 30
+    tiles; None when there is none, and the step keeps the load. The same search as _do_store's first tick, for the
+    options' projection in brain.instinct (Codex on #119: it emptied the hands of a chit with nowhere to store)."""
+    return next((x for x in world.structures_near(a.x, a.y, 30, "stockpile")
+                 if x.functional and stockpile_room(x, None, world.catalog) > 0), None) \
+        or _find_structure(world, a, None, 30, lambda x: x.design in STORES and x.functional)
 
 
 def _do_store(world, a: Agent, step, s) -> str:
