@@ -3315,9 +3315,16 @@ def _do_harvest(world, a: Agent, step, s) -> str:
         return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
             and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
 
-    st = _find_structure(world, a, step.get("target"), 35, ripe)
-    if st is not None and RIPE_TARGET and not ripe(st):
-        st = _find_structure(world, a, None, 35, ripe)  # a farm named by id was taken as it stood, ripe or not
+    held = world.structures.get(s.get("farm") or "") if RIPE_TARGET else None
+    if held is not None and ripe(held):
+        st = held  # the farm it set out for, while that stays ripe: chosen afresh each tick, a starving chit walked
+        # between two farms for 500 ticks and never reached either (tools/harness, seed 42)
+    else:
+        st = _find_structure(world, a, step.get("target"), 35, ripe)
+        if st is not None and RIPE_TARGET and not ripe(st):
+            st = _find_structure(world, a, None, 35, ripe)  # a farm named by id was taken as it stood, ripe or not
+        if st is not None and RIPE_TARGET:
+            s["farm"] = st.id
     if not st:
         # nothing ripe. World A's model harvested unripe or empty farms 483 times in 160 days, and each failure
         # threw the rest of its plan away while 32 farms lay empty: sow an empty one, or just say how it's growing

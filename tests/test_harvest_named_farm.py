@@ -56,3 +56,20 @@ def test_the_switch_restores_the_old_physics_for_the_identity_test(monkeypatch):
     farm.planted, farm.growth = False, 0.0
     _harvest(w, a, farm.id)
     assert a.inventory.get("grain", 0) > 0  # (the old fault: grain from an empty plot)
+
+
+def test_the_ripe_farm_it_turned_to_stays_its_goal_as_it_walks():
+    # chosen afresh each tick, the nearest ripe farm changed under a walking chit: two starved walking between farms
+    w, a = _world()
+    green = _farm(w, a, 3)
+    green.planted, green.growth = True, 0.4
+    near = _farm(w, a, -8)
+    far = _farm(w, a, 16)
+    for f in (near, far):
+        f.planted, f.growth = True, 1.0
+    a.plan = [{"do": "harvest", "target": green.id}]
+    actions.run(w, a)
+    chosen = a.plan[0]["_s"]["farm"]
+    a.x, a.y = far.x, far.y + 3  # (now nearer the other one)
+    actions.run(w, a)
+    assert a.plan and a.plan[0]["_s"]["farm"] == chosen
