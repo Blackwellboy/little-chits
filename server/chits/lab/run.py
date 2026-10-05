@@ -35,6 +35,7 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "",
         if old.get("rng_scheme", 2) != scheme_now():  # (manifests from before scheme 3 have none: they ran on 2)
             raise SpecError(f"this directory's runs used random-number scheme {old.get('rng_scheme', 2)} and this build "
                             f"makes worlds with {scheme_now()}: its remaining runs would not be comparable")
+        migrate_legacy(out)  # (raw records from before invalid runs were kept blind)
         if pending(spec, out, retry=retry):
             check_servers(spec)  # (a resumed batch checks its servers again)
         return out
@@ -160,27 +161,61 @@ def run_one(protocol: Dict[str, Any], out: str, seed: int, label: str, arm: Dict
 LAST_CALLS = 5  # an invalid run keeps its last model calls (from its tape), for working out what went wrong
 
 
+_PLAIN_WORDS = {"the", "and", "arm", "model", "models", "server", "brain", "instruct", "chat", "base", "http", "https"}
+
+
 def identities(spec: ExperimentSpec, arm: Arm) -> List[str]:
-    """Every string that would tell which arm a run belongs to: its name, its brain's id, label and model, and every
-    server it may use (base URL and host:port, card swap included). Longest first, so a URL goes before its host."""
+    """Every string that would tell which arm a run belongs to, and its common spellings: the arm's name; its
+    brain's id; its label, and each word of it; its model file, without its extension too, and the name before the
+    first dash ("gemma" of gemma-4-12b-it.gguf); every server it may use (card swap included), with and without the
+    scheme and trailing slash, and its host:port. Matched in any case (redact). Longest first, so a URL goes before
+    its host and a label before its words."""
     out = {arm.name, arm.brain} - {"instinct", ""}
     cfg = spec.brains.get(arm.brain) or {}
-    urls = [cfg.get("base_url") or "", spec.card_swap.get(arm.brain, "")]
-    out |= {str(cfg.get(k) or "") for k in ("id", "label", "model")}
-    for u in urls:
+    out |= {str(cfg.get(k) or "") for k in ("id", "label")}
+    out |= {w for w in str(cfg.get("label") or "").split() if len(w) >= 3 and any(c.isalpha() for c in w)}
+    model = str(cfg.get("model") or "")
+    if model:
+        stem = model.rsplit("/", 1)[-1]
+        stem = stem.rsplit(".", 1)[0] if "." in stem and stem.rsplit(".", 1)[1].isalpha() else stem
+        out |= {model, stem}
+        head = stem.split("-", 1)[0]
+        if len(head) >= 3 and any(c.isalpha() for c in head):
+            out.add(head)
+    for u in (cfg.get("base_url") or "", spec.card_swap.get(arm.brain, "")):
         if u:
-            out |= {u, u.rstrip("/"), u.split("//", 1)[-1].split("/", 1)[0]}
-    return sorted((s for s in out if s.strip()), key=len, reverse=True)
+            bare = u.split("//", 1)[-1]
+            out |= {u, u.rstrip("/"), bare, bare.rstrip("/"), bare.split("/", 1)[0]}
+    return sorted((s for s in out if s.strip() and s.lower() not in _PLAIN_WORDS), key=len, reverse=True)
 
 
-def redact(obj: Any, names: List[str], label: str) -> Any:
-    """`obj` with every identity in `names` replaced by "arm <label>" (whole words only), in every string inside it."""
+def blind_names(spec: ExperimentSpec) -> Dict[str, str]:
+    """Every arm's identities (lower-cased) -> "arm <its label>". A blind record redacts all of them, not only its own
+    arm's: a run's text can name another arm's model too. A string two arms share names neither: "an arm"."""
+    from . import assign
+
+    out: Dict[str, str] = {}
+    for label, name in assign.labels(spec).items():
+        arm = next(a for a in spec.arms if a.name == name)
+        for s in identities(spec, arm):
+            k = s.lower()
+            out[k] = "an arm" if k in out and out[k] != f"arm {label}" else f"arm {label}"
+    return out
+
+
+def redact(obj: Any, names: Dict[str, str]) -> Any:
+    """`obj` with every identity in `names` (lower-cased identity -> what to say instead) replaced in every string
+    inside it: whole words only, in any case (a server may lower-case a model's name, a client a host's), and a URL
+    with any trailing slash."""
     import re
 
     if not names:
         return obj
-    pat = re.compile("|".join(f"(?<![A-Za-z0-9_]){re.escape(n)}(?![A-Za-z0-9_])" for n in names))
-    to = f"arm {label}"
+    keys = sorted(names, key=len, reverse=True)  # (a URL before its host, a label before its words)
+    pat = re.compile("|".join(f"(?<![A-Za-z0-9_]){re.escape(n)}/?(?![A-Za-z0-9_])" for n in keys), re.IGNORECASE)
+
+    def to(m):
+        return names[m.group(0).lower().rstrip("/") if m.group(0).lower() not in names else m.group(0).lower()]
 
     def go(x):
         if isinstance(x, str):
@@ -198,8 +233,8 @@ def _record_invalid(spec: ExperimentSpec, rd: Path, seed: int, label: str, arm: 
                     t0: float) -> Dict[str, Any]:
     """Why this run isn't a result, twice. invalid-sealed.json is the raw record (the arm, its brain, every break
     and its last model calls, word for word): like server.json, only an unblinded report reads it. invalid.json is
-    what the blind report and the command line read: the same, with every identity of the arm (its name, its brain's
-    id, label and model, its servers) replaced by its blind label. A brain_unavailable break names the model that
+    what the blind report and the command line read: the same, with every arm's identities (names, brains' ids,
+    labels and their words, models, servers; any case) replaced by that arm's blind label (blind_names). A brain_unavailable break names the model that
     stopped answering, and the first real study's report would have printed it (Codex on #122). Every break is
     kept, however many there were."""
     first = broken[0] if broken else {"kind": "unknown", "what": "", "tick": 0}
@@ -222,7 +257,7 @@ def _record_invalid(spec: ExperimentSpec, rd: Path, seed: int, label: str, arm: 
            "breaks": len(broken), "by_kind": by_kind, "broken": list(broken), "wall_s": round(time.monotonic() - t0, 1),
            "tape_calls": n, "last_calls": last}
     _write_json(rd / "invalid-sealed.json", raw)  # (first: invalid.json is what marks the run as done)
-    blind = redact({k: v for k, v in raw.items() if k not in ("arm", "brain")}, identities(spec, arm), label)
+    blind = redact({k: v for k, v in raw.items() if k not in ("arm", "brain")}, blind_names(spec))
     _write_json(rd / "invalid.json", blind)
     return {"invalid": True, **blind}
 
@@ -405,9 +440,55 @@ def pending(spec: ExperimentSpec, out, retry: bool = False) -> List[tuple]:
     return todo
 
 
+def migrate_legacy(out) -> List[str]:
+    """Records written before invalid runs were kept blind: one raw invalid.json (or invalid-attempt-N.json) that
+    names the arm, its brain and maybe its model. Each is moved to its sealed name (invalid-sealed.json,
+    invalid-sealed-attempt-N.json) and a redacted copy written in its place, both marked "migrated". Runs on every
+    blind read (analyze, the CLI's listing) and on resume, before anything else reads them. Returns what it moved."""
+    out = Path(out)
+    man = out / "manifest.json"
+    if not man.exists():
+        return []
+    spec = None
+    moved = []
+    for p in sorted((out / "runs").glob("*_*/invalid*.json")):
+        if p.name.startswith("invalid-sealed"):
+            continue
+        sealed = p.with_name(p.name.replace("invalid", "invalid-sealed", 1))
+        try:
+            raw = json.loads(p.read_text())
+        except ValueError:
+            continue
+        if sealed.exists() or not ({"arm", "brain"} & set(raw)):
+            continue
+        if spec is None:
+            spec = ExperimentSpec.from_dict(json.loads(man.read_text())["protocol"])
+        label = str(raw.get("label") or p.parent.name.split("_", 1)[-1])
+        names = blind_names(spec)
+        # (and the record's own arm, should the protocol no longer name it)
+        own = Arm(name=str(raw.get("arm") or ""), brain=str(raw.get("brain") or "instinct"))
+        for s in identities(spec, own):
+            names.setdefault(s.lower(), f"arm {label}")
+        broken = raw.get("broken") or []
+        by_kind: Dict[str, int] = {}
+        for b in broken:
+            by_kind[b.get("kind", "?")] = by_kind.get(b.get("kind", "?"), 0) + 1
+        when = time.strftime("%Y-%m-%dT%H:%M:%S")
+        raw = {"breaks": len(broken), "by_kind": by_kind, **raw,
+               "migrated": {"at": when, "from": p.name, "note": "a record from before invalid runs were kept blind; "
+                                                                 "it kept at most 20 breaks"}}
+        _write_json(sealed, raw)
+        blind = redact({k: v for k, v in raw.items() if k not in ("arm", "brain")}, names)
+        _write_json(p, blind)
+        moved.append(str(p.relative_to(out)))
+    return moved
+
+
 def invalid(out, sealed: bool = False) -> List[Dict[str, Any]]:
     """Every run that broke a hard invariant, in seed/label order: its blind record (invalid.json), or with `sealed`
-    the raw one (invalid-sealed.json, for an unblinded report only; the blind record where none was kept)."""
+    the raw one (invalid-sealed.json, for an unblinded report only; the blind record where none was kept). A legacy
+    raw record is migrated first, so a blind read never sees it."""
+    migrate_legacy(out)
     rows = []
     for p in sorted((Path(out) / "runs").glob("*_*/invalid.json")):
         s = p.with_name("invalid-sealed.json")
