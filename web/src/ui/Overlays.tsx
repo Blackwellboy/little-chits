@@ -26,6 +26,11 @@ export function Toasts() {
             if (t.x != null) set({ focus: { world: t.world, x: t.x + 0.5, y: (t.y ?? 0) + 0.5, t: Date.now() } });
             if (t.actor && worlds[t.world]?.agents.has(t.actor)) set({ selected: { world: t.world, id: t.actor } });
           }}>
+            <button type="button" className="toast-x" aria-label="Dismiss" title="Dismiss"
+              onClick={(e) => {
+                e.stopPropagation();
+                set({ toasts: useUI.getState().toasts.filter((x) => x.key !== t.key) });
+              }}>✕</button>
             <span className="ico">{ms?.icon ?? ICON[t.kind] ?? "✦"}</span>
             <div><small>{t.kind === "error" ? "That didn't work" : `${worldLabel(t.world)} · day ${Math.floor(t.tick / 240) + 1}${ms ? ` · ${ms.label}` : ""}`}</small><p>{t.text}</p></div>
           </div>
