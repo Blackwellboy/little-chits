@@ -1145,8 +1145,8 @@ WORK_REACH = STATION_REACH  # how far a chit goes to reach a station it was aske
 # raw materials a shift never takes the stores below: builders and experimenters need them too (without it pots and
 # tablets emptied the stores of clay by day 25, where 30 or more lay in them without shifts)
 SEED_PLENTY = 60  # seeds the stores near a picker hold before it stops keeping the pips from berries
-PLENTY = False  # read what the village already holds before fetching more (issue #7, brain/surplus.py): off until the
-# seed-24 starvation in its 24-seed A/B is understood (docs/FIXES_2026-09-30.md, F33); off runs as before F33
+PLENTY = True  # read what the village already holds before fetching more (issue #7, brain/surplus.py). On since 2026-10-05
+# (docs/FIXES_2026-09-30.md, F33); off runs as before F33 (tests/identity_runner.py)
 
 
 def seeds_plenty(world, x: int, y: int, a: Optional[Agent] = None) -> bool:

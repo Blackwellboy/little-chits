@@ -58,12 +58,17 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #90 | `tools/harness/`: runs and A/Bs that report preventable deaths, stuck chits with autopsies, and a count for every mechanism |
 | #91 | A chit with no room in its hands is not offered a stockpile it must first fetch for |
 | #92 | After one farm proves a long way round, a hungry chit leaves farms alone for `FARM_RETRY` |
-| #93 | Hoarding, F33: ceilings per good and sinks. **Switched off** (`actions.PLENTY = False`) |
-| #94 | A real use for every item, F35. **Switched off** (`items.ITEM_USES = False`) |
+| #93 | Hoarding, F33: ceilings per good and sinks. Merged switched off; **on since #106** |
+| #94 | A real use for every item, F35. Merged switched off; **on since #104** |
 | #96 | An eat step keeps to the store it set out for. It flipped between two stores on either side of a ridge: 74 starved on one seed |
 | #97 | This section brought up to date |
 | #99 | The Look (Viking) button says why it can't switch during an experiment, instead of silently doing nothing |
-| #100 | A hungry chit acts on the time it has left to reach food, not a fixed hunger number (`actions.HUNGER_MARGIN`): starvations 6 > 1, preventable 2 > 0 over 48 seeds. Follow-up: issue #101 |
+| #100 | A hungry chit acts on the time it has left to reach food, not a fixed hunger number (`actions.HUNGER_MARGIN`): starvations 6 > 1, preventable 2 > 0 over 48 seeds. |
+| #102 | This section: the small models and #97-#100 |
+| #103 | Zones: a sawmill stand counts only trees no sawmill reaches (issue #98) |
+| #104 | **Item uses (F35) on** (`items.ITEM_USES = True`) |
+| #105 | The hunger margin applies to a chit with no plan (issue #101) |
+| #106 | **Hoarding (F33) on** (`actions.PLENTY = True`), with the grain reserve at 4 days (`surplus.GRAIN_DAYS`) |
 
 #86 was closed because it made a test opt-in, which AGENTS.md forbids.
 
@@ -71,20 +76,24 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 
 | Item | What | What it still needs |
 |---|---|---|
-| Zones follow-up (issue #98) | #95 merged with `buildings.NEED_SITING` and `buildings.TOWN_GATE` off | Fix the issue's edge case, then re-run the 24-seed A/B with the switches on |
+| Zones (`buildings.NEED_SITING`, `buildings.TOWN_GATE`, both off) | Its 24-seed A/B switched on, against main with the hunger margin: discoveries 69.7 > 69.3 / 71.2 > 65.3, era 7.92 > 7.75 / 8.0 > 7.58, one starvation (seed 12) | Find what costs discoveries before turning it on: compare `fired` counts and per-seed autopsies with the harness |
 | `dev/rng-streams` (local only, `~/projects/lc-rng` on the main PC) | A separate random stream per system, to cut A/B noise | Stopped partway. Restart it |
 
-**Switching the features on.** Each switched-off feature needs a 24-seed harness A/B with its switch on, against the main of the day, and has to clear the bar below. Then a one-line PR turns it on. A/B results so far, all against main before the latest fixes:
+**Switching the features on.** A feature turns on after a 24-seed harness A/B with its switch on, against the main of the day, clears the bar below. Results against main with the hunger margin (#100, #105):
 
-| Feature | Discoveries, usual / fresh | Starvation | Blocker |
-|---|---|---|---|
-| Hoarding (F33) | 74.1 > 76.3 / 74.4 > 73.8; era +0.4 / +0.2 | seed 24: 0 > 6; seed 42: 2 > 4 | Six chits walked to a store 18-29 tiles off at hunger 0 (seed 24); seed 42 not yet autopsied |
-| Items (F35) | 74.1 > 72.8 / 74.4 > 71.4 | +1 on two seeds | Slightly negative |
-| Zones | 74.1 > 70.3 / 74.4 > 67.0 | seed 2: 74 | Caused by the eat-step flip; #96 fixed it. Re-run |
+| Feature | Discoveries, usual / fresh | Era | Starvation | State |
+|---|---|---|---|---|
+| Hoarding (F33), grain reserve 4 days | 69.7 > 75.5 / 71.2 > 73.8 | 7.92 > 8.42 / 8.0 > 8.17 | seeds 27 and 32, one each: neither from hoarding (below) | **On** (#106) |
+| Hoarding, grain reserve 1 day | 69.7 > 72.4 / 71.2 > 74.4 | +0.4 / +0.4 | seed 42: 0 > 3, by stores holding 2-8 food | Replaced by the 4-day reserve |
+| Items (F35) | 69.7 > 70.2 / 71.2 > 71.3 | 7.92 > 7.92 / 8.0 > 7.67 | none | **On** (#104) |
+| Zones | 69.7 > 69.3 / 71.2 > 65.3 | 7.92 > 7.75 / 8.0 > 7.58 | seed 12: 0 > 1 | Off |
 
 **Hunger margin (`dev/hunger-margin`, `actions.HUNGER_MARGIN`).** Every starvation found had one root: a chit let hunger run too low before it acted, then couldn't make the walk. A chit now sets out for food when the ticks its hunger (and the food in its hands) has left fall below `FOOD_SAFETY` walks to the nearest food, as the crow flies times `WALK_COST`, at its walking speed. This applies to sheltering, warming up, sleeping, storing and (`MARGIN_STEPS`) a plan's own steps. A hungry chit's harvest step that turned to sowing, or with other food nearer, gives way. A starving chit picking berries eats the one in hand and picks on. An eat step takes food from a store it passes. 48-seed A/B: starved 6 > 1, preventable 2 > 0, no seed worse; discoveries 73.4 > 73.3, era 8.1 > 8.1. Bigger store meals were tried and starved more. What is left: crow-flies distance can't see a walk round water, so a store or berries "near" across a lake still mislead it (seeds 4, 12, 45 in the variants).
 
 **Found and not yet fixed.**
+
+- A chit more than 30 tiles from any food gets no margin warning (the margin looks only within 30 tiles): an explorer 43 tiles out turned back at hunger 0 (seed 32).
+- A young child was helping build a brick house 30 tiles from the store and died 1 tile short of it: children walk slowly and the margin's safety factor is too thin at the edge of its range (seed 27). Children may also simply not belong on far work.
 
 - Tool care exists (`instinct.tool_care_plan`, `actions._mend_tool`, `_do_smelt`) but did not fire in four 60-day instinct runs (seeds 42 24 7 99) while tools broke: find out why. In the same runs invention, barter, voyages, fights and theft did not fire either (invention needs a model).
 
