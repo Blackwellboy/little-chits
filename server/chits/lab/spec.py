@@ -22,6 +22,14 @@ FAIR_MODEL_FIELDS = (
 # how a mind is built: what an architecture comparison (compare: "architecture") lets arms differ in, declared; every
 # other fair-comparison field (sampling, tokens, timeouts, concurrency) must still match (docs/TWO_LEVEL.md)
 ARCHITECTURE_FIELDS = ("prompt_style", "escalate_below", "escalate_share", "escalate_to")
+# a model's own sampling (its card's temperature and sampler settings): what sampling: "native" lets differ, declared
+SAMPLING_FIELDS = ("temperature", "extra_body")
+# the extra_body keys native sampling may vary: samplers only. Anything else there (max_tokens, seed, a chat template,
+# a response format) must still match, or an arm could change more than its sampling (Codex on #151)
+SAMPLER_KEYS = frozenset({"top_p", "top_k", "min_p", "typical_p", "presence_penalty", "frequency_penalty",
+                          "repeat_penalty", "repetition_penalty", "repeat_last_n", "mirostat", "mirostat_tau",
+                          "mirostat_eta", "tfs_z", "dry_multiplier", "dry_base", "dry_allowed_length",
+                          "xtc_probability", "xtc_threshold"})
 
 
 class SpecError(ValueError):
@@ -80,6 +88,9 @@ class ExperimentSpec:
     # "models" (the arms differ in the model only: research item 71) or "architecture" (they may also differ in how
     # the mind is built: prompt style and escalation, ARCHITECTURE_FIELDS). Declared, in the fingerprint when set
     compare: str = "models"
+    # "matched" (every model arm samples alike: research item 71) or "native" (each brain its own card's temperature
+    # and sampler settings, sealed per brain; for models whose makers ask for very different sampling). Declared
+    sampling: str = "matched"
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ExperimentSpec":
@@ -165,7 +176,8 @@ class ExperimentSpec:
         model_ids = sorted({a.brain for a in self.arms if a.brain != "instinct"})
         # a planner (escalate_to) writes plans for its arm: it matches that arm's brain in everything but how a mind is
         # built (a planner always gets the full prompt), in either kind of comparison, one model arm or several
-        same = [f for f in FAIR_MODEL_FIELDS if f not in ARCHITECTURE_FIELDS]
+        same = [f for f in FAIR_MODEL_FIELDS if f not in ARCHITECTURE_FIELDS
+                and (getattr(self, "sampling", "matched") != "native" or f not in SAMPLING_FIELDS)]
         for m in model_ids:
             esc = str(self.brains[m].get("escalate_to") or "")
             if esc in self.brains and esc != m:
@@ -178,12 +190,18 @@ class ExperimentSpec:
             ref_id = model_ids[0]
             ref = configs[ref_id]
             mismatches = []
-            fair = [f for f in FAIR_MODEL_FIELDS if self.compare != "architecture" or f not in ARCHITECTURE_FIELDS]
+            fair = [f for f in FAIR_MODEL_FIELDS if (self.compare != "architecture" or f not in ARCHITECTURE_FIELDS)
+                    and (self.sampling != "native" or f not in SAMPLING_FIELDS)]
             for bid in model_ids[1:]:
                 cfg = configs[bid]
                 for field_name in fair:
                     if getattr(cfg, field_name) != getattr(ref, field_name):
                         mismatches.append(field_name)
+                if self.sampling == "native":  # (only sampler keys may differ in extra_body)
+                    rest = lambda c: {k: v for k, v in (c.extra_body or {}).items() if k not in SAMPLER_KEYS}
+                    if rest(cfg) != rest(ref):
+                        mismatches.append("extra_body (beyond samplers: " + ", ".join(sorted(
+                            set(rest(cfg)) ^ set(rest(ref)) | {k for k in rest(cfg) if rest(cfg)[k] != rest(ref).get(k)})) + ")")
             if mismatches:
                 names = ", ".join(sorted(set(mismatches)))
                 raise SpecError(
@@ -226,6 +244,8 @@ class ExperimentSpec:
                 raise SpecError(f"event {name}: needs 'metric' and 'at_least'")
         if self.compare not in ("models", "architecture"):
             raise SpecError('compare is "models" or "architecture"')
+        if self.sampling not in ("matched", "native"):
+            raise SpecError('sampling is "matched" or "native"')
         if not isinstance(self.model_only, bool):
             raise SpecError("model_only is true or false")
         rules = self.world_rules()
@@ -292,4 +312,5 @@ class ExperimentSpec:
 
 
 ARM_LATER_OPTIONS: Dict[str, Any] = {"repair": False}  # arm options added after protocols were sealed
-LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False, "rules": {}, "compare": "models"}  # options added after protocols were sealed, at their "off" value
+LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False, "rules": {}, "compare": "models",
+                                 "sampling": "matched"}  # options added after protocols were sealed, at their "off" value

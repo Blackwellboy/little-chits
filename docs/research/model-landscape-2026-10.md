@@ -48,7 +48,7 @@ A desk survey that comes before anything is downloaded or run. Repo ids were che
    - Reject what is plainly unusable. Order: Qwen3.5-9B, Granite 4.2 8B, Gemma 4 12B Q8_0, Ministral 3 14B; then the MoEs (Gemma 4 26B-A4B, Qwen3.6-35B-A3B); then Qwen3.8-27B and Gemma 4 31B.
 2. **Stage B, the model in the loop** (`tools/harness/run.py --mind URL`, several seeds):
    - each model in its normal mode, and model-led play
-   - The harness sends its own sampling (temperature 0.7, no extra body): it has no per-model sampling options yet. A model whose card asks for something else (Ministral below 0.1; Granite at 1.0, top_p 0.95; Qwen's non-thinking settings) is judged at stage B only after the harness takes those settings, or goes straight to stage C, where each brain's sampling is sealed in the protocol. A stage B result at the wrong sampling is not a verdict on the model.
+   - The harness sends its own sampling (temperature 0.7, no extra body): it has no per-model sampling options yet. A model whose card asks for something else (Ministral below 0.1; Granite at 1.0, top_p 0.95; Qwen's non-thinking settings) is judged at stage B only after the harness takes those settings, or goes straight to stage C, where each brain's sampling is sealed in the protocol (declare `"sampling": "native"`). A stage B result at the wrong sampling is not a verdict on the model.
    - starvation and stuck loops
    - invented or missing items and malformed actions
    - who drove the world: the provenance categories, added in the provenance PR as docs/PROVENANCE.md
