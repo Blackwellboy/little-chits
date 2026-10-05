@@ -145,6 +145,7 @@ class Mind:
         # (no tools_first); and the worlds it drives run without the body's reflexes (sim/actions.py REFLEXES)
         self.model_only = False
         self.repair: Optional[bool] = None  # bounded action repair: None = on in play, off in an experiment
+        self.choice_repair: Optional[bool] = None  # ... for choosing brains too: None = the module's CHOICE_REPAIR
         self.narrator = ""  # one storyteller brain for every world (T32); "" = each world's own model
         self.decisions: deque = deque(maxlen=5000)  # one record per model request (F2)
         self.adopted: Counter = Counter()  # world id -> plan decisions adopted this match (the scorecard's denominator)
@@ -540,6 +541,7 @@ class Mind:
                "parse": None, "rejected_steps": 0, "outcome": "pending", "tick_resolved": None, "plan_id": None}
         rec["match"] = self.match
         if rep:  # both attempts are on record: this one points at the decision whose step failed
+            diag.of(world).repairs_asked += 1
             rec.update(style="repair", repair_of=rep.get("decision_id"), repair_step=rep["failed"],
                        repair_reason=rep["reason"])
         self.decisions.append(rec)
@@ -574,8 +576,9 @@ class Mind:
                "latency_ms": None, "tokens_in": None, "tokens_out": None, "response_hash": None,
                "parse": None, "rejected_steps": 0, "outcome": "pending", "tick_resolved": None, "plan_id": None,
                "match": self.match}
-        rep = self._repair_note(world, a) if CHOICE_REPAIR else None
+        rep = self._repair_note(world, a) if (CHOICE_REPAIR if self.choice_repair is None else self.choice_repair) else None
         if rep:  # as in _ask: its choice is then "model_repaired", and a repaired choice that fails isn't repaired again
+            diag.of(world).repairs_asked += 1
             rec.update(style="repair", repair_of=rep.get("decision_id"), repair_step=rep["failed"],
                        repair_reason=rep["reason"])
         self.decisions.append(rec)

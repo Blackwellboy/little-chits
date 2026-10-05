@@ -23,6 +23,8 @@ class WorldDiag:
         self.plans: Counter = Counter()          # model | instinct | fallback | filler -> n
         self.authorship: Counter = Counter()
         self.step_sources: Counter = Counter()
+        self.origin_outcomes: Counter = Counter()  # (step origin, "ok"|"fail") -> finished steps
+        self.repairs_asked = 0                     # requests that carried the simulator's reason for a failed step
         self.recent_steps: deque = deque(maxlen=200)
         self.model_ticks = 0                     # agent-ticks with a model brain
         self.waiting_ticks = 0                   # ... of which idle, waiting on a reply
@@ -321,6 +323,7 @@ def action_finished(world, a, step, result: str) -> None:
               "step": {k: v for k, v in step.items() if not k.startswith("_")}}
     d = of(world)
     d.step_sources[origin] += 1
+    d.origin_outcomes[(origin, "ok" if result == "done" else "fail")] += 1
     d.outcomes[("model" if str(origin).startswith("model") else "other", "ok" if result == "done" else "fail")] += 1
     d.recent_steps.append(record)
     callback = getattr(world, "on_action_outcome", None)

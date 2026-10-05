@@ -32,6 +32,10 @@ class Arm:
     brain: str = "instinct"  # anything else is a model arm (refused without the owner's go-ahead)
     flags: Dict[str, bool] = field(default_factory=dict)  # capability flags over the culture's own
     treatment: str = ""  # a TreatmentPack id from the protocol's `treatments` (lab/treatment.py)
+    # bounded action repair for this arm's model (research plan item 40): a step of its own that fails is answered,
+    # once, with the simulator's exact reason, in a full brain's next prompt and in a choosing brain's next choice
+    # scene (mind.choice_repair). Off by default, as every experiment ran before it could be declared
+    repair: bool = False
 
 
 @dataclass
@@ -172,6 +176,10 @@ class ExperimentSpec:
             bad = set(a.flags) - {"say", "teach", "write"}
             if bad:
                 raise SpecError(f"arm {a.name}: unknown flags {', '.join(sorted(bad))}")
+            if not isinstance(a.repair, bool):
+                raise SpecError(f"arm {a.name}: repair is true or false")
+            if a.repair and a.brain == "instinct":
+                raise SpecError(f"arm {a.name}: repair answers a model's failed step; an instinct arm has no model")
             if a.brain != "instinct" and not self.allow_models:
                 raise SpecError(f"arm {a.name} thinks with a model: set allow_models (and the owner's go-ahead)")
         for i in self.interventions:
@@ -223,7 +231,12 @@ class ExperimentSpec:
         for k, default in LATER_OPTIONS.items():
             if d.get(k) == default:
                 d.pop(k, None)
+        for arm in d.get("arms") or []:  # (an arm's options added later count only when used, likewise)
+            for k, default in ARM_LATER_OPTIONS.items():
+                if arm.get(k) == default:
+                    arm.pop(k, None)
         return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
 
 
+ARM_LATER_OPTIONS: Dict[str, Any] = {"repair": False}  # arm options added after protocols were sealed
 LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}, "model_only": False}  # options added after protocols were sealed, at their "off" value
