@@ -28,7 +28,7 @@ Candidates and their facts are in docs/research/model-landscape-2026-10.md.
    - Reject the plainly unusable.
 2. **Stage B, the model in the loop:** `tools/harness/run.py --mind URL` on representative seeds, in the model's normal mode and model-led.
    - starvation, stuck loops, invented or missing items, malformed actions, who drove the world
-   - Per-model sampling isn't in the harness yet (issue #141). A model whose card needs other sampling goes straight to stage C.
+   - Per-model sampling isn't in the harness yet (issue #141). A model whose card needs other sampling goes straight to stage C, with `"sampling": "native"`.
 3. **Stage C, the Lab:** as above.
 
 ## Studies, in order
@@ -46,6 +46,10 @@ Each comes after the one before, on the RTX 5090. Later rounds are designed afte
 | 7 | Best efficiency model vs best absolute model (Gemma 4 26B-A4B, Qwen3.6-35B-A3B, Qwen3.8-27B) | after stage A/B | what the 5090's biggest models buy, and at what cost |
 
 **Seeds.** Six seeds is a start, not a power analysis. After study 1, the per-seed spread of each primary outcome sets the seed count of the next protocol. The aim is a difference that matters, reached with a stated probability.
+
+**Recorded from now on** (#150):
+- **Preventable deaths.** A starvation with food in a store on the chit's own land within 30 tiles, judged at the moment of death (`lab/autopsy.py`). Runs from before this, such as the JevK5-vs-Gemma study, report it as not measured, never as 0.
+- **Native sampling.** A protocol may declare `"sampling": "native"`, so that each model runs at its card's own temperature and sampler settings. Everything else must still match.
 
 ## What every report says
 

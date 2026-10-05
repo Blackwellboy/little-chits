@@ -36,6 +36,7 @@ def row(w, founders: int = 0) -> Dict[str, Any]:
         "forgotten": w.lifetime("forgotten"),  # (whole run: the event window holds only the last 4,000 events)
         "births": max(0, st["population"] + st["deaths"] - founders) if founders else 0,
         "starved": sum(1 for a in w.dead.values() if "starv" in (a.cause_of_death or "")),
+        "preventable": _preventable(w),  # (starvations with food in a store on their land within 30 tiles)
     }
 
 
@@ -48,6 +49,12 @@ def lifetime(w) -> Dict[str, Any]:
         "complete_from_start": int(getattr(w, "tallies_since", 0)) == 0,
         "events": dict(sorted((str(k), int(v)) for k, v in getattr(w, "tallies", {}).items())),
     }
+
+def _preventable(w):
+    from .autopsy import count
+
+    return count(w) if "_starvations" in w.__dict__ else None  # (none counted: not watched, so not 0)
+
 
 def summary(w, daily, founders: int = 0, blind: bool = False) -> Dict[str, Any]:
     from . import propositions

@@ -13,7 +13,7 @@ from .run import invalid, results
 from .spec import ExperimentSpec
 
 DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron", "villages", "homes", "useful",
-                   "births", "forgotten", "tunnels", "loose"]
+                   "births", "forgotten", "tunnels", "loose", "starved", "preventable"]
 
 
 OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waiting share", "waiting_share"),
