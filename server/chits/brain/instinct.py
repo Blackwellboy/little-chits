@@ -433,6 +433,8 @@ class _Hands:
         self.unsure = False  # after an eat or a store of everything, the room in its hands is anyone's guess
         self.drawn: Dict[Tuple[str, str], int] = {}  # (store id, item) -> taken from it by an earlier step
         self.picked: set = set()  # piles of these on the ground are picked up already
+        self.sown: set = set()  # farms an earlier step sows (a second "build farm" then doesn't reuse them)
+        self.fuel: Dict[str, float] = {}  # campfire id -> its fuel after an earlier step fed it
 
     def _weight(self, k: str) -> int:
         it = self.w.item(k)
@@ -515,7 +517,7 @@ class _Hands:
             self.unsure = True
         elif do in ("build", "help"):  # what the site still needs goes in from the builder's hands
             site = w.structures.get(str(s.get("site") or s.get("target") or ""))
-            kind, got = build_course(w, a, s) if do == "build" and site is None else ("new", None)
+            kind, got = build_course(w, a, s, self.sown) if do == "build" and site is None else ("new", None)
             if kind == "join":
                 site = got
             if kind == "reuse":  # it uses the one standing there instead: only a fire fed or a farm sown takes anything
@@ -523,7 +525,10 @@ class _Hands:
                 if how == "refuel":  # (_do_refuel: wood first, then charcoal, as much as the fire takes, at most 3)
                     fuel = next((x for x in (FUEL_VALUE if IT.ITEM_USES else ("wood",)) if self.held.get(x, 0) > 0), None)
                     if fuel is not None:
-                        self._use(fuel, min(max(1, int((100 - st.fuel) // FUEL_VALUE[fuel]) or 1), 3))
+                        level = self.fuel.get(st.id, st.fuel)
+                        n = min(self.held[fuel], max(1, int((100 - level) // FUEL_VALUE[fuel]) or 1), 3)
+                        self._use(fuel, n)
+                        self.fuel[st.id] = min(100.0, level + FUEL_VALUE[fuel] * n)
                 elif how == "plant":  # (_do_plant: short of 2 seeds, it fetches up to 4 from a store, or else gathers 2)
                     if self.held.get("seeds", 0) < 2:
                         pile = _stockpile_with(w, a, ["seeds"], 30)
@@ -535,6 +540,7 @@ class _Hands:
                             self._add("seeds", self._fits("seeds", 2))
                     if self.held.get("seeds", 0) >= 2:  # (short of two, the sowing fails and uses none)
                         self._use("seeds", 2)
+                        self.sown.add(st.id)
             elif kind in ("site", "join", "redirect", "new"):
                 key = site.design if site is not None else normalize_design(s.get("what"))
                 for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
