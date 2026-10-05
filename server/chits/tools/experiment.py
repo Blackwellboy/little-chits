@@ -264,7 +264,8 @@ async def run_experiment(brains: Dict[str, Optional[BrainConfig]], days: float, 
         (out_dir / f"events_{wid}.jsonl").write_text("".join(json.dumps(e) + "\n" for e in events[wid]))
     thread = make_thread(cards, moments)
     manifest = {"contract": "experiment", "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "seed": seed, "chits": chits,
-                "size": 128, "prompt_version": P.PROMPT_VERSION, "mode": mode, "sampling": sampling, "lockstep": lockstep, "repair": repair,
+                "size": 128, "prompt_version": P.PROMPT_VERSION,
+                "rng_scheme": next(iter(worlds.values())).rng_scheme if worlds else None, "mode": mode, "sampling": sampling, "lockstep": lockstep, "repair": repair,
                 "request_seeds": request_seeds,
                 "worlds": {wid: {"culture": w.culture, "uuid": w.uuid, "epoch": w.epoch,
                                  "brain": ({k: v for k, v in brains[wid].__dict__.items() if k != "api_key"}

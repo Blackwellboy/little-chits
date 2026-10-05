@@ -1,0 +1,29 @@
+{
+  "name": "JevK5 9B vs Gemma 4 12B, one island, one culture",
+  "notes": "First model-vs-model study. Both arms: the same island per seed, the direct culture, 12 founders, 25 days, the experiment contract (the model decides every plan; no instinct stand-ins), lockstep, seeded requests and the same explicit sampling. Arms are blind until the report is frozen. T21 beliefs are active in both arms (founding, preaching, conversion, belief inherited at birth, shrine and co-believer mood bonuses), as are the last-keeper reminders and library hints: they are part of the shared world, not a treatment, and the write-up must say so. Both models run on the RTX 5090 (18195, 18196, beside the live game on 18191), so there is no card swap. See docs/research/lab-model-vs-model.md.",
+  "arms": [
+    {"name": "jevk5", "culture": "direct", "brain": "jevk5"},
+    {"name": "gemma", "culture": "direct", "brain": "gemma"}
+  ],
+  "allow_models": true,
+  "brains": {
+    "jevk5": {"id": "jevk5", "label": "JevK5 9B Q8_0", "base_url": "http://127.0.0.1:18195/v1",
+              "model": "jevk5-9b-v0.3.3-Q8_0.gguf", "max_concurrency": 4, "timeout": 180.0, "temperature": 0.7,
+              "max_tokens": 600, "json_mode": true, "disable_thinking": true,
+              "extra_body": {"top_p": 0.95, "top_k": 40, "min_p": 0.05}, "prompt_style": "full"},
+    "gemma": {"id": "gemma", "label": "Gemma 4 12B Q4_K_M", "base_url": "http://127.0.0.1:18196/v1",
+              "model": "gemma-4-12b-it-Q4_K_M.gguf", "max_concurrency": 4, "timeout": 180.0, "temperature": 0.7,
+              "max_tokens": 600, "json_mode": true, "disable_thinking": true,
+              "extra_body": {"top_p": 0.95, "top_k": 40, "min_p": 0.05}, "prompt_style": "full"}
+  },
+  "seeds": [42, 7, 99, 1, 2, 3],
+  "days": 25,
+  "size": 128,
+  "population": 12,
+  "blind": true,
+  "metrics": ["discoveries", "era", "population", "starved", "model_step_share", "requests_per_chit_day"],
+  "events": {
+    "20 discoveries": {"metric": "discoveries", "at_least": 20},
+    "first copper in store": {"metric": "copper", "at_least": 1}
+  }
+}

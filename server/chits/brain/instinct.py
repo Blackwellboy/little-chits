@@ -15,11 +15,14 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim.actions import _farm_ready, _stockpile_with  # (what the eat and harvest steps use)
-from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, WORK_RADIUS, _tablet_new,
-                           food_items, mend_material, plan_bill, remembered_place, stockpile_room, village_stores)
+from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_REACH, STOCKPILE_CAP, STORES, WORK_RADIUS,
+                           _tablet_new, build_could_start, food_items, mend_material, plan_bill, remembered_place,
+                           stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim import items as IT
-from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name
+from ..sim import world as W
+from ..sim.world import sub_stream
+from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name, normalize_design
 from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
 from . import outposts as OP
@@ -46,21 +49,16 @@ STATION_CUES = (("It needed far more heat than a campfire gives", "kiln"), ("Onl
 HUNGER_REACH = True
 
 HARVEST_REACH = 35  # how far a harvest step looks for a ripe farm (sim.actions._do_harvest)
-HARVEST_YIELD = 6  # grain a harvest brings in without a plough
 
 
 def _harvest_open(world, a: Agent) -> bool:
     """Whether a harvest whose grain goes to the stores can bring any home: a ripe farm the harvest step would find
-    that the chits already set on a harvest don't account for, and room in hand for the grain. The 2026-10-05 live
-    game offered it to every chit near a ripe farm: in its last week 14 of 20 such plans found the farm harvested by
-    others first and sowed instead, and the other 6 had room for 0-5 grain, left the rest on the ground and mostly ate
-    what they held on the way. Then "store grain" failed ("I'm not carrying any grain", 159 times by day 107). Run
-    forward 3 days from that save (3 seeds, a stand-in chooser), store-grain failures fell from 35 to 7."""
+    that the chits already set on a harvest don't account for. The 2026-10-05 live game offered it to every chit near
+    a ripe farm: in its last week 14 of 20 such plans found the farm harvested by others first and sowed instead, and
+    "store grain" failed ("I'm not carrying any grain", 159 times by day 107). (Room in hand for the grain is
+    _drafted_runs's: _Hands projects the harvest's yield into the room there is.)"""
     ripe = _ripe_farms(world, a)
     if not ripe:
-        return False
-    grain = world.item("grain")
-    if a.free_space() < HARVEST_YIELD * (grain.weight if grain else 1):
         return False
     taken = set()
     for o in world.agents.values():
@@ -415,6 +413,140 @@ def _fetch_steps(world, a: Agent, key: str, n: int, room: Optional[float] = None
     return steps
 
 
+ALL_WORDS = ("all", "everything", "extra", "surplus", "materials")  # (a store of these stores everything: _do_store)
+
+
+class _Hands:
+    """What a chit will hold, and the room left in its hands, as steps run: each step by its own rules in sim.actions
+    (the stores a take draws from, how much a gather, pickup, craft or harvest brings in, what a craft, an experiment,
+    an invention, a store, a gift or a building takes out). `run` applies a step and says whether it could start."""
+
+    def __init__(self, world, a: Agent):
+        self.w, self.a = world, a
+        self.held: Dict[str, int] = {k: n for k, n in a.inventory.items() if n > 0}
+        self.room = a.free_space()
+        self.unsure = False  # after an eat or a store of everything, the room in its hands is anyone's guess
+        self.drawn: Dict[Tuple[str, str], int] = {}  # (store id, item) -> taken from it by an earlier step
+        self.picked: set = set()  # piles of these on the ground are picked up already
+
+    def _weight(self, k: str) -> int:
+        it = self.w.item(k)
+        return it.weight if it is not None else 1
+
+    def _fits(self, k: str, n: int) -> int:
+        """How many of n fit in hand (all of them once the room is unknown)."""
+        return n if self.unsure else min(n, self.room // max(1, self._weight(k)))
+
+    def _add(self, k: str, n: int) -> None:
+        if n > 0:
+            self.held[k] = self.held.get(k, 0) + n
+            self.room -= n * self._weight(k)
+
+    def _use(self, k: str, n: int) -> None:
+        n = min(n, self.held.get(k, 0))
+        if n > 0:
+            self.held[k] -= n
+            self.room += n * self._weight(k)
+
+    def run(self, s: Dict[str, Any]) -> bool:
+        from ..sim.actions import _experiment_bag, _qty, take_source
+
+        w, a = self.w, self.a
+        do = s.get("do")
+        k = w.norm_item(s.get("what")) if isinstance(s.get("what"), str) else None
+        done = s.get("_s") or {}  # (a step under way: what it has already brought in is in hand)
+        if do == "take" and k:
+            st = take_source(w, a, k, s.get("target"))
+            left = (st.storage.get(k, 0) - self.drawn.get((st.id, k), 0)) if st is not None else 0
+            got = self._fits(k, min(done.get("want", _qty(s, 3)) - done.get("taken", 0), left))
+            if got <= 0:
+                return False  # no store holds it, or no room in hand
+            self.drawn[(st.id, k)] = self.drawn.get((st.id, k), 0) + got
+            self._add(k, got)
+        elif do == "pickup" and k:
+            pile = 0 if k in self.picked else next(
+                (pl.get(k, 0) for _, _, pl in w.piles_near(a.x, a.y, 20) if pl.get(k, 0) > 0), 0)
+            got = self._fits(k, pile)
+            if got <= 0:
+                return False
+            self.picked.add(k)
+            self._add(k, got)
+        elif do == "gather" and k:
+            got = self._fits(k, done.get("want", _qty(s, 5)) - done.get("got", 0))
+            if got <= 0:
+                return False  # "my hands are full"
+            self._add(k, got)
+        elif do == "harvest":
+            self._add("grain", self._fits("grain", 12 if self.held.get("plough") else 6))  # (_do_harvest's yield)
+        elif do == "craft" and k and (r := w.recipe(k)) is not None:
+            batches = done.get("want", _qty(s, 1, 1, 10)) - done.get("made", 0)
+            stock = {x: n for x, n in _stock_in(w, a, [i for i, _ in r.inputs]).items()}
+            if any(self.held.get(i, 0) + stock.get(i, 0) < m * batches for i, m in r.inputs):
+                return False  # "missing ..."
+            for i, m in r.inputs:
+                self._add(i, max(0, m * batches - self.held.get(i, 0)))  # (fetched from the stores first)
+                self._use(i, m * batches)
+            self._add(k, r.qty * batches)
+        elif do == "work" and k:
+            self._add(k, 1)
+        elif do in ("invent", "experiment"):
+            bag: Dict[str, int] = {}
+            for x in _experiment_bag(s, w):
+                if x:
+                    bag[x] = bag.get(x, 0) + 1
+            if any(self.held.get(x, 0) < n for x, n in bag.items()):
+                return False  # "I'm not carrying enough ..."
+            for x, n in bag.items():
+                self._use(x, n)
+        elif do == "store" and str(s.get("what") or "all").lower() in ALL_WORDS:
+            self.held = {x: n for x, n in self.held.items() if (it := w.item(x)) is not None and it.tool}
+            self.unsure = True
+        elif do in ("store", "give", "drop") and k:
+            if do == "store" and self.held.get(k, 0) <= 0:
+                return False  # "I'm not carrying any ..."
+            self._use(k, _qty(s, 99, 1, 999))
+        elif do == "eat":
+            self.unsure = True
+        elif do in ("build", "help"):  # what the site still needs goes in from the builder's hands
+            site = w.structures.get(str(s.get("site") or s.get("target") or ""))
+            key = site.design if site is not None else normalize_design(s.get("what"))
+            for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                self._use(x, m)
+        return True
+
+
+def _stock_in(world, a: Agent, keys: List[str]) -> Dict[str, int]:
+    """What the stores a craft step fetches its missing inputs from hold of these (sim.actions._do_craft: 25 tiles)."""
+    out: Dict[str, int] = {}
+    for p in world.structures_near(a.x, a.y, 25):
+        if p.functional and p.design in STORES and world.same_land(a, p):
+            for k in keys:
+                out[k] = out.get(k, 0) + p.storage.get(k, 0)
+    return out
+
+
+def _drafted_runs(world, a: Agent, plan: Dict[str, Any]) -> bool:
+    """Whether a plan drafted for a model to choose (Instinct.options) can run from where the chit stands. It is drafted
+    while the chit's own plan still has a step or two to go (brain.mind asks ahead), so those steps are run first on
+    a projection of its hands (_Hands: what they bring in and use up, the room they leave, what they draw from the
+    stores and the ground), then the drafted plan's, each of which must be able to start. A build must also find clear
+    ground (sim.actions.build_could_start). With --mind scripted (tools/harness), most failed model steps were drafted
+    options failing at once: "I'm not carrying enough wood", "I'm not carrying any grain", "there's no clear ground"."""
+    hands = _Hands(world, a)
+    for s in a.plan:
+        if not s.get("_filler"):
+            hands.run(s)  # (its own steps: whatever they manage)
+    built = False
+    for s in plan.get("steps") or []:
+        if not hands.run(s):
+            return False
+        if s.get("do") == "build" and not built:
+            built = True
+            if not build_could_start(world, a, s):
+                return False
+    return True
+
+
 WORK_NEAR = STATION_NEAR  # instinct offers a spare shift at a station this close, by choice
 
 
@@ -426,8 +558,11 @@ class Instinct:
         self._world = world  # for _exp_plan's stockpile lookups
         rng = random.Random(world.tick * 7919 + zlib.crc32(a.id.encode()))
         for fn in (self._survive, self._declutter, self._shelter, self._maintain, self._communal, self._progress):
-            for _ in range(3):  # a plan that needs something there's none of nearby is drawn again (World B tried
-                out = fn(world, a, rng)  # "gather clay" 51 times a day with no clay in reach)
+            for attempt in range(3):  # a plan that needs something there's none of nearby is drawn again (World B tried
+                # (streams on: each purpose, and each attempt at it, has its own stream, so the builder drawing one
+                # more number leaves the experiment, the chores and the final pick as they were)
+                r = world.stream(f"instinct:{fn.__name__}:{attempt}", a.id) if world.rng_scheme == W.RNG_STREAMED else rng
+                out = fn(world, a, r)  # "gather clay" 51 times a day with no clay in reach)
                 if not (out and any(s and s.get("do") == "gather" and not s.get("_far") and a.reflex_rest.get(
                         f"scarce:{world.norm_item(s.get('what'))}", 0) > world.tick for s in out.get("steps", []))):
                     break
@@ -491,11 +626,16 @@ class Instinct:
         seen: set = set()
         out: List[Dict[str, Any]] = []
 
-        def add(p, check: bool = True):
-            if p and p.get("steps") and p["goal"] not in seen and len(out) < k and (not check or _can_run(world, a, p)):
-                seen.add(p["goal"])
+        def add(p, check: bool = True) -> Optional[bool]:
+            """True when added; False when it can't run from here (the next of its kind may); None otherwise."""
+            if p and p.get("steps") and p["goal"] not in seen and len(out) < k:
                 p["steps"] = [dict(s) for s in p["steps"] if s][:6]
+                if check and not (_drafted_runs(world, a, p) and _can_run(world, a, p)):
+                    return False  # (it would fail at once: an option the model can't run is no choice)
+                seen.add(p["goal"])
                 out.append(p)
+                return True
+            return None
 
         needy = a.hunger < 40 or a.energy < 25 or a.warmth < 40
         best = self.plan(world, a)
@@ -518,13 +658,16 @@ class Instinct:
         if exp:
             pool.setdefault("experiment", []).insert(0, exp)
         for kind in ("experiment", "build", "make", "social", "explore", "other"):
-            for p in pool.get(kind, [])[:1]:
-                add(p)
+            for p in pool.get(kind, []):
+                if add(p) is not False:
+                    break  # (one of each kind: the first that can run)
         if needy:
             add(self._survive(world, a, random.Random(seed + 3)))
         chores = pool.get("chore", [])
         if chores and not any(self._kind(o.get("goal", "")) == "chore" for o in out):
-            add(chores[0])  # one chore, if nothing else is one
+            for p in chores:  # one chore, if nothing else is one
+                if add(p) is not False:
+                    break
         if not out:
             add(best, check=False)  # (a model must have something to choose)
         return out
@@ -737,7 +880,7 @@ class Instinct:
         return None
 
     def _shelter(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
-        up = BI.upgrade_plan(world, a, rng)
+        up = BI.upgrade_plan(world, a, sub_stream(rng, "builder"))
         if up:  # a crowded family home: rebuild it bigger
             return up
         home = world.structures.get(a.home or "")
@@ -899,7 +1042,7 @@ class Instinct:
                          [{"do": "gather", "what": "berries", "qty": 8}, {"do": "store", "what": "berries"}])
                 steps[-1]["target"] = piles[0].id
                 return {"goal": "fill the stores", "thought": "The stores are nearly empty. Food first.", "steps": steps}
-        duty = civic.duty(self, world, a, rng)  # the village's project comes before talk and odd jobs
+        duty = civic.duty(self, world, a, sub_stream(rng, "civic"))  # the village's project comes before talk and odd jobs
         if duty:
             return duty
         # culture: teach a friend (world A)
@@ -922,7 +1065,7 @@ class Instinct:
                             "steps": [{"do": "teach", "to": o.name, "what": k},
                                       {"do": "say", "to": o.name, "text": line}]}
         if world.flags.get("say") and rng.random() < 0.08 + 0.15 * a.traits["sociability"]:
-            line = self._chatter(world, a, rng)
+            line = self._chatter(world, a, sub_stream(rng, "chatter"))
             if line:
                 return {"goal": "share news", "thought": "Others should hear about this.",
                         "steps": [{"do": "say", "to": "all", "text": line}]}
@@ -1160,7 +1303,7 @@ class Instinct:
             opts.append((2.5, {"goal": "store my load", "thought": "I'm carrying too much.",
                                "steps": [{"do": "store", "what": "all", "target": roomy[0].id}]}))
         # experimenting — the engine of discovery
-        exp = self._experiment(world, a, rng)
+        exp = self._experiment(world, a, sub_stream(rng, "experiment"))
         if exp:
             opts.append(((0.8 + 3.0 * a.traits["curiosity"]) * wonder, exp))
         # exploring
@@ -1187,16 +1330,16 @@ class Instinct:
             if room:
                 steps.append({"do": "store", "what": mat, "target": room[0].id})
             opts.append(((1.0 + a.traits["diligence"]) * want[mat], {"goal": f"collect {item_name(mat)}", "thought": f"{item_name(mat).capitalize()} is always useful.", "steps": steps}))
-        opts += BI.building_options(world, a, rng)  # wells, granaries, mills, smithies, towers, schools, bridges
+        opts += BI.building_options(world, a, sub_stream(rng, "builder"))  # wells, granaries, mills, smithies, towers, schools, bridges
         store_up = BI.store_upgrade_plan(world, a)
         if store_up:
             opts.append((1.5 + a.traits["diligence"], store_up))
-        opts += OP.options(world, a, rng)  # outpost camps by far ore, sand or clay: found, work, haul home
-        opts += VOY.options(world, a, rng)  # trade over the sea (contact games): send a load, barter it, sail home
-        opts += PR.options(world, a, rng)  # prospecting for what is gone from around home
-        opts += PIO.options(world, a, rng)  # pioneers founding a daughter village
-        opts += GR.options(world, a, rng)  # strange objects to study, loose goods to carry in
-        opts = civic.extend(self, world, a, rng, opts)  # the village's project, study, hints, wants, the famous
+        opts += OP.options(world, a, sub_stream(rng, "outposts"))  # outpost camps by far ore, sand or clay: found, work, haul home
+        opts += VOY.options(world, a, sub_stream(rng, "voyages"))  # trade over the sea (contact games): send a load, barter it, sail home
+        opts += PR.options(world, a, sub_stream(rng, "prospect"))  # prospecting for what is gone from around home
+        opts += PIO.options(world, a, sub_stream(rng, "pioneers"))  # pioneers founding a daughter village
+        opts += GR.options(world, a, sub_stream(rng, "ground"))  # strange objects to study, loose goods to carry in
+        opts = civic.extend(self, world, a, sub_stream(rng, "civic"), opts)  # the village's project, study, hints, wants, the famous
         words = JOB_WORDS.get(a.job)
         if words:  # a job (T24) biases what a chit chooses to do, it never forbids anything
             opts = [(w * 2.5 if any(k in o["goal"] for k in words) else w, o) for w, o in opts]

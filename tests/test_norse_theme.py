@@ -215,6 +215,7 @@ def test_same_seed_same_world_with_the_theme_on_or_off(monkeypatch):
     assert not any(a.name in norse().reverse for a in list(plain.agents.values()) + list(plain.dead.values()))
     # the parts that matter, compared directly
     assert {k: r.getstate() for k, r in plain._rngs.items()} == {k: r.getstate() for k, r in themed._rngs.items()}
+    assert plain._tick_streams_dict() == themed._tick_streams_dict()  # (this tick's streams, world.RNG_STREAMS on)
     assert plain.tick == themed.tick and plain.counters == themed.counters
     assert plain.tiles == themed.tiles and list(plain.res_amt) == list(themed.res_amt)
     for aid, a in {**plain.agents, **plain.dead}.items():

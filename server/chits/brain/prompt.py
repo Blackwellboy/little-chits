@@ -20,7 +20,7 @@ from ..sim.items import DESIGNS, ITEMS, LIBRARIES, RECIPES, STATIONS, STORES, it
 
 SIGHT = 10
 # Bump whenever the prompt text changes, so run manifests and decision records say which prompt a model saw.
-PROMPT_VERSION = "2026-10-05.1"
+PROMPT_VERSION = "2026-10-05.2"
 TOWN_WORDS = " (only a town can build one)"  # after a town-life building's blurb while buildings.TOWN_GATE is on
 
 
@@ -844,7 +844,8 @@ def beliefs_around(world, a: Agent) -> List[Dict[str, Any]]:
     # Only faiths the chit has met: preached to it, a shrine it can see, or a close friend's. Listing every
     # neighbour's made everyone join on day 1, so preaching and prayer never converted anyone.
     ids = world.known_beliefs(a) if hasattr(world, "known_beliefs") else set()
-    return sorted((beliefs[b] for b in ids if b in beliefs), key=lambda b: -len(b["followers"]))[:5]
+    # (ids is a set: ties are broken by id, or the five shown and their order followed string hashing)
+    return sorted((beliefs[b] for b in sorted(ids) if b in beliefs), key=lambda b: -len(b["followers"]))[:5]
 
 
 def reflection_messages(world, a: Agent) -> List[Dict[str, str]]:

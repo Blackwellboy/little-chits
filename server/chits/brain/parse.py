@@ -35,7 +35,8 @@ def strip_reasoning(text: str) -> str:
     return text.strip()
 
 
-def _balanced_objects(text: str) -> List[str]:
+def _balanced_objects(text: str, closed: Optional[List[str]] = None) -> List[str]:
+    """Every balanced {...} in the text, plus a truncated last one closed off (also added to `closed`)."""
     out = []
     depth = 0
     start = -1
@@ -63,6 +64,8 @@ def _balanced_objects(text: str) -> List[str]:
                 out.append(text[start: i + 1])
     if depth > 0 and start >= 0:  # truncated reply (hit max_tokens): close it properly
         out.append(_close_truncated(text[start:]))
+        if closed is not None:
+            closed.append(out[-1])
     return out
 
 
@@ -116,22 +119,24 @@ def extract_json(text: str) -> Dict[str, Any]:
 
 
 def extract_json_ex(text: str):
-    """Like extract_json, but also says whether the reply needed repairing to parse."""
+    """Like extract_json, but also says whether the reply needed repairing to parse. A reply cut off mid-object
+    (closed off here) counts as repaired: it parsed only because the parser finished it, and lost what was cut."""
     text = strip_reasoning(text)
-    cands: List[str] = []
-    for m in _FENCE.finditer(text):
-        cands += _balanced_objects(m.group(1))
-    cands += _balanced_objects(text)
-    # prefer the largest object that parses
-    cands.sort(key=len, reverse=True)
-    for c in cands:
+    cands: List[tuple] = []  # (object text, closed off by the parser): by occurrence, as the same text can be both
+    for part in [m.group(1) for m in _FENCE.finditer(text)] + [text]:
+        closed: List[str] = []
+        objs = _balanced_objects(part, closed)
+        cands += [(c, bool(closed) and i == len(objs) - 1) for i, c in enumerate(objs)]
+    # prefer the largest object that parses, and a whole one over a closed-off one of the same text
+    cands.sort(key=lambda c: (-len(c[0]), c[1]))
+    for c, was_closed in cands:
         for i, attempt in enumerate((c, _repair(c))):
             try:
                 v = json.loads(attempt)
             except (json.JSONDecodeError, ValueError):
                 continue
             if isinstance(v, dict):
-                return v, i > 0
+                return v, i > 0 or was_closed
     raise ParseError("no JSON object found in reply")
 
 

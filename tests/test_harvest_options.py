@@ -1,7 +1,7 @@
 """A model choosing from instinct's options in the 2026-10-05 live game took "harvest, then store the grain" when it
 could no longer bring grain home: "I'm not carrying any grain" (store, 159 tries by day 107)."""
 
-from chits.brain.instinct import Instinct, _can_run
+from chits.brain.instinct import Instinct, _can_run, _drafted_runs
 from chits.sim.world import World
 
 HARVEST_AND_STORE = {"goal": "harvest", "steps": [{"do": "harvest"}, {"do": "store", "what": "grain"}]}
@@ -36,7 +36,8 @@ def test_not_with_no_room_in_hand_for_the_grain():
     w, a, b, farm = _farm_world()
     while a.free_space() > 0:
         a.add("stone", 1)
-    assert not _can_run(w, a, HARVEST_AND_STORE)
+    assert not _drafted_runs(w, a, HARVEST_AND_STORE)  # (the projection of its hands: #119)
+    assert all(not _is_harvest_and_store(w, o) for o in Instinct().options(w, a))
 
 
 def test_not_when_nothing_is_ripe_and_a_plain_harvest_to_eat_is_not_judged():

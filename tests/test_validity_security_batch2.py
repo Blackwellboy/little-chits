@@ -22,7 +22,7 @@ def test_condition_specific_rng_cannot_move_shared_weather_damage():
     assert a.rng_for("weather").random() == b.rng_for("weather").random()
 
     snap = a.to_dict()
-    assert snap["rng_scheme"] == RNG_SCHEME == 2
+    assert snap["rng_scheme"] == RNG_SCHEME == 3  # (streams per system, thing and tick: tests/test_rng_streams.py)
     restored = World.from_dict(json.loads(json.dumps(snap)))
     assert restored.to_dict()["rng_scheme"] == RNG_SCHEME
     assert restored.rng_for("beliefs").random() == a.rng_for("beliefs").random()
