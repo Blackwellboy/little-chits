@@ -11,7 +11,7 @@ A desk survey that comes before anything is downloaded or run. Repo ids were che
   - It was trained on inputs of **at most 2,048 tokens**, refuses more than 16,384, and its card launches with `-c 8192`.
   - Little Chits' full plan prompt is 3-5k tokens of JSON-plan instructions. So a full-prompt run of JevK5 (as in the JevK5-vs-Gemma study) tests it outside what it was built for. Its natural role is the one-letter choice layer (choose/cascade, and the typed-decision layer of a two-level mind).
   - There are smaller siblings: a 4B (`jevk5-4b-v0.3-Q8_0.gguf`, 4.48 GB) and a 2B (2.01 GB).
-- **Gemma 4 12B** (`google/gemma-4-12B-it`, Apache-2.0, 262k context) runs here as Q4_K_M (7.12 GB). A Q8_0 file (12.67 GB) exists, so part of any Gemma result may be the quant, not the model.
+- **Gemma 4 12B** (`google/gemma-4-12B-it`, Apache-2.0, 256K-token context) runs here as Q4_K_M (7.12 GB). A Q8_0 file (12.67 GB) exists, so part of any Gemma result may be the quant, not the model.
 
 ## Candidates
 
