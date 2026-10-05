@@ -254,6 +254,16 @@ MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is 
 MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
 MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise give way to food below hunger 16
 PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
+# Home reach. Berries, fish and food on the ground run out, and the margin counted only food within 30 tiles: an
+# explorer 43 tiles from a store saw a few bushes, hunted them down to hunger 0 and died on the way back (harness,
+# hoarding A/B, seed 32); a child helping 30 tiles out did the same (seed 27). When the nearest food is only that kind,
+# the margin also keeps the walk to the nearest store with food in it on the chit's land, out to HOME_MAX.
+HOME_REACH = True  # (False: as before, for the identity test)
+HOME_MEAL = 10  # food items a store needs to count as that home store (with 3, a crowd sent home emptied a small
+# one and walked on to the next)
+HOME_MAX = 50  # ...within this many tiles as the crow flies, and...
+HOME_WAY = 2.0  # ...no further than this many times that on foot. With neither, when a village's own stores ran dry
+# the whole village set out for one 58 tiles off, 120 on foot, and 24 starved on the way (A/B, seed 42)
 
 
 def reflexes(world, a: Agent) -> None:
@@ -289,7 +299,7 @@ def _reflexes(world, a: Agent) -> None:
                 _margin_short(world, a, head) and a.reflex_rest.get("food", 0) <= world.tick)):
             # (at hunger 8 a chit beside a store has time to spare and one 25 tiles off has none: chits sheltered down
             # to 8, ate one berry, sheltered again and starved on the walk)
-            food = _food_reflex(world, a)
+            food = _margin_food(world, a, head)
             if food.get("do") != "explore":
                 a.plan.insert(0, dict(food, _reflex=True))
         elif head.get("do") == "shelter" and a.energy < 7 and world.sheltered(a):
@@ -320,7 +330,7 @@ def _reflexes(world, a: Agent) -> None:
         a.plan.insert(0, {"do": "eat", "_reflex": True})
         return
     if hungry and hv not in ("eat", "harvest") and not fetching and a.reflex_rest.get("food", 0) <= world.tick:
-        a.plan.insert(0, dict(_food_reflex(world, a), _reflex=True))
+        a.plan.insert(0, dict(_margin_food(world, a, head), _reflex=True))
         a.set_emote("😣", world.tick, 20)
         return
     if a.energy < 7 and hv != "sleep" and a.reflex_rest.get("sleep", 0) <= world.tick:
@@ -381,16 +391,45 @@ def _margin_short(world, a: Agent, head: Dict[str, Any]) -> bool:
     food: HUNGER_PER_TICK a tick, at its walking speed now (slower exhausted or laden), WALK_COST per tile."""
     if not HUNGER_MARGIN or a.hunger >= MARGIN_FROM:
         return False
-    near = _nearest_food(world, a, head.setdefault("_s", {}))
+    s = head.setdefault("_s", {})
+    near = _nearest_food(world, a, s)
     farm = _harvest_target(world, head)
+    left = (a.hunger + sum(world.item(f).food * a.inventory[f] for f in food_items(a))) / HUNGER_PER_TICK
+    short = lambda d: left < FOOD_SAFETY * d * WALK_COST / _speed(world, a) + FOOD_SLACK
+    if HOME_REACH and farm is None and (near is None or near[1] not in ("eat", "harvest")):
+        home = _home_store(world, a, s)
+        walk = home and _crow(a, *home.center()) * WALK_COST / _speed(world, a)
+        if home is not None and short(_crow(a, *home.center())) and left >= walk:  # (past saving: the nearest food)
+            s["home_go"] = [world.tick, home.id]  # (the food reflex goes there: _margin_food)
+            return True
     if farm is not None:
         d = _crow(a, *farm.center())  # a harvest of a named farm walks there, not to the nearest food (Codex, #100)
     elif near is None:
         return False  # no food known: the margin can't say, and a walk to nowhere is no help
     else:
         d = near[0]
-    left = (a.hunger + sum(world.item(f).food * a.inventory[f] for f in food_items(a))) / HUNGER_PER_TICK
-    return left < FOOD_SAFETY * d * WALK_COST / _speed(world, a) + FOOD_SLACK
+    return short(d)
+
+
+def _home_store(world, a: Agent, s: Dict[str, Any]):
+    """The nearest working store on this chit's land with HOME_MEAL food in it, out to HOME_MAX (HOME_REACH), looked
+    up once per MARGIN_RECHECK."""
+    seen = s.get("home_near")
+    if not seen or world.tick - seen[0] >= MARGIN_RECHECK:
+        foods = foods_of(world)
+        st = next((st for st in world.structures_near(a.x, a.y, HOME_MAX, "stockpile")
+                   if st.functional and sum(st.storage.get(f, 0) for f in foods) >= HOME_MEAL
+                   and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st)), None)
+        seen = s["home_near"] = [world.tick, st and st.id]
+    return world.structures.get(seen[1]) if seen[1] else None
+
+
+def _margin_food(world, a: Agent, head: Dict[str, Any]) -> Dict[str, Any]:
+    """The food reflex, or, when the walk home was what the margin found short just now, an eat at that store."""
+    go = head.get("_s", {}).get("home_go")
+    if go and go[0] == world.tick and not food_items(a) and go[1] in world.structures:
+        return {"do": "eat", "_s": {"store": go[1]}}  # (the eat step keeps to the store it set out for)
+    return _food_reflex(world, a)
 
 
 def _crow(a: Agent, x: int, y: int) -> int:
@@ -872,6 +911,9 @@ def _do_eat(world, a: Agent, step, s) -> str:
         st = world.structures.get(s.get("store") or "") if STARVING_FETCH else None
         if st is None or not st.functional or not any(st.storage.get(f, 0) > 0 for f in foods_of(world))                 or a.reflex_rest.get("unreach:" + st.id, 0) > world.tick:
             st = _stockpile_with(world, a, foods_of(world), 30)
+        elif HOME_REACH and st.dist(a.x, a.y) > 30 and (near := _stockpile_with(world, a, foods_of(world), 30)):
+            st = near  # a store beyond the usual reach (the margin's walk home) gives way to one within it, once the
+            # walk comes by one: kept to its far store, a chit walked past one with 500 food (hoarding A/B, seed 42)
         elif HUNGER_MARGIN and not s.get("passing"):
             # ...but not past another store with food right beside the way (once, so two can't take turns): kept to
             # one 30 tiles round a lake, a child walked by a store 2 tiles off with 114 food and starved short of the
@@ -886,6 +928,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
         mv = _goto_structure(world, a, s, st)
         if mv == "moving" and _long_way(a, s, st.x, st.y):
             mv = "blocked"  # a store a long way round: forage closer instead
+        elif HOME_REACH and mv == "moving" and st.dist(a.x, a.y) > 30 and s.get("far") != st.id:
+            s["far"] = st.id  # the walk home, checked once: a far store whose way bends round is out of reach
+            if len(a.path) > HOME_WAY * st.dist(a.x, a.y):
+                mv = "blocked"
         if mv == "blocked":
             # 11 of 12 starvation deaths on one map were chits failing to reach the same pile over and over
             a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY

@@ -38,6 +38,66 @@ def test_a_chit_with_no_plan_sets_out_for_food_by_the_margin():
     assert a.plan == [{"do": "eat", "_reflex": True}]
 
 
+def test_a_chit_with_only_berries_near_keeps_the_walk_home_to_a_store_beyond_the_lookups(monkeypatch):
+    # an explorer 43 tiles from the nearest store saw a few bushes, hunted them down to hunger 0, and died on its way
+    # back (hoarding A/B, seed 32): the margin's lookups reach 30 tiles
+    w, (a, _) = village(size=128)
+    dx = 40 if a.x < 64 else -40
+    berry = (a.x + (3 if dx < 0 else -3), a.y)
+    w.nearest_resource = lambda x, y, kind, radius=24, avoid=None: (
+        berry if kind == "berries" and max(abs(berry[0] - x), abs(berry[1] - y)) <= radius else None)
+    w.piles_near = lambda *args, **kw: []
+    pile = put(w, "stockpile", a, near=(a.x + dx, a.y))
+    pile.storage["grain"] = 30
+    assert w.same_land(a, pile) and A._stockpile_with(w, a, A.FOODS, 30) is None and pile.dist(a.x, a.y) >= 34
+    a.hunger = 35.0  # the bushes are a few tiles off: by them alone the margin is ample
+    a.plan = [{"do": "explore"}]
+    A.reflexes(w, a)
+    assert a.plan[0] == {"do": "eat", "_s": {"store": pile.id}, "_reflex": True} and a.plan[1]["do"] == "explore"
+    x, y, start = a.x, a.y, pile.dist(a.x, a.y)
+    for _ in range(40):  # ...and walks home to it, past the bushes
+        w.tick += 1
+        assert A.advance(w, a, a.plan[0]) == A.RUNNING
+    assert pile.dist(a.x, a.y) < start - 5
+    a.x, a.y, a.path = x, y, []
+    monkeypatch.setattr(A, "HOME_WAY", 0.5)  # a walk home that bends round too far is given up for food nearby
+    step = {"do": "eat", "_s": {"store": pile.id}, "_reflex": True}
+    w.tick += 1
+    A.advance(w, a, step)
+    assert a.reflex_rest.get("unreach:" + pile.id, 0) > w.tick
+    a.reflex_rest.clear()
+    monkeypatch.setattr(A, "HOME_MAX", 30)  # nor beyond HOME_MAX
+    a.plan = [{"do": "explore"}]
+    A.reflexes(w, a)
+    assert a.plan[0]["do"] == "explore"
+    monkeypatch.setattr(A, "HOME_MAX", 50)
+    a.x, a.y = x, y
+    a.hunger = 6.0  # past saving by the walk home: the bushes, then
+    a.plan = [{"do": "explore"}]
+    A.reflexes(w, a)
+    assert a.plan[0]["do"] == "gather" and a.plan[0]["what"] == "berries"
+    monkeypatch.setattr(A, "HOME_REACH", False)
+    a.hunger = 35.0
+    a.plan = [{"do": "explore"}]
+    A.reflexes(w, a)
+    assert a.plan == [{"do": "explore", "_s": a.plan[0].get("_s", {})}]
+
+
+def test_a_walk_home_to_a_far_store_stops_at_a_store_on_the_way():
+    # kept to the far store the margin sent it to, a chit walked past one with 500 food (hoarding A/B, seed 42)
+    w, (a, _) = village(size=128)
+    dx = 40 if a.x < 64 else -40
+    far = put(w, "stockpile", a, near=(a.x + dx, a.y))
+    on_way = put(w, "stockpile", a, near=(a.x + dx // 2, a.y))
+    far.storage["grain"] = on_way.storage["grain"] = 30
+    assert far.dist(a.x, a.y) > 30 >= on_way.dist(a.x, a.y)
+    a.hunger = 30.0
+    s = {"store": far.id}
+    w.tick += 1
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s["store"] == on_way.id
+
+
 @pytest.mark.parametrize("verb", ["shelter", "warm_up", "sleep", "store"])
 def test_a_chit_far_from_food_leaves_its_reflex_while_it_can_still_make_the_walk(verb, monkeypatch):
     w, (a, _) = village()
