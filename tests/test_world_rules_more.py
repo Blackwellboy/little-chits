@@ -173,3 +173,16 @@ def test_study_says_what_it_gives_when_hints_are_off(rules):
             break
     assert res == DONE
     assert ("no idea comes of study here" in s["note"]) is (not rules.library_hints)
+
+
+@pytest.mark.parametrize("rules", [ON, off("invention")])
+def test_a_stale_village_is_nudged_to_invent_only_where_inventing_exists(monkeypatch, rules):
+    w, a = world(rules)
+    monkeypatch.setattr(P, "stale_days", lambda world: 99)
+    home = w.place_site("hut", *w.find_site("hut", a.x + 2, a.y, 10), a)
+    w.complete_structure(home, a)
+    a.home, a.hunger = home.id, 90.0
+    w.tick = 240 * 3 + 120  # (midday)
+    text = P.scene(w, a)
+    assert "good time to experiment" in text
+    assert ("invent something" in text) is rules.invention
