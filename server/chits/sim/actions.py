@@ -253,6 +253,8 @@ FOOD_SLACK = 12  # ...plus this many ticks to take, pick or harvest it and start
 MARGIN_FROM = 40  # above this hunger the margin is never short, and nothing is looked up (SNACK_BELOW)
 MARGIN_RECHECK = 10  # ticks one step reuses its lookup of the nearest food (a sleeping chit doesn't move)
 MARGIN_STEPS = True  # the margin also for a plan's own steps, which otherwise give way to food below hunger 16
+RIPE_TARGET = True  # a harvest step that names a farm needs it ripe, or looks for a ripe one as with no name. Before,
+# a named farm was harvested as it stood: 6 grain from an empty plot (False: as before, for the identity test)
 PASSING_STORE = 3  # an eat step on its way to one store takes food from another this close instead
 
 
@@ -3309,8 +3311,13 @@ def _do_plant(world, a: Agent, step, s) -> str:
 def _do_harvest(world, a: Agent, step, s) -> str:
     if s.get("redirect"):
         return _redirect(world, a, s)
-    st = _find_structure(world, a, step.get("target"), 35, lambda x: x.design == "farm" and x.functional and x.planted
-                         and x.growth >= 1.0 and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+    def ripe(x) -> bool:
+        return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
+            and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+
+    st = _find_structure(world, a, step.get("target"), 35, ripe)
+    if st is not None and RIPE_TARGET and not ripe(st):
+        st = _find_structure(world, a, None, 35, ripe)  # a farm named by id was taken as it stood, ripe or not
     if not st:
         # nothing ripe. World A's model harvested unripe or empty farms 483 times in 160 days, and each failure
         # threw the rest of its plan away while 32 farms lay empty: sow an empty one, or just say how it's growing
