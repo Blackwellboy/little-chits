@@ -27,6 +27,17 @@ def _threshold(d, speed):
     return (A.FOOD_SAFETY * d * A.WALK_COST / speed + A.FOOD_SLACK) * HUNGER_PER_TICK
 
 
+def test_a_chit_with_no_plan_sets_out_for_food_by_the_margin():
+    # a chit waiting on a model (or on one that is down) has no plan, and waited for hunger 16 (Codex, #101)
+    w, (a, _) = village()
+    _, d = _only_store(w, a, 25)
+    assert d >= 20
+    a.energy, a.hunger = 10.0, 25.0  # exhausted: the walk needs more than the ~70 ticks left from hunger 16
+    a.plan = []
+    A.reflexes(w, a)
+    assert a.plan == [{"do": "eat", "_reflex": True}]
+
+
 @pytest.mark.parametrize("verb", ["shelter", "warm_up", "sleep", "store"])
 def test_a_chit_far_from_food_leaves_its_reflex_while_it_can_still_make_the_walk(verb, monkeypatch):
     w, (a, _) = village()

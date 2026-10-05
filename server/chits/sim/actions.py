@@ -300,7 +300,9 @@ def _reflexes(world, a: Agent) -> None:
     # hunger 8 carrying berries while they gathered more
     fetching = hv == "gather" and head.get("what") in ("berries", "fish") and not (a.hunger < 10 and food_items(a))
     # hungry: below 16, or (MARGIN_STEPS) with too few ticks left for the walk to food, as for the reflexes above
-    hungry = a.hunger < 16 or (MARGIN_STEPS and a.plan and hv != "eat" and not fetching
+    # (with no plan too: a chit waiting on a model, or on one that is down, waited for hunger 16, Codex #101; it looks
+    # food up each tick then, with no step to keep the lookup in, as the food reflex itself does)
+    hungry = a.hunger < 16 or (MARGIN_STEPS and hv != "eat" and not fetching
                                and a.reflex_rest.get("food", 0) <= world.tick and _margin_short(world, a, head))
     if hv == "harvest" and hungry and _far_harvest(world, a, head):
         hv = None  # not fetching food after all: a farm still to sow, or food much nearer than the farm (below)
