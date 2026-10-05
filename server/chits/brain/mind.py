@@ -794,11 +794,13 @@ class Mind:
                 self.log.append(entry)
                 entry = {}
                 await self._think(world, a, planner, full_at_send, rec, sent_full)
-                if planner is brain or not rec.get("error") or a.pending_plan is not None or not a.alive:
+                failed = rec.get("error") or rec.get("parse") == "failed"  # (unreachable, or unreadable twice)
+                if planner is brain or not failed or a.pending_plan is not None or not a.alive:
                     return
                 # the planner failed on the way (it passed healthy() first): no other model writes the plan; the
                 # chosen option runs instead, and the record keeps what happened (Codex on #144)
-                rec["planner_error"] = rec.pop("error")
+                rec["planner_error"] = rec.pop("error", None) or "an unreadable reply"
+                rec["planner_parse"] = rec.pop("parse", None)
                 rec["outcome"] = "pending"
                 rec["style"] = "repair" if sent.get("repair") else "choose"
                 rec["choice"].update(escalated=False, denial="planner unavailable")

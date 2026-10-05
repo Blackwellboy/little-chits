@@ -212,3 +212,19 @@ def test_planners_match_the_arms_and_stay_on_their_own_server(lab_fake_llm):
     check_servers(ExperimentSpec.from_dict(sw))
     with pytest.raises(SpecError, match="own server"):
         ExperimentSpec.from_dict(dict(sw, card_swap={"jev": lab_fake_llm, "jev2": lab_fake_llm, "plan": lab_fake_llm}))
+
+
+def test_a_planner_that_answers_nonsense_leaves_the_choice_to_run():
+    """Codex on #144: a planner whose reply couldn't be read (twice) lost the decision, as an unreachable one did."""
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+
+    async def babble(at, **kw):
+        at() if callable(at) else None
+        return {"text": "no json here at all", "latency_ms": 1.0}
+
+    m.brains["plan"].chat = babble
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    assert a.pending_plan is not None and rec["choice"]["denial"] == "planner unavailable"
+    assert rec["planner_error"] == "an unreadable reply" and rec["planner_parse"] == "failed" and rec["parse"] == "choice"
