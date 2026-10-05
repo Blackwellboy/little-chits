@@ -73,3 +73,17 @@ def test_the_ripe_farm_it_turned_to_stays_its_goal_as_it_walks():
     a.x, a.y = far.x, far.y + 3  # (now nearer the other one)
     actions.run(w, a)
     assert a.plan and a.plan[0]["_s"]["farm"] == chosen
+
+
+def test_a_hunger_reflex_whose_farm_was_harvested_lets_the_reflex_choose_again():
+    # the reflex named the farm as the nearest food; sent on to a farther ripe farm, chits starved by a store
+    w, a = _world()
+    gone = _farm(w, a, 3)
+    gone.planted, gone.growth = True, 0.0
+    other = _farm(w, a, 16)
+    other.planted, other.growth = True, 1.0
+    a.plan = [{"do": "harvest", "target": gone.id, "_reflex": True}]
+    a.hunger = 100.0
+    actions.run(w, a)
+    assert not a.plan and "nothing ripe" in a.last_result
+    assert other.growth == 1.0

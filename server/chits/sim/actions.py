@@ -3321,8 +3321,13 @@ def _do_harvest(world, a: Agent, step, s) -> str:
         # between two farms for 500 ticks and never reached either (tools/harness, seed 42)
     else:
         st = _find_structure(world, a, step.get("target"), 35, ripe)
-        if st is not None and RIPE_TARGET and not ripe(st):
-            st = _find_structure(world, a, None, 35, ripe)  # a farm named by id was taken as it stood, ripe or not
+        if st is not None and RIPE_TARGET and not ripe(st):  # a farm named by id was taken as it stood, ripe or not
+            if step.get("_reflex"):
+                # the hunger reflex named it as the nearest food: let it choose the nearest food again. Sent on to
+                # some other ripe farm instead, chits starved 6-16 tiles from a store (tools/harness, 24 seeds)
+                s["note"] = f"Farm {st.id} had nothing ripe left"
+                return DONE
+            st = _find_structure(world, a, None, 35, ripe)
         if st is not None and RIPE_TARGET:
             s["farm"] = st.id
     if not st:
