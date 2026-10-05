@@ -419,6 +419,21 @@ def test_a_sawmill_looks_past_a_lone_tree_or_a_served_stand_to_one_none_reaches(
     assert step and near_of(step) == (a.x - 10, a.y), step
 
 
+def test_no_second_sawmill_for_one_tree_just_outside_a_sawmills_reach():
+    # the stand round an unserved tree counted the trees a sawmill already reaches: one tree just outside its reach,
+    # beside five inside it, made a stand of six and a second sawmill for one tree (Codex, #98)
+    w, a = meadow(n=60)
+    able(a, w, "sawmill")
+    _trees(w, [(a.x + 6, a.y)] + [(a.x + 7, a.y + dy) for dy in range(-2, 3)])
+    mill = at(w, a, "sawmill", a.x + 19, a.y)
+    assert not BLD.sawn(w, a.x + 6, a.y) and all(BLD.sawn(w, a.x + 7, a.y + dy) for dy in range(-2, 3))
+    assert mill.dist(a.x + 6, a.y) == BLD.SAW_RADIUS + 1
+    assert wants(w, a, "sawmill") is None
+    _trees(w, [(a.x + 5, a.y + dy) for dy in range(-2, 3)])  # (five more none reaches: now a stand of six unserved)
+    step = wants(w, a, "sawmill")
+    assert step and near_of(step) == (a.x + 5, a.y), step
+
+
 def test_no_sawmill_for_trees_one_reaches_or_for_a_few_trees():
     w, a = meadow(n=60)
     able(a, w, "sawmill")

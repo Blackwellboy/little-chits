@@ -346,8 +346,11 @@ def _uncut_stand(world, a: Agent) -> Optional[Tuple[int, int]]:
     for _, _, y, x in near:
         if _reached(mills, x, y, BLD.SAW_RADIUS):
             continue
+        # (only trees no sawmill reaches: one tree just outside a sawmill's reach, beside five within it, is not a stand
+        # worth a second sawmill, Codex #98)
         stand = sum(1 for yy in range(max(0, y - SAW_STAND), min(world.h, y + SAW_STAND + 1))
-                    for xx in range(max(0, x - SAW_STAND), min(W, x + SAW_STAND + 1)) if tree(xx, yy))
+                    for xx in range(max(0, x - SAW_STAND), min(W, x + SAW_STAND + 1))
+                    if tree(xx, yy) and not _reached(mills, xx, yy, BLD.SAW_RADIUS))
         if stand >= SAW_MIN_TREES:
             return x, y
     return None
