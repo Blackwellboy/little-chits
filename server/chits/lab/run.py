@@ -24,7 +24,7 @@ def _write_json(path: Path, data: Any) -> None:
     os.replace(tmp, path)  # a run is either written whole or not at all (a killed batch resumes cleanly)
 
 
-def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "") -> Path:
+def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "", retry: bool = False) -> Path:
     """Pre-register: write the manifest and the seal before any run (or check them, when resuming)."""
     out = Path(out)
     man = out / "manifest.json"
@@ -35,7 +35,7 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "")
         if old.get("rng_scheme", 2) != scheme_now():  # (manifests from before scheme 3 have none: they ran on 2)
             raise SpecError(f"this directory's runs used random-number scheme {old.get('rng_scheme', 2)} and this build "
                             f"makes worlds with {scheme_now()}: its remaining runs would not be comparable")
-        if pending(spec, out):
+        if pending(spec, out, retry=retry):
             check_servers(spec)  # (a resumed batch checks its servers again)
         return out
     servers = check_servers(spec)  # (before anything is written: a wrong server is not an experiment)
@@ -134,9 +134,9 @@ def apply_intervention(w, iv) -> str:
 
 
 def run_one(protocol: Dict[str, Any], out: str, seed: int, label: str, arm: Dict[str, Any]) -> Dict[str, Any]:
-    """One sealed world: instinct synchronously, or a model under the strict lockstep experiment contract."""
-    from ..brain.instinct import Instinct
-    from ..sim.world import World
+    """One sealed world: instinct synchronously, or a model under the strict lockstep experiment contract. A hard
+    invariant break ends only this run: it is written to invalid.json and returned as {"invalid": True, ...}."""
+    from .. import invariants as INV
 
     spec = ExperimentSpec.from_dict(protocol)
     arm = Arm(**arm)
@@ -145,6 +145,60 @@ def run_one(protocol: Dict[str, Any], out: str, seed: int, label: str, arm: Dict
         return json.loads((rd / "result.json").read_text())
     rd.mkdir(parents=True, exist_ok=True)
     t0 = time.monotonic()
+    try:
+        result = _run_one(spec, arm, rd, seed, label, t0)
+    except INV.InvariantBroken as e:
+        # this run's outcome, not the batch's end: recorded, and the other runs carry on
+        return _record_invalid(rd, seed, label, arm, e.broken, t0)
+    tries = attempts(rd)
+    if tries:
+        result["invalid_attempts"] = tries
+        _write_json(rd / "result.json", result)
+    return result
+
+
+LAST_CALLS = 5  # an invalid run keeps its last model calls (from its tape), for working out what went wrong
+
+
+def _record_invalid(rd: Path, seed: int, label: str, arm: Arm, broken: List[Dict[str, Any]], t0: float) -> Dict[str, Any]:
+    """invalid.json: why this run isn't a result. It names the arm, so like treatment.json and server.json the blind
+    report never shows it raw: it lists invalid runs by label."""
+    first = broken[0] if broken else {"kind": "unknown", "what": "", "tick": 0}
+    last, n = [], 0
+    tape = rd / "tape.jsonl"
+    if tape.exists():
+        lines = [x for x in tape.read_text().splitlines() if x.strip()]
+        n = len(lines)
+        for line in lines[-LAST_CALLS:]:
+            e = json.loads(line)
+            reply = e.get("reply") or {}
+            last.append({"n": e.get("n"), "key": (e.get("key") or "")[:16], "error": e.get("error"),
+                         "text": (reply.get("text") or "")[:400] or None, "finish_reason": reply.get("finish_reason"),
+                         "latency_ms": reply.get("latency_ms")})
+    bad = {"seed": seed, "label": label, "arm": arm.name, "brain": arm.brain, "kind": first.get("kind"),
+           "what": first.get("what"), "tick": first.get("tick"), "day": int(first.get("tick") or 0) // TICKS_PER_DAY + 1,
+           "broken": broken[:20], "wall_s": round(time.monotonic() - t0, 1), "tape_calls": n, "last_calls": last}
+    _write_json(rd / "invalid.json", bad)
+    return {"invalid": True, **bad}
+
+
+def attempts(rd: Path) -> int:
+    """How many earlier attempts at this run were invalid (kept as invalid-attempt-N.json by a retry)."""
+    return len(list(Path(rd).glob("invalid-attempt-*.json")))
+
+
+def retry_invalid(rd: Path) -> None:
+    """Set an invalid run aside for a declared retry: its record and tape stay, numbered, beside the new attempt."""
+    k = attempts(rd) + 1
+    os.replace(rd / "invalid.json", rd / f"invalid-attempt-{k}.json")
+    if (rd / "tape.jsonl").exists():
+        os.replace(rd / "tape.jsonl", rd / f"tape-attempt-{k}.jsonl")
+
+
+def _run_one(spec: ExperimentSpec, arm: Arm, rd: Path, seed: int, label: str, t0: float) -> Dict[str, Any]:
+    from ..brain.instinct import Instinct
+    from ..sim.world import World
+
     w = World("A", label, seed, arm.culture, spec.size, spec.population)
     w.flags.update(arm.flags)
     w.model_only = spec.model_only  # (a diagnostic: the body's reflexes off, sim/actions.py)
@@ -289,24 +343,38 @@ def _model_only(spec: ExperimentSpec, w) -> Dict[str, Any]:
     return {"model_only": {"reflexes": False, "reflex_would": diag.reflex_would_summary(w)}}
 
 
-def pending(spec: ExperimentSpec, out) -> List[tuple]:
+def pending(spec: ExperimentSpec, out, retry: bool = False) -> List[tuple]:
+    """Runs still to do. An invalid run counts as done unless `retry`: rerunning only the runs that broke, until they
+    don't, would keep the lucky draws (a model whose server falls over on hard seeds would end up measured on the
+    easy ones). A retry is for a cause outside the experiment, such as a server that went down, and is declared."""
     names = assign.labels(spec)
     arms = {a.name: a for a in spec.arms}
     todo = []
     for i, seed in enumerate(spec.seeds):
         for label in assign.run_order(spec, i):
-            if not (Path(out) / "runs" / f"{seed}_{label}" / "result.json").exists():
+            rd = Path(out) / "runs" / f"{seed}_{label}"
+            if not (rd / "result.json").exists() and (retry or not (rd / "invalid.json").exists()):
                 todo.append((seed, label, arms[names[label]]))
     return todo
 
 
+def invalid(out) -> List[Dict[str, Any]]:
+    """Every run that broke a hard invariant (its invalid.json), in seed/label order."""
+    return [json.loads(p.read_text()) for p in sorted((Path(out) / "runs").glob("*_*/invalid.json"))]
+
+
 def run(spec: ExperimentSpec, out, jobs: int = 1, commit: str = "unknown", started: str = "",
-        progress=None) -> Dict[str, Any]:
+        progress=None, retry_invalid_runs: bool = False) -> Dict[str, Any]:
+    """Every pending run. Returns how many ran, and how many runs of the experiment are invalid (any, now)."""
     for a in spec.arms:
         if a.brain != "instinct" and os.environ.get("CHITS_LAB_ALLOW_MODELS") != "1":
             raise SpecError("a model arm runs only with CHITS_LAB_ALLOW_MODELS=1 (the owner's go-ahead for the GPUs)")
-    out = start(spec, out, commit, started)
-    todo = pending(spec, out)
+    out = start(spec, out, commit, started, retry=retry_invalid_runs)
+    todo = pending(spec, out, retry=retry_invalid_runs)
+    for seed, label, _ in todo:  # (a declared retry: the invalid attempt is kept, numbered, beside the new one)
+        rd = Path(out) / "runs" / f"{seed}_{label}"
+        if (rd / "invalid.json").exists():
+            retry_invalid(rd)
     protocol = spec.to_dict()
     done = 0
     if jobs <= 1:
@@ -323,7 +391,7 @@ def run(spec: ExperimentSpec, out, jobs: int = 1, commit: str = "unknown", start
                 done += 1
                 if progress:
                     progress(done, len(todo))
-    return {"out": str(out), "ran": done, "total": len(spec.seeds) * len(spec.arms)}
+    return {"out": str(out), "ran": done, "total": len(spec.seeds) * len(spec.arms), "invalid": len(invalid(out))}
 
 
 def results(out) -> List[Dict[str, Any]]:

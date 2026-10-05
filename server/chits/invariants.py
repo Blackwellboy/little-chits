@@ -9,6 +9,9 @@ Hard:
 - unknown_provenance: knowledge that came by no known way.
 - foreign_mind (experiment contract): a chit thinking with a brain its world wasn't given (cross-world leakage).
 - stand_in (experiment contract): a model's chit acting on an instinct plan (the contract says it waits).
+- brain_unavailable (raised by the Lab and make experiment, not checked here): a model failed BRAIN_FAIL_STOP requests
+  in a row, so its chits would stand still while another arm's kept deciding.
+In the Lab a hard break ends only its own run: it is recorded in invalid.json and the batch carries on.
 Soft:
 - loops: the same step failing for the same reason again and again (diag.step_failed).
 
@@ -32,6 +35,11 @@ class InvariantBroken(RuntimeError):
     def __init__(self, broken: List[Dict[str, Any]]):
         self.broken = broken
         super().__init__("; ".join(f"{b['kind']}: {b['what']}" for b in broken[:5]))
+
+    def __reduce__(self):
+        # rebuilt from the breaks, not the message: unpickling called __init__ with the message string, which
+        # crashed the Lab's parent process and lost the whole batch (JevK5 vs Gemma, 2026-10-05)
+        return (type(self), (self.broken,))
 
 
 def check(world, contract: str = "play", world_brain: Optional[str] = None) -> List[Dict[str, Any]]:
