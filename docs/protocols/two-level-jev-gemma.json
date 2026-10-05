@@ -1,0 +1,174 @@
+{
+ "name": "A two-level mind: JevK5 decides, Gemma plans (plan section 7)",
+ "notes": "Same seeds, island, culture, rules and sampling; the arms differ only in how the mind is built (docs/TWO_LEVEL.md). Outcomes, in order: discoveries, era, population, starved; failed steps and loops; requests per chit-day and tokens per level (compute, compute.planner); model_strategic_share and model_authored_strategic_share. jev_choose is the menu-only architecture: its plans are instinct's, and the provenance shares say so. JevK5 is a letter-readout decision model trained on inputs of at most 2,048 tokens (docs/research/model-landscape-2026-10.md); its full-prompt use is in the JevK5-vs-Gemma study, not here. Both servers on the RTX 5090; runs after the JevK5-vs-Gemma and choice-repair studies. Shared-world systems as in those studies.",
+ "arms": [
+  {
+   "name": "planner_only",
+   "culture": "direct",
+   "brain": "gemma_full"
+  },
+  {
+   "name": "jev_plus_gemma",
+   "culture": "direct",
+   "brain": "jev_to_gemma"
+  },
+  {
+   "name": "gemma_cascade",
+   "culture": "direct",
+   "brain": "gemma_cascade"
+  },
+  {
+   "name": "jev_cascade",
+   "culture": "direct",
+   "brain": "jev_cascade"
+  },
+  {
+   "name": "jev_choose",
+   "culture": "direct",
+   "brain": "jev_choose"
+  }
+ ],
+ "allow_models": true,
+ "brains": {
+  "gemma_full": {
+   "id": "gemma_full",
+   "label": "Gemma 4 12B Q4_K_M",
+   "base_url": "http://127.0.0.1:18196/v1",
+   "model": "gemma-4-12b-it-Q4_K_M.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "full"
+  },
+  "jev_to_gemma": {
+   "id": "jev_to_gemma",
+   "label": "JevK5 9B Q8_0",
+   "base_url": "http://127.0.0.1:18195/v1",
+   "model": "jevk5-9b-v0.3.3-Q8_0.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "cascade",
+   "escalate_to": "gemma_planner"
+  },
+  "gemma_planner": {
+   "id": "gemma_planner",
+   "label": "Gemma 4 12B Q4_K_M",
+   "base_url": "http://127.0.0.1:18196/v1",
+   "model": "gemma-4-12b-it-Q4_K_M.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "full"
+  },
+  "gemma_cascade": {
+   "id": "gemma_cascade",
+   "label": "Gemma 4 12B Q4_K_M",
+   "base_url": "http://127.0.0.1:18196/v1",
+   "model": "gemma-4-12b-it-Q4_K_M.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "cascade"
+  },
+  "jev_cascade": {
+   "id": "jev_cascade",
+   "label": "JevK5 9B Q8_0",
+   "base_url": "http://127.0.0.1:18195/v1",
+   "model": "jevk5-9b-v0.3.3-Q8_0.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "cascade"
+  },
+  "jev_choose": {
+   "id": "jev_choose",
+   "label": "JevK5 9B Q8_0",
+   "base_url": "http://127.0.0.1:18195/v1",
+   "model": "jevk5-9b-v0.3.3-Q8_0.gguf",
+   "max_concurrency": 4,
+   "timeout": 180.0,
+   "temperature": 0.7,
+   "max_tokens": 600,
+   "json_mode": true,
+   "disable_thinking": true,
+   "extra_body": {
+    "top_p": 0.95,
+    "top_k": 40,
+    "min_p": 0.05
+   },
+   "prompt_style": "choose"
+  }
+ },
+ "seeds": [
+  42,
+  7,
+  99,
+  1,
+  2,
+  3
+ ],
+ "days": 25,
+ "size": 128,
+ "population": 12,
+ "blind": true,
+ "metrics": [
+  "discoveries",
+  "era",
+  "population",
+  "starved",
+  "requests_per_chit_day",
+  "model_step_share",
+  "model_strategic_share",
+  "model_authored_strategic_share",
+  "instinct_step_share",
+  "reflex_step_share"
+ ],
+ "events": {
+  "20 discoveries": {
+   "metric": "discoveries",
+   "at_least": 20
+  }
+ },
+ "compare": "architecture"
+}

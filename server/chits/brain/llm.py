@@ -46,6 +46,9 @@ class BrainConfig:
     escalate_below: float = 0.5  # cascade: a choice less sure than this (or "my own idea") gets a full, written plan
     escalate_share: float = 0.3  # cascade: at most this share of recent decisions become full plans (qwen3.8-s asked for
     #                              its own idea 3 times in 4, and a full plan on top of every choice swamped the 5090)
+    # cascade: the brain a full, written plan goes to when a choice escalates ("" = this one). A two-level mind: a
+    # fast decision model (JevK5) answers the one-letter choices, a planner model writes the plans (docs/TWO_LEVEL.md)
+    escalate_to: str = ""
     focus: bool = True  # play games: plans that are only eating, sleeping, resting, sheltering or hauling are left to
     #                     instinct, so the model's time goes to the decisions that matter (never in an experiment)
     detect: bool = False  # added without saying what its server takes: its first Test finds out (brain/checkup.py)

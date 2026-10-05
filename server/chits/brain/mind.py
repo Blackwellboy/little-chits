@@ -781,10 +781,20 @@ class Mind:
                              + ([{"letter": valid[-1], "goal": P.OWN_IDEA, "p": round(probs.get(valid[-1], 0.0), 3)}] if cascade else [])}
             recent = brain.__dict__.setdefault("recent_escalations", deque(maxlen=40))
             budget = len(recent) < 5 or sum(recent) / len(recent) < float(getattr(brain.cfg, "escalate_share", 0.3) or 0)
-            go_full = (own or unsure) and budget and brain.stats.queued < max(1, brain.cfg.max_concurrency)
+            # a two-level mind: the plan is written by the planner the brain names. Never another model in its place:
+            # a planner that is missing or down means no escalation (the choice runs), and the record says so
+            planner = brain
+            if getattr(brain.cfg, "escalate_to", ""):
+                planner = self.brains.get(brain.cfg.escalate_to)
+                if planner is not None and not planner.healthy():
+                    planner = None
+            room = planner is not None and planner.stats.queued < max(1, planner.cfg.max_concurrency)
+            go_full = (own or unsure) and budget and room
             recent.append(bool(go_full))
             rec["choice"].update(escalation_requested=bool(own or unsure), escalated=bool(go_full),
-                                 denial=("budget" if not budget else "queue") if (own or unsure) and not go_full else None)
+                                 denial=("budget" if not budget else "planner unavailable" if planner is None else "queue")
+                                 if (own or unsure) and not go_full else None,
+                                 **({"planner": planner.id} if go_full and planner is not brain else {}))
             if not go_full and (own or unsure):
                 a.last_choice["why"] = "wanted its own idea, but the mind was busy" if own else f"unsure ({conf}), mind busy"
             if go_full:
@@ -804,16 +814,30 @@ class Mind:
                     if sent.get("repair"):  # the plan it writes answers the failure, as a full brain's does
                         fresh = P.with_repair(fresh, sent["repair"])
                     rec["prompt_hash"] = hashlib.sha256(json.dumps(fresh, sort_keys=True).encode()).hexdigest()[:16]
-                    rec["max_tokens"] = brain.cfg.max_tokens
+                    rec["max_tokens"] = planner.cfg.max_tokens
                     rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
                     rec["style"] = "repair" if sent.get("repair") else "cascade-full"
+                    if planner is not brain:  # (which model wrote the plan, beside which one chose to escalate)
+                        rec["planner"], rec["planner_model"] = planner.id, planner.cfg.model or planner.stats.resolved_model
                     sent_full["msgs"] = fresh
                     return fresh
 
                 self.log.append(entry)
                 entry = {}
-                await self._think(world, a, brain, full_at_send, rec, sent_full)
-                return
+                await self._think(world, a, planner, full_at_send, rec, sent_full)
+                failed = rec.get("error") or rec.get("parse") == "failed"  # (unreachable, or unreadable twice)
+                if planner is brain or not failed or a.pending_plan is not None or not a.alive:
+                    return
+                # the planner failed on the way (it passed healthy() first): no other model writes the plan; the
+                # chosen option runs instead, and the record keeps what happened (Codex on #144)
+                rec["planner_error"] = rec.pop("error", None) or "an unreadable reply"
+                rec["planner_parse"] = rec.pop("parse", None)
+                rec["outcome"] = "pending"
+                rec["style"] = "repair" if sent.get("repair") else "choose"
+                rec["choice"].update(escalated=False, denial="planner unavailable")
+                a.last_choice["escalated"] = False
+                a.last_choice["why"] = "the planner didn't answer"
+                a.thinking = True  # (until the choice below is handed over)
             if own:
                 letter = max((k for k in scores if k != valid[-1]), key=scores.get, default="A")
             rec["choice"]["executed"] = letter
@@ -873,7 +897,10 @@ class Mind:
                     parse_how = "repaired"
             rec.update(latency_ms=round(res["latency_ms"]), queue_ms=res.get("queue_ms"), tokens_in=res.get("tokens_in"), tokens_out=res.get("tokens_out"),
                        response_hash=hashlib.sha256(text.encode()).hexdigest()[:16], parse=parse_how,
-                       rejected_steps=plan.get("rejected", 0), model=brain.stats.resolved_model or rec.get("model"))
+                       rejected_steps=plan.get("rejected", 0))
+            # (a two-level mind's planner: its model is the planner's, beside the decision brain's own: Codex #144)
+            who = "planner_model" if rec.get("planner") == brain.id else "model"
+            rec[who] = brain.stats.resolved_model or rec.get(who)
             if a.alive:
                 a.pending_plan = plan
             entry.update(ok=True, ms=round(res["latency_ms"]), goal=plan["goal"], thought=plan["thought"],
