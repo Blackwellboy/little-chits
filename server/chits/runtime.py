@@ -374,8 +374,9 @@ class Runtime:
             self.pack = new_pack
             self.rules = new_rules
             self.store.set_meta("rules", json.dumps(new_rules.to_dict()))
-            if model_led is not None or contract == "experiment":  # (an experiment is stricter: never model-led)
-                self.set_model_led(bool(model_led) and contract != "experiment")
+            eff = contract if contract is not None else self.contract  # (left out, the game keeps its contract)
+            if model_led is not None or eff == "experiment":  # (an experiment is stricter: never model-led)
+                self.set_model_led(bool(model_led) and eff != "experiment")
             self._reset(seed, chits, size, mode, brains, contract, contact)
         finally:
             self._resetting = False

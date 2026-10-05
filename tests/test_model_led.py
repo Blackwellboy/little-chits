@@ -150,3 +150,43 @@ def test_a_scripted_model_led_run_takes_no_step_from_instinct():
     srcs = diag.of(w).step_sources
     assert not {k: n for k, n in srcs.items() if k in INSTINCT_ORIGINS and n}, dict(srcs)
     assert srcs.get("reflex", 0) > 0 and sum(n for k, n in srcs.items() if str(k).startswith("model")) > 0
+
+
+def test_switching_model_led_on_keeps_a_model_plan_already_waiting():
+    """Codex on #140: the switch bumped the chit's revision, so a plan the model had already returned was then
+    thrown away as stale."""
+    w, a, m = _setup(False)
+    m.hook(w, a)  # asks its model
+    rec = a._decision
+    a.pending_plan = {"goal": "wood", "thought": "", "steps": [{"do": "gather", "what": "wood", "qty": 1}]}
+    rec["parse"] = "ok"
+    a.thinking = False
+    m.model_led = True
+    m.start_model_led(w)
+    m.hook(w, a)
+    assert a.plan and a.plan[0]["what"] == "wood" and a.plan[0]["_origin"] == "model_generated"
+    assert rec["outcome"] == "adopted"
+
+
+def test_a_reset_keeping_an_experiment_never_turns_model_led_on(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    _game(tmp_path, monkeypatch)
+    from chits.app import R, app
+
+    with TestClient(app) as c:
+        r = R()
+        assert c.post("/api/reset", json={"seed": 5, "chits": 4, "size": 64, "contract": "experiment"}).status_code == 200
+        assert c.post("/api/reset", json={"seed": 6, "chits": 4, "size": 64, "model_led": True}).status_code == 200
+        assert r.contract == "experiment" and r.mind.model_led is False
+
+
+def test_the_harness_refuses_both_modes_at_once():
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    r = subprocess.run([sys.executable, str(root / "tools" / "harness" / "run.py"), "3", "--days", "1", "--mind",
+                        "scripted", "--model-led", "--model-only"], capture_output=True, text=True)
+    assert r.returncode != 0 and "pick one" in r.stderr

@@ -435,7 +435,8 @@ class Mind:
                 a.pending_plan = None
                 rec["stale_why"] = "model-only: a menu choice"
                 self._resolve(rec, "stale", world.tick)
-        a.bump_rev(why)
+        if not led:  # (model-only stales what is in flight; model-led keeps the model's own work, so a plan or a
+            a.bump_rev(why)  # choice already back and waiting is adopted, not thrown away as stale: Codex on #140)
         a.__dict__["_model_only_brain"] = a.brain
         return dropped
 

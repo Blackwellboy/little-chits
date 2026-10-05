@@ -139,6 +139,8 @@ def main(argv=None) -> None:
     g.add_argument("--model-led", action="store_true", help="model-led play (docs/MODEL_LED.md): no instinct plans, filler or "
                    "fallback for the model's chits; the body's reflexes stay")
     args = ap.parse_args(argv)
+    if args.model_led and args.model_only:
+        ap.error("--model-led and --model-only are different modes: pick one")
     if args.model_led and not args.mind:
         ap.error("--model-led needs --mind (scripted or a URL)")
     if args.model_only and not args.mind:
