@@ -57,7 +57,7 @@ def test_the_world_holds_more_chits_and_small_villages_have_their_children_first
     _pair(w, *big)
     _pair(w, *small)
     rng = Always(1)
-    w.rng_for = lambda name: rng
+    w.rng_for = lambda name, key=None: rng
     monkeypatch.setattr(W, "POP_CAP", len(w.agents) + 1)  # room for one child
     sizes = {a.id: PI.VILLAGE_ROOM - 5 for a in ags}  # (below the room where a village waits)
     sizes.update({a.id: 6 for a in small})
@@ -72,7 +72,7 @@ def test_a_full_village_waits_while_another_has_room_but_never_when_it_is_the_on
     ags = sorted(w.agents.values(), key=lambda a: a.id)
     _pair(w, ags[0], ags[1])
     rng = Always(1)
-    w.rng_for = lambda name: rng
+    w.rng_for = lambda name, key=None: rng
     sizes = {a.id: PI.VILLAGE_ROOM for a in ags}
     n = len(w.agents)
     monkeypatch.setattr(PI, "village_sizes", lambda world: (sizes, 2))

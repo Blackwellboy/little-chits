@@ -236,6 +236,8 @@ class Runtime:
         self.mend_foreign()
 
     def _load_or_create(self) -> None:
+        restored: Dict[str, World] = {}
+        fresh: List[Tuple[str, bool]] = []  # (world id, its unreadable save was set aside)
         for wid in MODES[self.mode]["worlds"]:
             try:
                 snap = self.store.load_world(wid)
@@ -247,18 +249,47 @@ class Runtime:
                             raise RuntimeError("legacy events extend beyond the saved checkpoint")
                         w.fork_epoch("recovered checkpoint; later legacy events retained in the previous timeline")
                         self.store.save_world(w.to_dict())
-                    self._attach(w)
-                    log.info("resumed world %s at tick %s", wid, w.tick)
+                    restored[wid] = w
                     continue
             except Exception as e:
                 if self.contract == "experiment":
                     raise RuntimeError(f"could not restore world {wid} of an experiment run: {e}") from e
                 log.warning("could not restore %s (%s); setting it aside and starting fresh", wid, e)
                 self.store.quarantine_world(wid, f"{type(e).__name__}: {e}")
-                w = self._create(wid)
-                w.emit("notice", f"An unreadable save of {w.name} was set aside; a fresh world was started", 4)
+                fresh.append((wid, True))
                 continue
-            self._create(wid)
+            fresh.append((wid, False))
+        scheme = self._twin_scheme(restored)
+        for wid in MODES[self.mode]["worlds"]:  # (in the mode's order, as before)
+            if wid in restored:
+                self._attach(restored[wid])
+                log.info("resumed world %s at tick %s", wid, restored[wid].tick)
+                continue
+            w = self._create(wid, rng_scheme=scheme)
+            if (wid, True) in fresh:
+                w.emit("notice", f"An unreadable save of {w.name} was set aside; a fresh world was started", 4)
+
+    def _twin_scheme(self, restored: Dict[str, World]) -> Optional[int]:
+        """The random-number scheme every world of this run uses (twins run one algorithm, or they aren't twins): the
+        restored worlds' own, which a world made fresh beside them takes too (a scheme-2 checkpoint's twin is not made
+        on scheme 3). Restored worlds that disagree are refused in an experiment; in play the first world of the mode
+        that was restored decides, the others go on under it from their saved state, and the log says so."""
+        if not restored:
+            return None
+        schemes = {wid: w.rng_scheme for wid, w in restored.items()}
+        first = schemes[next(iter(restored))]
+        if len(set(schemes.values())) > 1:
+            if self.contract == "experiment":
+                raise RuntimeError(f"the worlds of this experiment run were saved under different random-number "
+                                   f"schemes ({schemes}); twins must share one")
+            changed = sorted(wid for wid, s in schemes.items() if s != first)
+            log.warning("worlds saved under different random-number schemes %s: %s go on under scheme %s, as %s does",
+                        schemes, ", ".join(changed), first, next(iter(restored)))
+            for wid in changed:
+                restored[wid].rng_scheme = first
+                restored[wid].emit("notice", f"{restored[wid].name} now draws its luck the way its twin does "
+                                             f"(random-number scheme {first})", 2)
+        return first
 
     def _adopt(self, w: World) -> None:
         """A world just read from a checkpoint or a save point: the events it carries are stored under the timeline
@@ -270,7 +301,7 @@ class Runtime:
         w._durable_tick = w.tick
 
     def _create(self, wid: str, seed: Optional[int] = None, chits: Optional[int] = None,
-                size: Optional[int] = None) -> World:
+                size: Optional[int] = None, rng_scheme: Optional[int] = None) -> World:
         seed = seed if seed is not None else _env_int("CHITS_SEED", 1234)
         n = chits if chits is not None else _env_int("CHITS_PER_WORLD", 18)
         size = max(MIN_SIZE, min(MAX_SIZE, size or _env_int("CHITS_WORLD_SIZE", 192)))
@@ -278,7 +309,7 @@ class Runtime:
         # so the only thing that differs is the mind (or, in "culture" mode, one recorded law)
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
-        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack)
+        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack, rng_scheme=rng_scheme)
         # a new play game's limit on each world's people (0: the island's own). Never an experiment's: its worlds run
         # by the island's own rules, whatever this machine's settings say (Codex, #79)
         cap = _env_int("CHITS_POP_CAP", 0) if self.contract != "experiment" else 0
@@ -437,7 +468,7 @@ class Runtime:
 
     def manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:
         from .brain import prompt as P
-        from .sim.world import RNG_SCHEME
+        from .sim.world import scheme_now
 
         worlds = {}
         first = next(iter(self.worlds.values()), None)
@@ -454,12 +485,16 @@ class Runtime:
                          "escalate_share": c.escalate_share, "focus": getattr(c, "focus", None),
                          "extra_body": {k: v for k, v in (c.extra_body or {}).items()
                                         if not any(s in k.lower() for s in ("key", "token", "secret", "auth"))}}
-            worlds[wid] = {"culture": w.culture, "flags": dict(w.flags), "brain": brain, "uuid": w.uuid, "epoch": w.epoch}
+            worlds[wid] = {"culture": w.culture, "flags": dict(w.flags), "brain": brain, "uuid": w.uuid, "epoch": w.epoch,
+                           "rng_scheme": w.rng_scheme}
+        schemes = {w.rng_scheme for w in self.worlds.values()}
+        if len(schemes) > 1:  # (twins run one algorithm: _load_or_create sees to it, so this is a defect, not a state)
+            raise RuntimeError(f"the worlds of this run use different random-number schemes: {sorted(schemes)}")
         return {"run_id": self.run_id, "created": time.strftime("%Y-%m-%dT%H:%M:%S"), "contract": self.contract,
                 "mode": self.mode, "seed": first.seed if first else None, "size": first.w if first else None,
                 "chits": chits if chits is not None else (len(first.agents) if first else None),
                 "pop_cap": getattr(first, "cap", None) if first else None,
-                "worlds": worlds, "prompt_version": P.PROMPT_VERSION, "rng_scheme": RNG_SCHEME,
+                "worlds": worlds, "prompt_version": P.PROMPT_VERSION, "rng_scheme": next(iter(schemes)) if schemes else scheme_now(),
                 "source_commit": source_commit(),
                 "code_stretches": json.loads(self.store.get_meta("code_stretches") or "[]"),
                 "pacing": self.pace_to_brain, "contact": self.contact,

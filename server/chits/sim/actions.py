@@ -691,15 +691,15 @@ def _do_gather(world, a: Agent, step, s) -> str:
     i = tgt
     if kind == "seeds":
         # rummaging through fiber-grass for seed heads
-        n = 1 if world.rng_for("agents").random() < 0.55 else 0
-        if world.rng_for("agents").random() < 0.3:
+        n = 1 if world.rng_for("agents", a.id).random() < 0.55 else 0
+        if world.rng_for("agents", a.id).random() < 0.3:
             world.res_amt[i] -= 1
             world.dirty_res.add(i)
     else:
         n = min(world.res_amt[i], max(1, int(round(power))))
         world.res_amt[i] -= n
         world.dirty_res.add(i)
-        if kind == "berries" and world.rng_for("agents").random() < 0.22 and not seeds_plenty(world, a.x, a.y, a):
+        if kind == "berries" and world.rng_for("agents", a.id).random() < 0.22 and not seeds_plenty(world, a.x, a.y, a):
             a.add("seeds", 1)  # (the pips: kept only while the stores are short of seed)
         if kind == "wood" and n and BLD.sawn(world, a.x, a.y):
             n *= 2  # (the sawmill cuts each log into twice the wood: the forest isn't felled any faster)
@@ -718,7 +718,7 @@ def _do_gather(world, a: Agent, step, s) -> str:
     world.notice_items(a)
     if world.res_amt[i] <= 0:
         s.pop("tile", None)
-        if kind == "wood" and world.rng_for("agents").random() < 0.02:
+        if kind == "wood" and world.rng_for("agents", a.id).random() < 0.02:
             world.emit("note", f"{a.name} felled the last tree of a grove", 1, a.id, a.x, a.y)
     return RUNNING
 
@@ -1052,7 +1052,7 @@ def _observers_learn(world, a: Agent, knowledge: str) -> None:
     for o in world.agents_near(a.x, a.y, 3, exclude=a.id):
         if knowledge in o.knows or o.activity == "sleeping":
             continue
-        if world.rng_for("agents").random() < 0.12 + 0.25 * o.traits.get("curiosity", 0.5):
+        if world.rng_for("agents", a.id).random() < 0.12 + 0.25 * o.traits.get("curiosity", 0.5):
             world.learned(o, knowledge, "observed", a)
 
 
@@ -1711,8 +1711,8 @@ def _do_experiment(world, a: Agent, step, s) -> str:
         a.failed_experiments[:] = a.failed_experiments[-FAILED_MEMORY:]
     lost = ""
     cheap = [k for k in bag if not world.item(k).tool]
-    if cheap and world.rng_for("agents").random() < 0.25:
-        k = world.rng_for("agents").choice(cheap)
+    if cheap and world.rng_for("agents", a.id).random() < 0.25:
+        k = world.rng_for("agents", a.id).choice(cheap)
         a.remove(k, 1)
         lost = f" and a {world.item_name(k)} was ruined"
     s["note"] = f"Tried {combo}{where}: nothing useful happened{lost}. {hint}".strip()
@@ -1843,7 +1843,7 @@ def _do_preach(world, a: Agent, step, s) -> str:
         if a.belief not in o.met_beliefs:
             o.met_beliefs.append(a.belief)
         p = max(0.05, min(0.9, 0.25 + o.affinity.get(a.id, 0.0) / 200))
-        if world.rng_for("beliefs").random() < p and world.convert(o, a.belief, "preached"):
+        if world.rng_for("beliefs", a.id).random() < p and world.convert(o, a.belief, "preached"):
             won.append(o.name)
             o.like(a.id, 4)
     a.bump("preached")
@@ -2116,7 +2116,7 @@ def _do_fight(world, a: Agent, step, s) -> str:
     if mv != "arrived":
         return RUNNING
     sa, sb = _strength(a), _strength(other)
-    win, lose = (a, other) if world.rng_for("combat").random() * (sa + sb) < sa else (other, a)
+    win, lose = (a, other) if world.rng_for("combat", a.id).random() * (sa + sb) < sa else (other, a)
     for x in (a, other):  # (what each fought with is the worse for it)
         wear_arms(world, x, x.best_tool("weapon") or x.best_tool("spear"))
     for x, dmg in ((lose, 20), (win, 5)):
@@ -3009,7 +3009,7 @@ def _do_inspect(world, a: Agent, step, s) -> str:
         a.activity = "studying"
         if not _work(a, 1.0, 8.0):
             return RUNNING
-        if world.rng_for("agents").random() < 0.45 + 0.35 * curious:
+        if world.rng_for("agents", a.id).random() < 0.45 + 0.35 * curious:
             world.learned(a, f"recipe:{k}", "inspected")
             s["note"] = f"Studied my {world.item_name(k)} and worked out how it's made: {world.catalog.describe(world.recipe(k))}"
         else:
@@ -3031,8 +3031,8 @@ def _do_inspect(world, a: Agent, step, s) -> str:
         if not unknown:
             s["note"] = f"Looked over {other.name}'s things; nothing I don't already understand"
             return DONE
-        pick = world.rng_for("agents").choice(unknown)
-        if world.rng_for("agents").random() < 0.35 + 0.35 * curious:
+        pick = world.rng_for("agents", a.id).choice(unknown)
+        if world.rng_for("agents", a.id).random() < 0.35 + 0.35 * curious:
             world.learned(a, f"recipe:{pick}", "inspected", other)
             s["note"] = f"Studied {other.name}'s {world.item_name(pick)} and figured out how to make one"
         else:
@@ -3055,7 +3055,7 @@ def _do_inspect(world, a: Agent, step, s) -> str:
     if a.knows_design(st.design):
         s["note"] = f"I already know how to build a {d.name}"
         return DONE
-    if world.rng_for("agents").random() < 0.5 + 0.4 * curious:
+    if world.rng_for("agents", a.id).random() < 0.5 + 0.4 * curious:
         builder = world.agents.get(st.founder)
         world.learned(a, f"design:{st.design}", "inspected", builder)
         s["note"] = f"Studied the {d.name} and understood how to build one"
@@ -3098,7 +3098,7 @@ def _do_explore(world, a: Agent, step, s) -> str:
         d = str(step.get("dir") or step.get("to") or step.get("what") or "").lower().replace(" ", "").replace("-", "")
         dx, dy = _DIRS.get(d, (0, 0))
         if (dx, dy) == (0, 0):
-            ang = world.rng_for("agents").random() * 6.283
+            ang = world.rng_for("agents", a.id).random() * 6.283
             dx, dy = math.cos(ang), math.sin(ang)
         dist = 16
         tx = int(max(1, min(world.w - 2, a.x + dx * dist)))
@@ -3144,7 +3144,7 @@ def _do_prospect(world, a: Agent, step, s) -> str:
             d = str(step.get("dir") or "").lower().replace(" ", "").replace("-", "")
             dx, dy = _DIRS.get(d, (0, 0))
             if (dx, dy) == (0, 0):
-                ang = world.rng_for("agents").random() * 6.283
+                ang = world.rng_for("agents", a.id).random() * 6.283
                 dx, dy = math.cos(ang), math.sin(ang)
             tx, ty = a.x + dx * PROSPECT_OUT, a.y + dy * PROSPECT_OUT
         tx, ty = int(max(1, min(world.w - 2, tx))), int(max(1, min(world.h - 2, ty)))
@@ -3497,7 +3497,7 @@ def _do_rest(world, a: Agent, step, s) -> str:
 
 def _do_wander(world, a: Agent, step, s) -> str:
     if "goal" not in s:
-        pos = world.ring_scan(a.x + world.rng_for("agents").randint(-6, 6), a.y + world.rng_for("agents").randint(-6, 6), 4,
+        pos = world.ring_scan(a.x + world.rng_for("agents", a.id).randint(-6, 6), a.y + world.rng_for("agents", a.id).randint(-6, 6), 4,
                               lambda x, y, i: world.passable(x, y))
         if not pos:
             return DONE
@@ -3560,7 +3560,7 @@ def _do_hunt(world, a: Agent, step, s) -> str:
     s["t"] = 0
     s["tries"] = s.get("tries", 0) + 1
     power = world.item(tool).tool_power if world.item(tool) else 1.0
-    if AN._rng(world).random() < 0.35 + 0.15 * power:
+    if world.rng_for("animals", prey["id"]).random() < 0.35 + 0.15 * power:  # (the animal's own luck)
         world.animals.pop(prey["id"], None)
         wear_arms(world, a, tool)
         if kind == "deer":
@@ -3606,7 +3606,7 @@ def _do_tame(world, a: Agent, step, s) -> str:
     s["t"] = 0
     s["tries"] = s.get("tries", 0) + 1
     a.remove(bait, 1)
-    if AN._rng(world).random() < 0.5:
+    if world.rng_for("animals", sheep["id"]).random() < 0.5:
         first = not any(x["tame"] for x in world.animals.values())
         sheep["tame"], sheep["pen"] = True, pen.id
         sheep["x"], sheep["y"] = pen.x, pen.y
