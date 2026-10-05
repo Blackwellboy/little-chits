@@ -583,6 +583,22 @@ def set_narrator(body: Narrator):
     return {"ok": True, "narrator": r.mind.narrator}
 
 
+class ModelOnlyBody(BaseModel):
+    on: bool = False
+
+
+@app.post("/api/model-only")
+def set_model_only(body: ModelOnlyBody):
+    """A diagnostic, off by default and never kept over a restart: the models' chits get nothing from instinct (no
+    menu of drafted options, no instinct plans while a model is slow, no body reflexes), so a run shows what the model
+    does on its own. Its chits may die of neglect. Play only, and never for comparing models."""
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, "model-only is a play-mode diagnostic, not for an experiment run")
+    r.set_model_only(body.on)
+    return {"ok": True, "model_only": r.mind.model_only}
+
+
 @app.get("/api/worlds/{wid}/sagas")
 def sagas(wid: str):
     world(wid)

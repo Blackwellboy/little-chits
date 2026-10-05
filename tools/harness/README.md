@@ -72,7 +72,7 @@ every request to reach that clock. So a scripted run is the same on every machin
 for a `--mind` run, because a prompt's text depends on string hashing (`world.village_failed` counts a set, and its
 ties come out in hash order).
 
-The game gains no code. Without `--mind` the harness is what it was: instinct only, no brain, no network. `--mind`
+The game gains no code (apart from the model-only switch, below). Without `--mind` the harness is what it was: instinct only, no brain, no network. `--mind`
 takes `scripted` or an `http(s)://` URL and nothing else. A run against a URL is not deterministic: the world moves
 on at `--tick-seconds` per tick (0.5, the game at 1x) and replies land when they land.
 
@@ -108,6 +108,35 @@ plan, its source (style, parse, letter chosen), the step, the result and the rep
 days, before and after the change. Compare `decisions`, `model_steps`, `loops` and `why`. A new model loop, a parse
 or adoption rate that falls, or a planted kind that stops being caught is a regression even when instinct A/Bs are
 even. The scripted model can't say whether a change helps a real model choose better; that is the decision bench's job.
+
+### Model only: `--model-only` (diagnostic)
+
+```bash
+python tools/harness/run.py 42 --days 10 --mind scripted --model-only --autopsy
+```
+
+A "true run": what the model does on its own, with nothing from instinct covering for it. It finds model-path
+problems to fix. It is not for comparing models or changes. Instinct normally does three jobs in a `--mind` run, and
+`--model-only` turns off all three:
+
+- **the menu**: the prompt is the full one whatever `--style` says, so the model writes every plan. No choice among
+  instinct's drafted options (`Instinct.options`), and no tool step added in front of its plan (`tools_first`).
+- **the fallback**: no instinct plan while the model is slow, down or queued, no routine plans and no pioneer's duty.
+  The chit waits, as under the experiment contract (`Mind.no_stand_in`).
+- **the reflexes**: the body's eat, sleep, shelter, warm-up, store and room reflexes (`sim/actions.py`
+  `_reflexes`) are off (`world.model_only`, or `actions.REFLEXES = False` for every world). A chit acts only on its
+  model's plans and may die of neglect; the run records that, it doesn't prevent it.
+
+The reflexes still look each tick, without acting, and the `mind` section gains `reflex_would`: what they would have
+done, by the verb of the step they would have put first (`ticks`: chit-ticks the need stood; `onsets`: times it began),
+and `onsets_by_kind` (`food`, `sleep`, `shelter`, `warm_up`, `room`). That is where the model fails to look after
+its chits. `model_only` says whether the run was one; `steps_by_source` should hold nothing but `model_*`.
+
+Comparisons keep the reflexes on, in both arms. They are the body, not the mind: the same for every arm, they keep a
+chit from dying of what no model of any size would think to plan every tick, so a difference between arms is the
+models' and not which one happens to plan meals. The Lab has the same switch (`"model_only": true` in a protocol,
+recorded in the manifest), and the game has it as a play-only toggle in the Brains settings (🩺 Model only), off on
+every restart.
 
 ### Model choices: `tools/decbench.py`
 

@@ -749,11 +749,12 @@ def _mice(world) -> None:
 def _spoil(world) -> None:
     """Once a day, food in the stockpiles rots a little: none within reach of a granary, and none of what the clay
     pots stored with it hold."""
-    rng = world.rng_for("spoil")
+    world.rng_for("spoil")  # (streams off: made here, as it always was, so a save has it from the first day)
     lost_all, worst = 0, None
     for p in list(world.structures.values()):
         if p.design not in STORES or not p.functional:  # (warehouse food never rotted)
             continue
+        rng = world.rng_for("spoil", p.id)  # (each store its own luck with world.RNG_STREAMS; off, one stream)
         food = {k: n for k, n in p.storage.items() if n > 0 and (it := world.item(k)) is not None and it.food > 0}
         if not food or keeps_fresh(world, p):
             continue
@@ -815,7 +816,7 @@ def _school(world) -> None:
     schools = fx(world)["school"]
     if not schools:
         return
-    rng = world.rng_for("school")
+    world.rng_for("school")  # (streams off: made here, as it always was)
     t = world.tick
     how = "taught" if world.flags.get("teach") else "observed"
     for sc in schools:
@@ -825,6 +826,7 @@ def _school(world) -> None:
             continue
         adults = [o for o in near if not o.is_child(t)]
         for kid in kids:
+            rng = world.rng_for("school", kid.id)  # (each child its own luck with world.RNG_STREAMS; off, one stream)
             if rng.random() >= SCHOOL_P:
                 continue
             opts = [(k, ad) for ad in adults for k, v in ad.knows.items()
@@ -972,13 +974,14 @@ def _university(world) -> None:
     unis = fx(world)["university"]
     if not unis:
         return
-    rng = world.rng_for("university")
+    world.rng_for("university")  # (streams off: made here, as it always was)
     t = world.tick
     how = "taught" if world.flags.get("teach") else "observed"
     for u in unis:
         near = [o for o in world.agents.values() if u.dist(o.x, o.y) <= UNI_RADIUS and o.activity != "sleeping"
                 and not o.is_child(t)]
         for o in near:
+            rng = world.rng_for("university", o.id)  # (each chit its own luck with world.RNG_STREAMS; off, one stream)
             if rng.random() >= UNI_P:
                 continue
             opts = sorted((k, b.id) for b in near if b is not o for k, v in b.knows.items()

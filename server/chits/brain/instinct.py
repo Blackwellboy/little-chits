@@ -20,6 +20,8 @@ from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_RE
                            stockpile_room, village_stores)
 from ..sim.agent import Agent
 from ..sim import items as IT
+from ..sim import world as W
+from ..sim.world import sub_stream
 from ..sim.items import BASE, DESIGNS, HOME_STORES, ITEMS, RECIPES, STATIONS, item_name, normalize_design
 from ..sim.buildings import HOME_CAP, HOMES, upgrade_spot  # beyond its cap a family home is crowded
 from . import builder as BI  # bigger homes, bridges and the useful buildings
@@ -508,8 +510,11 @@ class Instinct:
         self._world = world  # for _exp_plan's stockpile lookups
         rng = random.Random(world.tick * 7919 + zlib.crc32(a.id.encode()))
         for fn in (self._survive, self._declutter, self._shelter, self._maintain, self._communal, self._progress):
-            for _ in range(3):  # a plan that needs something there's none of nearby is drawn again (World B tried
-                out = fn(world, a, rng)  # "gather clay" 51 times a day with no clay in reach)
+            for attempt in range(3):  # a plan that needs something there's none of nearby is drawn again (World B tried
+                # (streams on: each purpose, and each attempt at it, has its own stream, so the builder drawing one
+                # more number leaves the experiment, the chores and the final pick as they were)
+                r = world.stream(f"instinct:{fn.__name__}:{attempt}", a.id) if world.rng_scheme == W.RNG_STREAMED else rng
+                out = fn(world, a, r)  # "gather clay" 51 times a day with no clay in reach)
                 if not (out and any(s and s.get("do") == "gather" and not s.get("_far") and a.reflex_rest.get(
                         f"scarce:{world.norm_item(s.get('what'))}", 0) > world.tick for s in out.get("steps", []))):
                     break
@@ -827,7 +832,7 @@ class Instinct:
         return None
 
     def _shelter(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
-        up = BI.upgrade_plan(world, a, rng)
+        up = BI.upgrade_plan(world, a, sub_stream(rng, "builder"))
         if up:  # a crowded family home: rebuild it bigger
             return up
         home = world.structures.get(a.home or "")
@@ -989,7 +994,7 @@ class Instinct:
                          [{"do": "gather", "what": "berries", "qty": 8}, {"do": "store", "what": "berries"}])
                 steps[-1]["target"] = piles[0].id
                 return {"goal": "fill the stores", "thought": "The stores are nearly empty. Food first.", "steps": steps}
-        duty = civic.duty(self, world, a, rng)  # the village's project comes before talk and odd jobs
+        duty = civic.duty(self, world, a, sub_stream(rng, "civic"))  # the village's project comes before talk and odd jobs
         if duty:
             return duty
         # culture: teach a friend (world A)
@@ -1012,7 +1017,7 @@ class Instinct:
                             "steps": [{"do": "teach", "to": o.name, "what": k},
                                       {"do": "say", "to": o.name, "text": line}]}
         if world.flags.get("say") and rng.random() < 0.08 + 0.15 * a.traits["sociability"]:
-            line = self._chatter(world, a, rng)
+            line = self._chatter(world, a, sub_stream(rng, "chatter"))
             if line:
                 return {"goal": "share news", "thought": "Others should hear about this.",
                         "steps": [{"do": "say", "to": "all", "text": line}]}
@@ -1250,7 +1255,7 @@ class Instinct:
             opts.append((2.5, {"goal": "store my load", "thought": "I'm carrying too much.",
                                "steps": [{"do": "store", "what": "all", "target": roomy[0].id}]}))
         # experimenting — the engine of discovery
-        exp = self._experiment(world, a, rng)
+        exp = self._experiment(world, a, sub_stream(rng, "experiment"))
         if exp:
             opts.append(((0.8 + 3.0 * a.traits["curiosity"]) * wonder, exp))
         # exploring
@@ -1277,16 +1282,16 @@ class Instinct:
             if room:
                 steps.append({"do": "store", "what": mat, "target": room[0].id})
             opts.append(((1.0 + a.traits["diligence"]) * want[mat], {"goal": f"collect {item_name(mat)}", "thought": f"{item_name(mat).capitalize()} is always useful.", "steps": steps}))
-        opts += BI.building_options(world, a, rng)  # wells, granaries, mills, smithies, towers, schools, bridges
+        opts += BI.building_options(world, a, sub_stream(rng, "builder"))  # wells, granaries, mills, smithies, towers, schools, bridges
         store_up = BI.store_upgrade_plan(world, a)
         if store_up:
             opts.append((1.5 + a.traits["diligence"], store_up))
-        opts += OP.options(world, a, rng)  # outpost camps by far ore, sand or clay: found, work, haul home
-        opts += VOY.options(world, a, rng)  # trade over the sea (contact games): send a load, barter it, sail home
-        opts += PR.options(world, a, rng)  # prospecting for what is gone from around home
-        opts += PIO.options(world, a, rng)  # pioneers founding a daughter village
-        opts += GR.options(world, a, rng)  # strange objects to study, loose goods to carry in
-        opts = civic.extend(self, world, a, rng, opts)  # the village's project, study, hints, wants, the famous
+        opts += OP.options(world, a, sub_stream(rng, "outposts"))  # outpost camps by far ore, sand or clay: found, work, haul home
+        opts += VOY.options(world, a, sub_stream(rng, "voyages"))  # trade over the sea (contact games): send a load, barter it, sail home
+        opts += PR.options(world, a, sub_stream(rng, "prospect"))  # prospecting for what is gone from around home
+        opts += PIO.options(world, a, sub_stream(rng, "pioneers"))  # pioneers founding a daughter village
+        opts += GR.options(world, a, sub_stream(rng, "ground"))  # strange objects to study, loose goods to carry in
+        opts = civic.extend(self, world, a, sub_stream(rng, "civic"), opts)  # the village's project, study, hints, wants, the famous
         words = JOB_WORDS.get(a.job)
         if words:  # a job (T24) biases what a chit chooses to do, it never forbids anything
             opts = [(w * 2.5 if any(k in o["goal"] for k in words) else w, o) for w, o in opts]

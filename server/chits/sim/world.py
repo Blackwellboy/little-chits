@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import collections
 
+import hashlib
 import heapq
 import math
 import random
@@ -32,7 +33,61 @@ from . import buildings as BLD
 SEASONS = ("spring", "summer", "autumn", "winter")
 DAYS_PER_SEASON = 3
 SNAPSHOT_SCHEMA = 2  # bump when the saved shape changes, and add a step to migrate_snapshot
-RNG_SCHEME = 2  # named domains; the legacy .rng property is weather-damage only (F18)
+# Random-number schemes, saved with every world (rng_scheme): 1 shared one stream; 2 has running streams per named
+# domain, the legacy .rng property being weather damage only (F18); 3 has a stream per system, thing and tick (below).
+RNG_RUNNING, RNG_STREAMED = 2, 3
+RNG_SCHEME = RNG_STREAMED  # what a new world uses while RNG_STREAMS is on (scheme_now() is what it uses now)
+# Streams per system, per chit and per tick (World.rng_for): a change to one system leaves every other system's
+# draws as they were, so an A/B of one change is not drowned by reshuffled luck everywhere else. Off brings back
+# the running per-domain streams exactly (tests/identity_runner.py turns it off to compare with older trees).
+# A world keeps the scheme it was made with: a save says which, and a loaded world goes on with that one whatever
+# this switch says, so a checkpoint carries on as the world it was taken from. Builds from before scheme 3 refuse
+# its saves ("unsupported RNG scheme") instead of resuming them on the wrong streams.
+RNG_STREAMS = True
+
+
+def scheme_now() -> int:
+    """The scheme a world made now gets."""
+    return RNG_STREAMED if RNG_STREAMS else RNG_RUNNING
+
+
+def _stream_seed(text: str) -> int:
+    return int.from_bytes(hashlib.blake2b(text.encode(), digest_size=8).digest(), "big")
+
+
+def _pack_stream(r: random.Random) -> Any:
+    """A stream's state for a save. A fresh one twists its table on its first draw and then only moves its place
+    in it until 624 words are used, so (place, gauss) is enough when that rebuilds the very same state."""
+    st = r.getstate()
+    small = [st[1][-1], st[2]]
+    if _unpack_stream(random.Random(r.lc_seed), small).getstate() == st:
+        return small
+    return [st[0], list(st[1]), st[2]]
+
+
+def _unpack_stream(r: random.Random, st: Any) -> random.Random:
+    seed = getattr(r, "lc_seed", None)
+    if len(st) == 3:
+        r.setstate((st[0], tuple(st[1]), st[2]))
+    elif st[0] != 624:  # 624: not drawn from yet
+        r.getrandbits(32)  # the twist
+        v, table, _ = r.getstate()
+        r.setstate((v, table[:-1] + (st[0],), st[1]))
+    else:
+        r.setstate(r.getstate()[:2] + (st[1],))
+    r.lc_seed = seed
+    return r
+
+
+def sub_stream(rng: random.Random, purpose: str) -> random.Random:
+    """A stream of its own for one purpose inside a plan (the builder's draws, an experiment's), split from a
+    World.stream; any other Random (streams off, a choice menu's) is handed back as it is: the old shared draws."""
+    seed = getattr(rng, "lc_seed", None)
+    if seed is None:
+        return rng
+    r = random.Random(s := _stream_seed(f"{seed}:{purpose}"))
+    r.lc_seed = s
+    return r
 
 
 def _build() -> str:
@@ -219,7 +274,11 @@ class Event:
 
 class World:
     def __init__(self, world_id: str, name: str, seed: int, culture: str = "direct", size: int = 128,
-                 n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None):
+                 n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None,
+                 rng_scheme: Optional[int] = None):
+        """`rng_scheme`: the random-number scheme (2 or 3), when it must match a twin's; otherwise scheme_now()."""
+        if rng_scheme not in (None, RNG_RUNNING, RNG_STREAMED):
+            raise ValueError(f"unsupported RNG scheme {rng_scheme}")
         self.id = world_id
         self.name = name
         self.label = label or name
@@ -229,6 +288,7 @@ class World:
         self.w = self.h = size
         self.tick = 0
         self._rngs: Dict[str, random.Random] = {}
+        self.rng_scheme = rng_scheme or scheme_now()  # (set before the first draw: the animals' spawn)
         self.terrain_version = T.TERRAIN_VERSION
         self.tiles, self.res_kind, self.res_amt = T.generate(seed, size, size, self.terrain_version)
         self.traffic = [0.0] * (size * size)
@@ -304,14 +364,48 @@ class World:
 
     # ------------------------------------------------------------------ setup
     # ------------------------------------------------------------------ randomness (F6)
-    def rng_for(self, name: str) -> random.Random:
+    def rng_for(self, name: str, key: Optional[str] = None) -> random.Random:
         """Independent deterministic streams, so an extra roll in one system (a fight, an experiment) never
-        shifts another (the weather, regrowth, births). "misc" keeps the original seeding for old code."""
+        shifts another (the weather, regrowth, births). "misc" keeps the original seeding for old code.
+
+        Under scheme 3 (made with RNG_STREAMS on), a stream lives for one tick and is drawn fresh from (seed, name, key, tick); `key`
+        (a chit's id) gives each chit its own. An extra roll then moves nothing outside its own system, chit and
+        tick, where a running stream carried it into every later draw. Off, `key` is ignored: the old draws."""
+        if self.rng_scheme == RNG_STREAMED:
+            stamp = (self.seed, self.tick)
+            if getattr(self, "_tick_stamp", None) != stamp:
+                self._tick_stamp, self._tick_rngs = stamp, {}
+            r = self._tick_rngs.get((name, key))
+            if r is None:
+                r = self._tick_rngs[(name, key)] = self.stream(name, key)
+            return r
         r = self._rngs.get(name)
         if r is None:
             r = random.Random(self.seed * 31 + 7 if name == "misc" else zlib.crc32(f"{self.seed}:{name}".encode()))
             self._rngs[name] = r
         return r
+
+    def stream(self, name: str, key: Optional[str] = None) -> random.Random:
+        """A fresh stream for (seed, name, key, this tick), not kept: every call starts it from the beginning
+        (instinct makes each plan from its own). Its `lc_seed` lets a caller split it further (sub_stream)."""
+        s = _stream_seed(f"{self.seed}:{name}:{key}:{self.tick}")
+        r = random.Random(s)
+        r.lc_seed = s
+        return r
+
+    def _tick_streams_dict(self) -> Optional[Dict[str, Any]]:
+        """This tick's streams, for a save made between ticks: most need only their place (see _pack_stream)."""
+        if self.rng_scheme != RNG_STREAMED or getattr(self, "_tick_stamp", None) != (self.seed, self.tick) or not self._tick_rngs:
+            return None
+        return {"tick": self.tick, "streams": [[n, k, _pack_stream(r)] for (n, k), r in self._tick_rngs.items()]}
+
+    def _load_tick_streams(self, d: Optional[Dict[str, Any]]) -> None:
+        self._tick_stamp, self._tick_rngs = None, {}
+        if not d or d.get("tick") != self.tick:
+            return
+        self._tick_stamp = (self.seed, self.tick)
+        for n, k, st in d.get("streams", []):
+            self._tick_rngs[(n, k)] = _unpack_stream(self.stream(n, k), st)
 
     @property
     def rng(self) -> random.Random:
@@ -1957,7 +2051,7 @@ class World:
             home, room = BLD.birth_home(self, a, b)  # a full home halves the chance of a child, an overfull one ends it
             if not home or not room:
                 continue
-            if self.rng_for("births").random() > 0.5 * room:
+            if self.rng_for("births", a.id).random() > 0.5 * room:
                 continue
             used |= {a.id, b.id}
             self._make_child(a, b, home)
@@ -1966,12 +2060,12 @@ class World:
 
     def _make_child(self, a: Agent, b: Agent, home: Structure) -> Agent:
         taken = {x.name for x in list(self.agents.values()) + list(self.dead.values())}
-        name = make_name(self.rng_for("births"), taken)
+        name = make_name(self.rng_for("births", a.id), taken)
         base = {t: (a.traits[t] + b.traits[t]) / 2 for t in a.traits}
-        child = new_agent(self.rng_for("births"), self._new_id("agent"), name, home.x, home.y, self.tick, spread=0.08,
+        child = new_agent(self.rng_for("births", a.id), self._new_id("agent"), name, home.x, home.y, self.tick, spread=0.08,
                           base_traits=base, generation=max(a.generation, b.generation) + 1, parents=(a.id, b.id),
                           age_days=0.0)
-        br = self.rng_for("births")
+        br = self.rng_for("births", a.id)
         child.hue = int((a.hue + b.hue) / 2 + br.randint(-20, 20)) % 360 if abs(a.hue - b.hue) < 180 else (a.hue + br.randint(-20, 20)) % 360
         child.hunger = 80
         child.home = home.id
@@ -1988,7 +2082,7 @@ class World:
         # a child grows up hearing how its parents make things: each proven recipe is passed on half the time,
         # as "told, untried". Chits live 45-70 days and knowledge died with them (World A: charcoal lost twice)
         self.agents[child.id] = child
-        rng = self.rng_for("inheritance")
+        rng = self.rng_for("inheritance", a.id)
         if self.flags.get("teach"):
             for p in (a, b):
                 for k, v in list(p.knows.items()):
@@ -2037,9 +2131,10 @@ class World:
         return {
             "id": self.id, "name": self.name, "label": self.label, "seed": self.seed, "culture": self.culture,
             "terrain_version": self.terrain_version,
-            "size": self.w, "tick": self.tick, "rng_scheme": RNG_SCHEME,
+            "size": self.w, "tick": self.tick, "rng_scheme": self.rng_scheme,
             "rng_state": {k: [r.getstate()[0], list(r.getstate()[1]), r.getstate()[2]] for k, r in self._rngs.items()},
-            "res_amt": self.res_amt, "traffic": [round(v, 1) for v in self.traffic], "roads": sorted(self.roads),
+            **({"rng_tick": tick_rngs} if (tick_rngs := self._tick_streams_dict()) else {}),
+            "res_amt": self.res_amt, "traffic": list(self.traffic), "roads": sorted(self.roads),
             "tunnels": sorted([i, sid] for i, sid in self.tunnels.items()),
             "agents": [a.to_dict() for a in self.agents.values()], "dead": [a.to_dict() for a in self.dead.values()],
             "structures": [s.to_dict() for s in self.structures.values()],
@@ -2142,8 +2237,8 @@ class World:
         w.w = w.h = d["size"]
         w.tick = d["tick"]
         scheme = int(d.get("rng_scheme", 1))
-        if scheme not in (1, RNG_SCHEME):
-            raise ValueError(f"unsupported RNG scheme {scheme}; this build understands 1 and {RNG_SCHEME}")
+        if scheme not in (1, RNG_RUNNING, RNG_STREAMED):
+            raise ValueError(f"unsupported RNG scheme {scheme}; this build understands 1 to {RNG_STREAMED}")
         w._rngs = {}
         for k, st in (d.get("rng_state") or {}).items():
             r = random.Random()
@@ -2160,7 +2255,8 @@ class World:
             r = random.Random()
             r.setstate(w._rngs["misc"].getstate())
             w._rngs["weather_damage"] = r
-        w.rng_scheme = RNG_SCHEME
+        w.rng_scheme = scheme if scheme == RNG_STREAMED else RNG_RUNNING  # (1 was carried into 2 above)
+        w._load_tick_streams(d.get("rng_tick"))  # (saves from before streams have none: fresh ones)
         w.terrain_version = d.get("terrain_version", 1)  # saves from before versioning used version 1
         w.tiles, w.res_kind, _ = T.generate(w.seed, w.w, w.h, w.terrain_version)
         w.res_amt = list(d["res_amt"])
