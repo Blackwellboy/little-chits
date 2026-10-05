@@ -66,6 +66,17 @@ def test_a_truncated_reply_is_counted_as_repaired():
     assert fenced["repaired"] is True
 
 
+def test_a_whole_object_repeated_and_cut_off_is_not_repaired():
+    """A reply with a whole object, then the same object again cut off before its last brace: closing the second
+    gives the first one's text exactly. The whole first object is what parsed, so nothing was repaired."""
+    whole = '{"thought": "x", "goal": "g", "plan": [{"do": "gather", "what": "wood", "qty": 6}]}'
+    assert PR._close_truncated(whole[:-1]) == whole  # (the case: the same text both ways)
+    for reply in (whole + "\n" + whole[:-1], "```json\n" + whole + "\n```\n" + whole[:-1]):
+        p = PR.parse_plan(reply)
+        assert p["repaired"] is False and p["steps"] == [{"do": "gather", "what": "wood", "qty": 6}], reply
+    assert PR.parse_plan(whole[:-1])["repaired"] is True  # (alone, the cut-off one still counts)
+
+
 def test_the_mind_counts_a_truncated_reply_as_repaired():
     w = World("A", "A", 3, "direct", 64, 2)
     a = next(iter(w.agents.values()))
