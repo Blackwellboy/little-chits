@@ -587,6 +587,21 @@ class ModelOnlyBody(BaseModel):
     on: bool = False
 
 
+@app.post("/api/model-led")
+def set_model_led(body: ModelOnlyBody):
+    """Model-led play (docs/MODEL_LED.md): the models' chits get no instinct plans, filler or fallback; their bodies
+    keep their reflexes and the simulator still carries out each step. A model that is down leaves its chits waiting,
+    visibly, never on instinct. Kept by the game; recorded. Not for an experiment run, which is stricter still."""
+    r = R()
+    if r.contract == "experiment":
+        raise HTTPException(409, "an experiment run is stricter than model-led already")
+    try:
+        r.set_model_led(body.on)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True, "model_led": r.mind.model_led}
+
+
 @app.post("/api/model-only")
 def set_model_only(body: ModelOnlyBody):
     """A diagnostic, off by default and never kept over a restart: the models' chits get nothing from instinct (no
@@ -595,7 +610,10 @@ def set_model_only(body: ModelOnlyBody):
     r = R()
     if r.contract == "experiment":
         raise HTTPException(409, "model-only is a play-mode diagnostic, not for an experiment run")
-    r.set_model_only(body.on)
+    try:
+        r.set_model_only(body.on)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     return {"ok": True, "model_only": r.mind.model_only}
 
 
@@ -885,6 +903,7 @@ class Reset(BaseModel):
     # a content pack for the new match (docs/modding.md): the pack's JSON itself, never a path. Left out: keep the
     # current pack. {}: play without one. Refused in experiments.
     pack: Optional[Dict[str, Any]] = None
+    model_led: Optional[bool] = None  # play the new match model-led (docs/MODEL_LED.md). Left out: keep the current
     # the new match's world rules (sim/rules.py, docs/WORLD_RULES.md), fixed for its life. Left out: keep the current
     rules: Optional[Dict[str, Any]] = None
 
@@ -916,7 +935,7 @@ def reset(body: Reset):
         raise HTTPException(400, f"contract must be one of {', '.join(CONTRACTS)}")
     try:
         r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact, body.pack,
-                body.rules)
+                body.rules, model_led=body.model_led)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "worlds": [views.world_meta(w) for w in r.worlds.values()]}

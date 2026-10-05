@@ -23,6 +23,10 @@ class WorldDiag:
         self.plans: Counter = Counter()          # model | instinct | fallback | filler -> n
         self.authorship: Counter = Counter()
         self.step_sources: Counter = Counter()
+        self.origin_outcomes: Counter = Counter()  # (step origin, "ok"|"fail") -> finished steps
+        self.repairs_asked = 0                     # requests that carried the simulator's reason for a failed step
+        self.repaired_first: Counter = Counter()   # "ok"|"fail" -> the corrective first step of each repaired plan
+        self._repair_decisions: set = set()        # (repaired decisions whose first step is counted already)
         self.recent_steps: deque = deque(maxlen=200)
         self.model_ticks = 0                     # agent-ticks with a model brain
         self.waiting_ticks = 0                   # ... of which idle, waiting on a reply
@@ -43,6 +47,9 @@ class WorldDiag:
         self.reflex_would_ticks: Counter = Counter()   # chit-ticks the need stood
         self.reflex_would_onsets: Counter = Counter()  # times it began (a chit with no such need the tick before)
         self.reflex_would_last: Dict[str, Optional[str]] = {}  # agent id -> the kind of need it had last tick
+        self.model_led_since: Optional[int] = None  # the tick model-led was switched on (None: off)
+        self.model_led_dropped = 0                  # instinct steps dropped from model-driven chits under model-led
+        self.unavailable_ticks = 0                  # chit-ticks a model's chit spent with its mind down
         self.model_only_since: Optional[int] = None  # the tick model-only was switched on mid-game (None: off)
         self.model_only_dropped = 0  # steps the model didn't write, dropped at that moment
 
@@ -264,6 +271,19 @@ def capability_use(world) -> Dict[str, Dict[str, int]]:
     return out
 
 
+def model_led_from(world, dropped: Optional[int]) -> None:
+    """Model-led switched on (``dropped``: the instinct steps dropped then) or off (None)."""
+    d = of(world)
+    if dropped is None:
+        d.model_led_since = None
+        return
+    d.model_led_since, d.model_led_dropped = world.tick, d.model_led_dropped + dropped
+
+
+def model_led_dropped(world, n: int) -> None:
+    of(world).model_led_dropped += n
+
+
 def model_only_from(world, dropped: Optional[int]) -> None:
     """Model-only switched on (``dropped``: the steps the model didn't write, dropped then) or off (None). Reports
     count a model-only stretch from this tick; the would-have-fired counts restart with it."""
@@ -321,6 +341,12 @@ def action_finished(world, a, step, result: str) -> None:
               "step": {k: v for k, v in step.items() if not k.startswith("_")}}
     d = of(world)
     d.step_sources[origin] += 1
+    d.origin_outcomes[(origin, "ok" if result == "done" else "fail")] += 1
+    if origin == "model_repaired":  # (only a repaired plan's first finished step answers whether the repair worked:
+        did = step.get("_decision_id")  # the later steps of a plan whose first worked would inflate it, Codex #142)
+        if did is not None and did not in d._repair_decisions:
+            d._repair_decisions.add(did)
+            d.repaired_first["ok" if result == "done" else "fail"] += 1
     d.outcomes[("model" if str(origin).startswith("model") else "other", "ok" if result == "done" else "fail")] += 1
     d.recent_steps.append(record)
     callback = getattr(world, "on_action_outcome", None)
@@ -448,6 +474,9 @@ def report(rt) -> Dict[str, Any]:
         }
         if d.reflex_would_last:  # a model-only (diagnostic) world: what the reflexes it ran without would have done
             wd["reflex_would"] = reflex_would_summary(w)
+        if d.model_led_since is not None:
+            wd["model_led"] = {"since_tick": d.model_led_since, "dropped_steps": d.model_led_dropped}
+        wd["mind_unavailable_pct"] = _pct(d.unavailable_ticks, d.model_ticks)
         if d.model_only_since is not None:
             wd["model_only"] = {"since_tick": d.model_only_since, "dropped_steps": d.model_only_dropped}
         out["worlds"][wid] = wd
