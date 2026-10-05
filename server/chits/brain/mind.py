@@ -33,6 +33,9 @@ from .parse import ParseError, parse_lesson_items, parse_lessons, parse_plan, pa
 log = logging.getLogger("chits.mind")
 
 INSTINCT = "instinct"
+# bounded action repair for choosing brains (issue #112): a menu choice that failed puts the simulator's reason in the
+# next choice scene (prompt.repair_line) and in a cascade's full plan. Off: until now a choosing model never heard why
+CHOICE_REPAIR = False
 
 PRESETS = [
     {"id": "llamacpp", "label": "llama.cpp server", "base_url": "http://127.0.0.1:8080/v1", "max_concurrency": 4, "enabled": False},
@@ -566,9 +569,13 @@ class Mind:
                "latency_ms": None, "tokens_in": None, "tokens_out": None, "response_hash": None,
                "parse": None, "rejected_steps": 0, "outcome": "pending", "tick_resolved": None, "plan_id": None,
                "match": self.match}
+        rep = self._repair_note(world, a) if CHOICE_REPAIR else None
+        if rep:  # as in _ask: its choice is then "model_repaired", and a repaired choice that fails isn't repaired again
+            rec.update(style="repair", repair_of=rep.get("decision_id"), repair_step=rep["failed"],
+                       repair_reason=rep["reason"])
         self.decisions.append(rec)
         a._decision = rec
-        sent: Dict[str, Any] = {}
+        sent: Dict[str, Any] = {"repair": rep}
 
         def at_send():
             if rec.get("match") != self.match:
@@ -577,7 +584,7 @@ class Mind:
             # shuffled, so the model's pick is its own and not "always the first one" (instinct's)
             random.Random(world.tick * 13 + zlib.crc32(a.id.encode())).shuffle(opts)
             sent["options"] = opts
-            msgs = P.choice_messages(world, a, opts, own_idea=cascade)
+            msgs = P.choice_messages(world, a, opts, own_idea=cascade, repair=rep)
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
             rec["prompt_hash"] = hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16]
             return msgs
@@ -755,10 +762,12 @@ class Mind:
                     if rec.get("match") != self.match:
                         raise StaleMatch()
                     fresh = P.messages(world, a, style="full")
+                    if sent.get("repair"):  # the plan it writes answers the failure, as a full brain's does
+                        fresh = P.with_repair(fresh, sent["repair"])
                     rec["prompt_hash"] = hashlib.sha256(json.dumps(fresh, sort_keys=True).encode()).hexdigest()[:16]
                     rec["max_tokens"] = brain.cfg.max_tokens
                     rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
-                    rec["style"] = "cascade-full"
+                    rec["style"] = "repair" if sent.get("repair") else "cascade-full"
                     sent_full["msgs"] = fresh
                     return fresh
 
