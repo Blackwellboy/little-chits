@@ -141,3 +141,74 @@ def test_an_architecture_comparison_is_declared_and_still_matches_sampling():
         ExperimentSpec.from_dict(hot)
     with pytest.raises(SpecError):
         ExperimentSpec.from_dict(dict(proto, compare="vibes"))
+
+
+def _real_think(m):
+    """The minds above stub _think; these use the real one, with the planner's chat stubbed."""
+    m._think = Mind._think.__get__(m)
+
+
+def test_an_escalated_record_keeps_both_models():
+    """Codex on #144: the planner's model overwrote the decision brain's in the record."""
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+    plan = m.brains["plan"]
+
+    async def chat(at, **kw):
+        at() if callable(at) else None
+        return {"text": '{"thought": "t", "goal": "rest a while", "plan": [{"do": "rest"}]}', "latency_ms": 1.0}
+
+    plan.chat = chat
+    plan.stats.resolved_model = "planner-model-resolved"
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    assert rec["model"] == "jev" and rec["planner_model"] == "planner-model-resolved" and a.pending_plan
+
+
+def test_a_planner_that_fails_on_the_way_leaves_the_choice_to_run():
+    """Codex on #144: a planner that passed healthy() and then failed lost the decision."""
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+
+    async def down(at, **kw):
+        at() if callable(at) else None
+        raise ConnectionError("planner went away")
+
+    m.brains["plan"].chat = down
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    assert a.pending_plan is not None and a.pending_plan["steps"]  # (the chosen option, not the planner's)
+    assert rec["choice"]["denial"] == "planner unavailable" and "planner went away" in rec["planner_error"]
+    assert rec["outcome"] == "pending" and not a.thinking
+
+
+def test_planners_match_the_arms_and_stay_on_their_own_server(lab_fake_llm):
+    from chits.lab.run import check_servers
+    from chits.lab.spec import ExperimentSpec, SpecError
+
+    url = "http://127.0.0.1:9/v1"
+    # a plain model comparison may not differ in whether (or where) a cascade escalates
+    p = _proto(url)
+    p["arms"] = [{"name": "two", "brain": "jev"}, {"name": "flat", "brain": "flat"}]
+    p["brains"]["flat"] = dict(p["brains"]["jev"], id="flat", label="Flatx", escalate_to="")
+    with pytest.raises(SpecError, match="escalate_to"):
+        ExperimentSpec.from_dict(p)
+    ExperimentSpec.from_dict(dict(p, compare="architecture"))
+    # a planner's sampling matches the arms', even in an architecture comparison
+    hot = _proto(url)
+    hot["brains"]["plan"]["temperature"] = 1.5
+    with pytest.raises(SpecError, match="temperature"):
+        ExperimentSpec.from_dict(dict(hot, compare="architecture"))
+    nameless = _proto(url)
+    nameless["brains"]["plan"]["model"] = ""
+    with pytest.raises(SpecError, match="names its model"):
+        ExperimentSpec.from_dict(nameless)
+    # card swap is for the arms' brains: the planner stays put, and the preflight doesn't trip over it
+    sw = _proto(lab_fake_llm)
+    sw["seeds"] = [7, 8]
+    sw["arms"] = [{"name": "two", "brain": "jev"}, {"name": "other", "brain": "jev2"}]
+    sw["brains"]["jev2"] = dict(sw["brains"]["jev"], id="jev2", label="Otherx")
+    sw["card_swap"] = {"jev": lab_fake_llm, "jev2": lab_fake_llm}
+    check_servers(ExperimentSpec.from_dict(sw))
+    with pytest.raises(SpecError, match="own server"):
+        ExperimentSpec.from_dict(dict(sw, card_swap={"jev": lab_fake_llm, "jev2": lab_fake_llm, "plan": lab_fake_llm}))

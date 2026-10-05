@@ -17,11 +17,11 @@ LABELS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 # model arms. Identity/routing (id, label, model, base_url, api_key) may differ because those are the treatment.
 FAIR_MODEL_FIELDS = (
     "max_concurrency", "timeout", "temperature", "max_tokens", "json_mode", "disable_thinking",
-    "extra_body", "prompt_style", "escalate_below", "escalate_share", "focus",
+    "extra_body", "prompt_style", "escalate_below", "escalate_share", "focus", "escalate_to",
 )
 # how a mind is built: what an architecture comparison (compare: "architecture") lets arms differ in, declared; every
 # other fair-comparison field (sampling, tokens, timeouts, concurrency) must still match (docs/TWO_LEVEL.md)
-ARCHITECTURE_FIELDS = ("prompt_style", "escalate_below", "escalate_share")
+ARCHITECTURE_FIELDS = ("prompt_style", "escalate_below", "escalate_share", "escalate_to")
 
 
 class SpecError(ValueError):
@@ -159,6 +159,16 @@ class ExperimentSpec:
             if a.brain != "instinct" and a.brain not in self.brains:
                 raise SpecError(f"arm {a.name}: no sealed brain config {a.brain!r} in protocol.brains")
         model_ids = sorted({a.brain for a in self.arms if a.brain != "instinct"})
+        # a planner (escalate_to) writes plans for its arm: it matches that arm's brain in everything but how a mind is
+        # built (a planner always gets the full prompt), in either kind of comparison, one model arm or several
+        same = [f for f in FAIR_MODEL_FIELDS if f not in ARCHITECTURE_FIELDS]
+        for m in model_ids:
+            esc = str(self.brains[m].get("escalate_to") or "")
+            if esc in self.brains and esc != m:
+                pc, mc = BrainConfig(**self.brains[esc]), BrainConfig(**self.brains[m])
+                diff = sorted(f for f in same if getattr(pc, f) != getattr(mc, f))
+                if diff:
+                    raise SpecError(f"planner {esc!r} must match brain {m!r} in {', '.join(diff)} (Codex on #144)")
         if len(model_ids) > 1:
             configs = {bid: BrainConfig(**self.brains[bid]) for bid in model_ids}
             ref_id = model_ids[0]
@@ -225,6 +235,10 @@ class ExperimentSpec:
                 raise SpecError(f"brain {bid!r}: escalate_to is for a cascade brain (its escalations go to the planner)")
             if self.brains[esc].get("escalate_to"):
                 raise SpecError(f"brain {esc!r}: a planner doesn't escalate further")
+            if not self.brains[esc].get("model"):  # (so its identity is known, and redacted when blind)
+                raise SpecError(f"brain {esc!r}: a planner names its model")
+            if esc in self.card_swap:
+                raise SpecError(f"brain {esc!r}: a planner stays on its own server (card_swap is for the arms' brains)")
         if self.card_swap:
             if len(model_ids) < 2 or set(self.card_swap) != set(model_ids):
                 raise SpecError(f"card_swap names the other server of every model brain ({', '.join(model_ids) or 'none'}),"

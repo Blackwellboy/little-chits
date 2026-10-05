@@ -78,11 +78,14 @@ def check_servers(spec: ExperimentSpec) -> Dict[str, List[str]]:
         if a.brain == "instinct":
             continue
         planner = str(spec.brains[a.brain].get("escalate_to") or "")
-        for bid in [a.brain] + ([planner] if planner else []):  # (a two-level mind's planner is checked too)
-            for i in range(min(2, len(spec.seeds))):
-                cfg = spec.brain_for(bid, i)
-                cfgs[cfg["base_url"]] = cfg
-                want.setdefault(cfg["base_url"], set()).add(cfg.get("model") or "")
+        for i in range(min(2, len(spec.seeds))):
+            cfg = spec.brain_for(a.brain, i)
+            cfgs[cfg["base_url"]] = cfg
+            want.setdefault(cfg["base_url"], set()).add(cfg.get("model") or "")
+        if planner:  # (a two-level mind's planner is checked too; it stays on its own server, never card-swapped)
+            cfg = dict(spec.brains[planner])
+            cfgs[cfg["base_url"]] = cfg
+            want.setdefault(cfg["base_url"], set()).add(cfg.get("model") or "")
     if not want:
         return {}
 
@@ -437,7 +440,7 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     brain.tape = BrainTape(rd / "tape.jsonl", "record")  # every call and its answer: the run can be replayed (item 39)
     planner = None
     if cfg.escalate_to:  # a two-level mind (docs/TWO_LEVEL.md): its sealed planner, on the same terms and the same tape
-        praw = spec.brain_for(cfg.escalate_to, spec.seeds.index(seed))
+        praw = dict(spec.brains[cfg.escalate_to])  # (on its own server: card_swap is for the arm brains)
         praw["extra_body"] = {**SAMPLING, **(praw.get("extra_body") or {})}
         planner = mind.upsert(dict(BrainConfig(**praw).__dict__))
         planner.cooldown = False
