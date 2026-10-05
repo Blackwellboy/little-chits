@@ -1,4 +1,4 @@
-"""python -m chits.lab run PROTOCOL --out DIR [--jobs N] | resume DIR [--jobs N] | analyze DIR [--unblind]
+"""python -m chits.lab run PROTOCOL --out DIR [--jobs N] [--url BRAIN=URL ...] | resume DIR [--jobs N] | analyze DIR [--unblind]
 | lint PACK (a TreatmentPack: its problems and what it covers)"""
 
 from __future__ import annotations
@@ -34,6 +34,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     r.add_argument("protocol")
     r.add_argument("--out", required=True)
     r.add_argument("--jobs", type=int, default=1)
+    r.add_argument("--url", action="append", default=[], metavar="BRAIN=URL",
+                   help="serve a model brain from this base URL instead of the protocol's (sealed in the manifest)")
     s = sub.add_parser("resume", help="finish the runs a stopped batch didn't")
     s.add_argument("out")
     s.add_argument("--jobs", type=int, default=1)
@@ -61,6 +63,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if args.cmd in ("run", "resume"):
             if args.cmd == "run":
                 spec = ExperimentSpec.load(args.protocol)
+                for u in args.url:
+                    bid, sep, url = u.partition("=")
+                    if not sep or not url.strip():
+                        raise SpecError(f"--url wants BRAIN=URL, not {u!r}")
+                    if bid not in spec.brains:
+                        raise SpecError(f"--url: no model brain {bid!r} in the protocol ({', '.join(spec.brains) or 'none'})")
+                    spec.brains[bid] = dict(spec.brains[bid], base_url=url.strip())
+                spec.validate()
             else:
                 spec = ExperimentSpec.from_dict(json.loads((Path(args.out) / "manifest.json").read_text())["protocol"])
             prog = lambda d, n: print(f"  run {d}/{n}", file=sys.stderr, flush=True)

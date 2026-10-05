@@ -4,7 +4,7 @@ VENV = .venv
 BIN = $(VENV)/bin
 PORT ?= 8000
 
-.PHONY: play play-single docker-desktop install web run open stop dual dual-doctor bench experiment clip compare doctor gpus diagnose shortcut dev test fake-model clean-data plan-status plan-next plan-loop
+.PHONY: play play-single docker-desktop install web run open stop dual dual-doctor bench experiment lab clip compare doctor gpus diagnose shortcut dev test fake-model clean-data plan-status plan-next plan-loop
 
 play:               ## the easy way: set up if needed, then start and open the browser (PORT=8010 to change the port)
 	@test -d $(VENV) || $(MAKE) install
@@ -47,6 +47,9 @@ bench:              ## rank models on the same scenes: make bench ARGS="--url ht
 
 experiment:         ## model vs model headless, output ready to post: make experiment ARGS="--a http://127.0.0.1:18191/v1 --b http://127.0.0.1:18192/v1 --days 3"
 	cd server && ../$(BIN)/python -m chits.tools.experiment $(ARGS)
+
+lab:                ## the Experiment Lab (protocols, seeds x arms, blind report): make lab ARGS="run docs/protocols/speech-vs-silence.json --out runs/speech"
+	PYTHONPATH=server $(BIN)/python -m chits.lab $(ARGS)
 
 clip:               ## a timelapse MP4 for X from the running game: make clip ARGS="--aspect 9:16 --seconds 30"
 	cd server && ../$(BIN)/python -m chits.tools.timelapse --url http://127.0.0.1:$(PORT) $(ARGS)
