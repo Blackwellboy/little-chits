@@ -29,8 +29,9 @@ identity. The live game on the owner's PC runs `main`.
 - Manual real-GPU checks (2026-09-30, RTX 3090 only, see `docs/MANUAL_CHECKS_2026-09-30.md`): T01, T17, T18 and
   T19 pass; T04 ran (the bench's spread is noted there); T15 is partial (3090 vs 3090); **T03 is open** (needs the
   5090). Don't mark T03 or the 5090 arm of T15 as passed until they are run.
-- Live game: World A on instinct and World B on the 3090, while the 5090 is busy with other work (its brain is
-  disabled at a dead port on purpose). Play versus is not a controlled comparison: see the tracker, F8 and F13.
+- Live game (since 2026-10-05): a single world on the RTX 5090's JevK5 9B (cascade), started with 20 founders.
+  Play is not a controlled comparison: model questions go through the Lab (see
+  HANDOFF.md, Work in flight, for the JevK5-vs-Gemma study now running).
 
 ## Upgrade status
 

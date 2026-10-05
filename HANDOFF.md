@@ -97,6 +97,8 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #105 | The hunger margin applies to a chit with no plan (issue #101) |
 | #106 | **Hoarding (F33) on** (`actions.PLENTY = True`), with the grain reserve at 4 days (`surplus.GRAIN_DAYS`) |
 | #108 | "Plan from here" above |
+| #109 | Research readiness audit, gates A-L (`docs/RESEARCH_READINESS.md`) |
+| #110 | The Lab runs model-vs-model studies |
 | #111 | Model in the loop for the harness: `run.py --mind scripted` runs the real prompt, parse, repair and cascade path with no GPU |
 | #113 | Live model-path loops: the parser keeps invented names and rejects missing objects, a harvest reserves its farm (`actions.harvest_source`), naming clauses parse anywhere. Follow-up edge case: issue #128 |
 | #114, #115 | Prompts are the same text under any hash seed; a truncated or repeated reply is counted honestly |
