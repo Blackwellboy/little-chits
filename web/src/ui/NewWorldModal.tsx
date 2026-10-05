@@ -24,14 +24,21 @@ export function NewWorldModal() {
   const rulesInfo = useRules(newWorldOpen);
   const [rules, setRules] = useState<Record<string, boolean>>({});
   const [modelLed, setModelLedState] = useState(false);
+  // what the player picked wins over the game's settings arriving late (Codex on #143 and #149): reset on opening only
   const ledPicked = useRef(false);
+  const rulesPicked = useRef(false);
   const setModelLed = (v: boolean) => { ledPicked.current = true; setModelLedState(v); };
+  const setRulesPicked = (r: Record<string, boolean>) => { rulesPicked.current = true; setRules(r); };
+  useEffect(() => {
+    if (!newWorldOpen) return;
+    ledPicked.current = false;
+    rulesPicked.current = false;
+    api("/api/brains").then((s: any) => { if (!ledPicked.current) setModelLedState(!!s.model_led); }).catch(() => {});
+  }, [newWorldOpen]);
   useEffect(() => {
     if (!rulesInfo) return;
-    setRules(Object.fromEntries(Object.entries(rulesInfo.current).filter(([k]) => k !== "version")) as Record<string, boolean>);
-    // the game's own model-led setting, unless a preset or the box was picked meanwhile (Codex on #143, issue #145)
-    ledPicked.current = false;
-    api("/api/brains").then((s: any) => { if (!ledPicked.current) setModelLedState(!!s.model_led); }).catch(() => {});
+    if (!rulesPicked.current)
+      setRules(Object.fromEntries(Object.entries(rulesInfo.current).filter(([k]) => k !== "version")) as Record<string, boolean>);
   }, [rulesInfo]);
   // 📦 content pack: null keeps the running game's, "none" plays without, an object is a pack the server has checked
   const [packNow, setPackNow] = useState<PackInfo | null>(null);
@@ -176,7 +183,7 @@ export function NewWorldModal() {
             </select>
           </label>
         </div>
-        {rulesInfo && <RulesPicker info={rulesInfo} rules={rules} setRules={setRules} modelLed={modelLed} setModelLed={setModelLed} strict={strict} />}
+        {rulesInfo && <RulesPicker info={rulesInfo} rules={rules} setRules={setRulesPicked} modelLed={modelLed} setModelLed={setModelLed} strict={strict} />}
         <div className="nw-pack">
           <b>📦 Content pack</b> <span className="muted">optional: a JSON file that adds items and recipes to this game
             (see docs/modding.md). Every world gets the same pack.</span>

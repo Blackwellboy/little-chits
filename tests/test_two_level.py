@@ -294,3 +294,22 @@ def test_a_failed_planner_with_nothing_to_fall_back_to_is_recorded_once_as_faile
     m.hook(w, a)
     rec = _escalate(m, chosen)
     assert [o for r, o in seen if r == rec["request_id"]] == ["failed"]
+
+
+def test_a_planner_that_fails_while_queued_is_recorded_once():
+    """Codex on #149: a planner that went down while waiting for a slot fails before the prompt is built, so the
+    marker set there never was, and the request was resolved twice."""
+    w, a, m, chosen, _ = _minds()
+    _real_think(m)
+    seen = []
+    m.on_decision = lambda rec: seen.append((rec["request_id"], rec["outcome"]))
+
+    async def down_in_queue(at, **kw):  # (fails before calling `at`: no prompt was ever built)
+        raise ConnectionError("planner down while queued")
+
+    m.brains["plan"].chat = down_in_queue
+    m.hook(w, a)
+    rec = _escalate(m, chosen)
+    a.plan = []
+    m.hook(w, a)
+    assert [o for r, o in seen if r == rec["request_id"]] == ["adopted"] and rec["choice"]["denial"] == "planner unavailable"

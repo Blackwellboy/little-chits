@@ -824,6 +824,8 @@ class Mind:
 
                 self.log.append(entry)
                 entry = {}
+                if planner is not brain:  # (marked before the call: a planner that fails while queued, before the
+                    rec["planner"] = planner.id  # prompt is built, is still its caller's to resolve, once: Codex #149)
                 await self._think(world, a, planner, full_at_send, rec, sent_full)
                 failed = rec.get("error") or rec.get("parse") == "failed"  # (unreachable, or unreadable twice)
                 if planner is brain or not failed:
