@@ -426,7 +426,7 @@ class Mind:
         adopted, and stale what is in flight. Marked with its brain, so it isn't cleaned twice under the same one.
         Under model-led (`led`) its body's reflex steps and its model's menu choices stay: only instinct's own plans,
         filler, fallback, duty and routine go. Returns the steps dropped."""
-        own = ("model_generated", "model_repaired") + (("model_selected",) if led else ())
+        own = ("model_generated", "model_repaired") + (("model_selected", "model_repaired_choice") if led else ())
         keep = [s for s in a.plan if (s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler"))
                 or (led and s.get("_reflex"))]
         dropped = len(a.plan) - len(keep)

@@ -90,11 +90,12 @@ def test_switching_model_led_on_drops_instincts_plans_and_keeps_the_body_and_the
     a.plan = [{"do": "eat", "_reflex": True}, {"do": "gather", "what": "wood", "_origin": "instinct"},
               {"do": "rest", "_filler": True, "_origin": "filler"}]
     others[0].plan = [{"do": "gather", "what": "stone", "_origin": "model_selected"},
-                      {"do": "build", "what": "hut", "_origin": "model_generated"}]
+                      {"do": "build", "what": "hut", "_origin": "model_generated"},
+                      {"do": "rest", "_origin": "model_repaired_choice"}]
     m.model_led = True
     dropped = m.start_model_led(w)
     assert dropped == 2 and a.plan == [{"do": "eat", "_reflex": True}]
-    assert [s["_origin"] for s in others[0].plan] == ["model_selected", "model_generated"]
+    assert [s["_origin"] for s in others[0].plan] == ["model_selected", "model_generated", "model_repaired_choice"]
     assert diag.of(w).model_led_since == w.tick and diag.of(w).model_led_dropped == 2
     # a chit that comes under a model later is cleaned before it acts
     m.assign(w, "instinct", [a.id])
