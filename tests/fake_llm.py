@@ -83,7 +83,8 @@ def _render(obj: dict, rng: random.Random) -> str:
 
 @app.get("/v1/models")
 def models():
-    return {"object": "list", "data": [{"id": "fake-chit-7b", "object": "model"}]}
+    # what it says it serves: tests name "fake" too; --model adds names (a dry run of a real protocol's models)
+    return {"object": "list", "data": [{"id": m, "object": "model"} for m in STATE.get("models", ["fake-chit-7b", "fake"])]}
 
 
 @app.post("/v1/chat/completions")
@@ -91,6 +92,8 @@ async def chat(req: Request):
     body = await req.json()
     STATE["calls"] += 1
     STATE["seeded"] += "seed" in body
+    if isinstance(STATE.get("bodies"), list):  # (a test that wants to see what was sent)
+        STATE["bodies"].append(body)
     rng = random.Random(STATE["calls"])
     await asyncio.sleep(STATE["latency"] * rng.uniform(0.5, 1.5))
     msgs = body.get("messages", [])
@@ -142,6 +145,9 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=18999)
     ap.add_argument("--latency", type=float, default=0.3)
+    ap.add_argument("--model", action="append", default=[], help="also list this model name (repeatable)")
     a = ap.parse_args()
     STATE["latency"] = a.latency
+    if a.model:
+        STATE["models"] = ["fake-chit-7b", "fake", *a.model]
     uvicorn.run(app, host="127.0.0.1", port=a.port, log_level="warning")

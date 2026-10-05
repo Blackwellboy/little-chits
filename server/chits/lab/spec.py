@@ -61,6 +61,9 @@ class ExperimentSpec:
     brains: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # exact sealed BrainConfig dictionaries, keyed by id
     treatments: Dict[str, Dict[str, Any]] = field(default_factory=dict)  # pack id -> the pack (inlined on load)
     notes: str = ""
+    # paired card swaps (research item 72): model brain id -> its server on the other card. On every other seed
+    # (the 2nd, 4th, ...) each model runs there instead, so a card's own effect cancels out over the pairs.
+    card_swap: Dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ExperimentSpec":
@@ -188,10 +191,34 @@ class ExperimentSpec:
         for name, ev in self.events.items():
             if "metric" not in ev or "at_least" not in ev:
                 raise SpecError(f"event {name}: needs 'metric' and 'at_least'")
+        if self.card_swap:
+            if len(model_ids) < 2 or set(self.card_swap) != set(model_ids):
+                raise SpecError(f"card_swap names the other server of every model brain ({', '.join(model_ids) or 'none'}),"
+                                " and needs at least two")
+            if not all(isinstance(u, str) and u.strip() for u in self.card_swap.values()):
+                raise SpecError("card_swap: each model's other server is a base URL")
+
+    def brain_for(self, brain_id: str, seed_index: int) -> Dict[str, Any]:
+        """The sealed config a model arm runs with on this seed: on a card-swapped seed, its other server."""
+        cfg = dict(self.brains[brain_id])
+        if self.swapped(seed_index):
+            cfg["base_url"] = self.card_swap[brain_id]
+        return cfg
+
+    def swapped(self, seed_index: int) -> bool:
+        return bool(self.card_swap) and seed_index % 2 == 1
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
 
     def fingerprint(self) -> str:
-        """The protocol's identity: resuming or analysing a run under a changed protocol is refused."""
-        return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True).encode()).hexdigest()[:16]
+        """The protocol's identity: resuming or analysing a run under a changed protocol is refused. An option added
+        later counts only when it is used, so a protocol written before it keeps its fingerprint."""
+        d = self.to_dict()
+        for k, default in LATER_OPTIONS.items():
+            if d.get(k) == default:
+                d.pop(k, None)
+        return hashlib.sha256(json.dumps(d, sort_keys=True).encode()).hexdigest()[:16]
+
+
+LATER_OPTIONS: Dict[str, Any] = {"card_swap": {}}  # options added after protocols were sealed, at their "off" value

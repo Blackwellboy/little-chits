@@ -1148,7 +1148,9 @@ class World:
         if not self.flags.get("say"):
             return seen
         for o in self.agents_near(a.x, a.y, radius, exclude=a.id):
-            seen.update(set(o.failed_experiments))
+            # once per chit, in the order it tried them (a set here ordered the prompt's ties by string hash, so the
+            # same seed built a different prompt in another process)
+            seen.update(dict.fromkeys(o.failed_experiments, 1))
         return seen
 
     def same_land_xy(self, a: Agent, x: int, y: int) -> bool:

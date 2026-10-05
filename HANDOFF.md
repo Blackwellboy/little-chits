@@ -40,6 +40,33 @@ been merged. The `wip/*` branches on the remote stay as history; nothing on them
 Continue from `origin/main`. (Until 2026-09-30 this said `claude/dazzling-dijkstra-5nv6xh` at `d386a1d` and "never
 `main`": that was before v2 merged. It no longer applies.)
 
+## Plan from here (owner-approved 2026-10-05)
+
+**Where it stands.** As a game it works. The 2026-10-05 play world, on JevK5 9B, reached day 96 with 59 chits and 119 discoveries, no starvation, and only old-age deaths. As an experiment it isn't ready yet:
+
+- The harness A/Bs are instinct-only, so they don't see model behaviour. The live `/api/why` shows model-path loops: 113 failed stores, 96 "gather None", 71 experiments with unreal items.
+- The model mostly chooses among instinct's drafted options: 47% of steps. Its own plans are 12%, reflexes 20%, routine and filler 19%.
+- Per-seed noise (10-30 discoveries) is larger than most measured effects.
+- The model comparisons so far were ad-hoc runs of 3 seeds, not Lab runs.
+- Most of the research plan's gates (A-L) aren't checked.
+
+**Steps, in order:**
+
+1. **Make it correct.**
+   - Fix the live model-path loops (`dev/live-loops`).
+   - Give the harness a model-in-the-loop check: a scripted mind that runs the real model path with no GPU (`dev/model-check`).
+   - Finish the per-system random streams that cut A/B noise (`dev/rng-streams2`).
+2. **Make it trustworthy.**
+   - Audit gates A-L into `docs/RESEARCH_READINESS.md` (`dev/research-audit`).
+   - Re-run the model choice through the Lab (`make experiment`): pre-registered, blinded, in lockstep with request seeds, on at least 6 seeds, with confidence intervals.
+3. **Pick the question.**
+   - Choose one first study, for example model vs model on the same island and culture.
+   - Write and pre-register its protocol under `docs/protocols/`.
+   - Run it in experiment mode and publish the report under `docs/research/`.
+4. **Game polish, as a separate track.** Zones (off, issue #98), the story-first feed and the visuals from the roadmap. None of it may touch experiment mode.
+
+Every change still clears the bar in "How to judge a change" below.
+
 ## Work in flight (updated 2026-10-05)
 
 This section lets anyone, person or agent, pick up the current queue from GitHub alone. Update it in the same PR as any change that moves the queue.
