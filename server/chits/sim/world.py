@@ -2108,7 +2108,7 @@ class World:
             "size": self.w, "tick": self.tick, "rng_scheme": RNG_SCHEME,
             "rng_state": {k: [r.getstate()[0], list(r.getstate()[1]), r.getstate()[2]] for k, r in self._rngs.items()},
             **({"rng_tick": tick_rngs} if (tick_rngs := self._tick_streams_dict()) else {}),
-            "res_amt": self.res_amt, "traffic": [round(v, 1) for v in self.traffic], "roads": sorted(self.roads),
+            "res_amt": self.res_amt, "traffic": list(self.traffic), "roads": sorted(self.roads),
             "tunnels": sorted([i, sid] for i, sid in self.tunnels.items()),
             "agents": [a.to_dict() for a in self.agents.values()], "dead": [a.to_dict() for a in self.dead.values()],
             "structures": [s.to_dict() for s in self.structures.values()],

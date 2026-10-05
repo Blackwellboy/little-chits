@@ -25,6 +25,8 @@ def normal(d):
             skip.update(m)
         civ["project"], civ["skip"] = (live[0] if len(live) == 1 else live or None), skip
     d["civic"] = civ
+    if "traffic" in d:  # (saved exactly since a restored world must walk as the original did; older trees rounded it)
+        d["traffic"] = [round(v, 1) for v in d["traffic"]]
     return _unlabel(d)
 
 
