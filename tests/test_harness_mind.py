@@ -3,6 +3,7 @@ Mind by the scripted model, with no GPU and no network, and the ModelProbe that 
 
 import json
 import os
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -125,6 +126,71 @@ def test_never_a_real_server_by_default():
         mindrun.run_world(1, 1, mind="rtx5090")  # a brain id or a typo is refused, never guessed at
     row, p = R.run(2, 0, 64, 4)
     assert "mind" not in row and p.mind is None
+
+
+def _chit(seed=4):
+    from chits.brain.instinct import Instinct
+
+    w = World("A", "A", seed, "direct", 64, 6)
+    ins = Instinct()
+
+    def hook(world, a):
+        if not a.plan:
+            p = ins.plan(world, a)
+            a.plan, a.goal = p["steps"], p["goal"]
+
+    for _ in range(240 * 2):
+        w.step(hook)
+    return w, max(w.agents.values(), key=lambda a: len(a.knows))
+
+
+def test_the_scene_reader_reads_the_compact_prompt_as_the_full_one():
+    from chits.brain import prompt as P
+
+    w, a = _chit()
+    a.hunger = 23.0
+    a.inventory = {"wood": 2, "stone": 1}
+    full = scripted.scene(P.scene(w, a))
+    compact = scripted.scene(P.compact_scene(w, a))
+    choice = scripted.scene(P.choice_messages(w, a, [], own_idea=True)[1]["content"])
+    for s in (full, compact, choice):
+        assert s["hunger"] == 23 and s["carrying"] == {"wood": 2, "stone": 1}
+    assert compact["near"] and set(compact["near"]) <= set(full["near"]) | {"ore", "iron ore"}
+    assert full["recipes"] and set(compact["recipes"]) == set(full["recipes"])
+    assert set(compact["designs"]) == set(full["designs"]) and "hut" in compact["designs"]
+
+
+def test_the_scene_reader_reads_full_hands():
+    from chits.brain import prompt as P
+
+    w, a = _chit()
+    a.inventory = {"wood": 20}
+    assert a.free_space() <= 0
+    for text in (P.scene(w, a), P.compact_scene(w, a)):
+        s = scripted.scene(text)
+        assert s["carrying"] == {"wood": 20} and s["full"], text.split("Carrying")[1][:120]
+    assert scripted._bag("2 stone + wood") == ["stone", "stone", "wood"]
+
+
+def test_an_experiment_plan_fetches_every_input_it_lacks():
+    s = {"carrying": {"stone": 1}, "full": False, "near": ["plant fiber", "stone", "wood", "copper ore"]}
+    assert scripted.prepare(s, ["plant fiber", "plant fiber", "stone", "stone", "wood"]) == [
+        {"do": "gather", "what": "plant fiber", "qty": 2}, {"do": "gather", "what": "stone", "qty": 1},
+        {"do": "gather", "what": "wood", "qty": 1}]  # repeats kept, held ones counted, none dropped
+    assert scripted.prepare(s, ["charcoal", "stone"]) is None  # nowhere to gather charcoal: not this combination
+    assert scripted.prepare(s, ["copper ore", "stone"]) is None  # ore needs a pick it doesn't hold
+    assert scripted.prepare(dict(s, full=True), ["wood", "stone"]) is None  # no room for what it must gather
+    assert scripted.prepare(dict(s, full=True), ["stone"]) == []
+    model = scripted.ScriptedModel(seed=1, bad_rate=0)
+    scene_ = {"hunger": 90, "carrying": {"stone": 1}, "full": False, "near": ["plant fiber", "stone"], "recipes": [],
+              "inputs": {}, "designs": [], "no_home": False, "sites": [], "failed": "",
+              "untried": ["charcoal + stone", "plant fiber + plant fiber + stone + stone"]}
+    for i in range(40):  # every experiment it plans has its inputs in hand by then
+        plan = model._good_plan(dict(scene_), random.Random(i))["plan"]
+        if plan[-1]["do"] == "experiment":
+            assert plan[-1]["with"] == ["plant fiber", "plant fiber", "stone", "stone"]
+            assert plan[:-1] == [{"do": "gather", "what": "plant fiber", "qty": 2},
+                                 {"do": "gather", "what": "stone", "qty": 1}]
 
 
 def test_scripted_answers_are_seeded_by_the_request():

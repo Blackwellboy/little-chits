@@ -49,8 +49,10 @@ python tools/harness/run.py 42 --days 5 --mind http://127.0.0.1:18191/v1   # a r
 
 **The scripted model** (`scripted.py`) answers every request the game makes: a letter for a choice (with logprobs,
 so the cascade's confidence gate and escalation run), a JSON plan for a full request, lessons for a reflection, a
-letter for a vote. It reads only the prompt, as a model does: it eats when hungry with food in hand, builds a hut when
-homeless, tries the untried combinations the scene lists, gathers what is near. At `--bad-rate` (default 0.15) it
+letter for a vote. It reads only the prompt (full, compact or choice format), as a model does: it eats when hungry with
+food in hand, builds a hut when homeless, tries an untried combination the scene lists only when it can gather every
+input it lacks (repeats counted) and has room for them, crafts what it can gather for, gathers what is near. So a good
+answer's failures are the world's, and only `--bad-rate` adds the model's own. At `--bad-rate` (default 0.15) it
 answers in one of the ways live models have gone wrong (`--bad-kinds` picks among them):
 
 | Kind | What it sends |

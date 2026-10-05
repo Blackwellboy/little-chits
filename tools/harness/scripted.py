@@ -158,17 +158,22 @@ class ScriptedModel:
         if s["sites"] and r < 0.25:
             return plan("help build", "Many hands.", [{"do": "help", "site": rng.choice(s["sites"])}])
         if s["untried"] and r < 0.45:
-            combo = rng.choice(s["untried"])
-            items = [x.strip() for x in combo.split(" at the ")[0].split("+")]
-            at = combo.split(" at the ")[1].strip() if " at the " in combo else None
-            pre = [{"do": "gather", "what": x, "qty": 1} for x in dict.fromkeys(items) if x not in carrying and x in near]
-            step = {"do": "experiment", "with": items}
-            if at:
-                step["at"] = at
-            return plan("try something new", "What if these went together?", pre[:2] + [step])
+            # only a combination it can put together here, every input in hand (repeats counted) before it starts
+            for combo in rng.sample(s["untried"], len(s["untried"])):
+                items = [x.strip() for x in combo.split(" at the ")[0].split("+")]
+                pre = prepare(s, items)
+                if pre is None:
+                    continue
+                step = {"do": "experiment", "with": items}
+                if " at the " in combo:
+                    step["at"] = combo.split(" at the ")[1].strip()
+                return plan("try something new", "What if these went together?", pre + [step])
         if s["recipes"] and r < 0.6:
             what = rng.choice(s["recipes"])
-            return plan(f"make {what}", "A useful thing to have.", [{"do": "craft", "what": what, "qty": 1}])
+            bag = _bag(s["inputs"].get(what, ""))
+            pre =prepare(s, bag) if " at " not in s["inputs"].get(what, "") else None  # (a station's: work there)
+            if pre is not None:
+                return plan(f"make {what}", "A useful thing to have.", pre + [{"do": "craft", "what": what, "qty": 1}])
         if r < 0.7:
             return plan("explore", "What lies beyond?", [{"do": "explore", "dir": rng.choice(["N", "S", "E", "W"])}])
         pick = [x for x in ("wood", "stone", "plant fiber", "clay", "berries") if x in near] or ["wood"]
@@ -187,21 +192,78 @@ class ScriptedModel:
 
 
 def scene(user: str) -> Dict[str, Any]:
-    """What the policy reads from a full plan request's scene (brain/prompt.py scene())."""
-    def grab(rx: str) -> str:
-        m = re.search(rx, user)
-        return m.group(1) if m else ""
+    """What the policy reads from a plan request's scene: the full one (brain/prompt.py scene()) or the compact one
+    (compact_scene(), which the choice prompt also follows). ``carrying`` maps each item to how many are held."""
+    def grab(*rxs: str) -> str:
+        for rx in rxs:
+            m = re.search(rx, user, re.M)
+            if m:
+                return m.group(1)
+        return ""
 
-    hunger = grab(r"Hunger (\d+)/100")
-    carrying = [re.sub(r"^\d+ ", "", x).strip() for x in grab(r"Carrying \(\d+/\d+\): (.*?)\.\n").split(", ")
-                if x and x != "nothing"]
-    near = [re.sub(r" \d+ tiles? .*$", "", x).strip() for x in grab(r"- Resources: (.*)").split("; ") if x]
-    recipes = [x.split("->")[1].split("(")[0].strip() for x in grab(r"YOU KNOW HOW TO MAKE: (.*)").split("; ") if "->" in x]
-    designs = [x.split("(")[0].strip() for x in grab(r"YOU KNOW HOW TO BUILD: (.*)").split("); ") if x]
-    untried = [x.strip() for x in grab(r"you have never tried: (.*?)\.?\n").split("; ") if x.strip()]
-    return {"hunger": int(hunger) if hunger else 60, "carrying": carrying, "near": near, "recipes": recipes,
-            "designs": designs, "untried": untried, "no_home": "You have no home yet" in user,
-            "sites": re.findall(r"CONSTRUCTION SITE (\S+):", user), "failed": grab(r'YOUR PLAN FAILED: "([^"]*)"')}
+    hunger = grab(r"Hunger (\d+)/100", r"^Hunger (\d+) energy")
+    held = re.search(r"Carrying \((\d+)/(\d+)\): (.*?)(?: FULL)?\.(?: —|$)", user, re.M)
+    carrying: Dict[str, int] = {}
+    for x in (held.group(3) if held else "").split(", "):
+        m = re.match(r"(\d+) (.+?)(?: \(worn\))?$", x.strip())
+        if m:
+            carrying[m.group(2)] = carrying.get(m.group(2), 0) + int(m.group(1))
+    full = bool(held) and int(held.group(1)) >= int(held.group(2))
+    near = [re.sub(r" \d+ tiles? .*$", "", x).strip()
+            for x in grab(r"^- Resources: (.*)", r"^Near: (.*)").split("; ") if x and x != "no resources"]
+    made = grab(r"^YOU KNOW HOW TO MAKE: (.*)")
+    if made:
+        recipes = [x.split("->")[1].split("(")[0].strip() for x in made.split("; ") if "->" in x]
+        inputs = {x.split("->")[1].split("(")[0].strip(): x.split("->")[0].strip() for x in made.split("; ") if "->" in x}
+    else:  # compact: the names only
+        recipes = [x.strip() for x in grab(r"^Can make: (.*?)\. Can build:").split(", ")
+                   if x.strip() and not x.startswith("nothing yet")]
+        inputs = {}
+    designs = [x.split("(")[0].strip() for x in grab(r"^YOU KNOW HOW TO BUILD: (.*)").split("); ") if x] \
+        or [x.strip() for x in grab(r"Can build: (.*?)\.$").split(", ") if x.strip() and x.strip() != "nothing"]
+    untried = [x.strip() for x in grab(r"you have never tried: (.*?)\.?$", r"^Never tried: (.*?)\.?$").split("; ")
+               if x.strip()]
+    sites = re.findall(r"CONSTRUCTION SITE (\S+):", user) or re.findall(r" site (s\d+) needs", user)
+    return {"hunger": int(hunger) if hunger else 60, "carrying": carrying, "full": full, "near": near,
+            "recipes": recipes, "inputs": inputs, "designs": designs, "untried": untried,
+            "no_home": "You have no home yet" in user, "sites": sites, "failed": grab(r'YOUR PLAN FAILED: "([^"]*)"')}
+
+
+def _bag(inputs: str) -> List[str]:
+    """ "2 stone + wood" -> ["stone", "stone", "wood"] (a recipe's inputs as YOU KNOW HOW TO MAKE writes them)."""
+    out: List[str] = []
+    for part in inputs.split(" at ")[0].split(" + "):
+        m = re.match(r"\s*(?:(\d+) )?(.+?)\s*$", part)
+        if m and m.group(2):
+            out += [m.group(2)] * int(m.group(1) or 1)
+    return out
+
+
+def _gatherable(s: Dict[str, Any], item: str) -> bool:
+    """Can the chit pick this up from the land nearby? Ore needs a pick and fish a spear (it may not have one)."""
+    if item not in s["near"]:
+        return False
+    if "ore" in item.split():
+        return any("pick" in k for k in s["carrying"])
+    if item == "fish":
+        return any("spear" in k for k in s["carrying"])
+    return True
+
+
+def prepare(s: Dict[str, Any], bag: List[str]) -> Optional[List[Dict[str, Any]]]:
+    """Gather steps that put every item of `bag` (repeats counted) in the chit's hands, or None if it can't: an item
+    it neither holds nor can gather near here, or no room in its hands for what it would gather."""
+    steps = []
+    for item, n in Counter(bag).items():
+        short = n - s["carrying"].get(item, 0)
+        if short <= 0:
+            continue
+        if not _gatherable(s, item):
+            return None
+        steps.append({"do": "gather", "what": item, "qty": short})
+    if steps and s["full"]:
+        return None
+    return steps
 
 
 def _completion(text: str, finish: str, tin: int, tout: int) -> Dict[str, Any]:
