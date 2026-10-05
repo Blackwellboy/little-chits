@@ -1,6 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
-import { api } from "../net/socket";
+import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
 import { Portrait } from "./Portrait";
@@ -209,19 +209,19 @@ function ControlStrip({ world, id, possessed, alive }: { world: string; id: stri
   const order = (action: string) =>
     api(`/api/worlds/${world}/agents/${id}/order`, { action })
       .then((r: any) => { setMsg(""); setLast(r.goal || (action === "cancel" ? "side quest dropped" : "")); })
-      .catch((e) => setMsg(String(e.message || e)));
+      .catch((e) => setMsg(errorText(e)));
   const send = () => {
     const t = text.trim();
     if (!t) return;
     setText("");
     api(`/api/worlds/${world}/agents/${id}/order`, { text: t })
       .then((r: any) => { setMsg(""); if (r.goal) setLast(r.goal); })
-      .catch((e) => setMsg(String(e.message || e)));
+      .catch((e) => setMsg(errorText(e)));
   };
   const possess = () => api(`/api/worlds/${world}/agents/${id}/possess`, {})
-    .then(() => { setHeld(true); setMsg(""); }).catch((e) => setMsg(String(e.message || e)));
+    .then(() => { setHeld(true); setMsg(""); }).catch((e) => setMsg(errorText(e)));
   const release = () => api(`/api/worlds/${world}/possess/release`, {})
-    .then(() => { setHeld(false); setLast(""); setMsg(""); }).catch((e) => setMsg(String(e.message || e)));
+    .then(() => { setHeld(false); setLast(""); setMsg(""); }).catch((e) => setMsg(errorText(e)));
 
   const BUTTONS: [string, string, string][] = [
     ["⛏ Mine", "mine", "Gather the raw material the road to the next age needs most"],
