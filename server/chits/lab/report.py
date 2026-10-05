@@ -137,7 +137,7 @@ def markdown(a: Dict[str, Any]) -> str:
                      f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | {_fmt(p['mann_whitney_p'])} |")
         L += ["", "Differences are paired by seed (both arms had the same island). p-values are not corrected for the "
                   "number of metrics: read them as a guide, not a verdict.", ""]
-    if any(r.get("compute") for r in a["runs"]):
+    if any(r.get("compute") or any(r["final"].get(k) is not None for _, k in OPPORTUNITY_ROWS) for r in a["runs"]):
         L += ["## Thinking opportunities", "",
               "Per chit-day (one chit alive for one day). Reported, not equalised: a model whose plans run out sooner "
               "asks more often. Waiting is the share of a model-minded chit's time spent waiting for its answer "
@@ -148,9 +148,11 @@ def markdown(a: Dict[str, Any]) -> str:
         for name, key in OPPORTUNITY_ROWS:
             cells = []
             for l in a["labels"]:
-                xs = [r["final"].get(key) for r in by_label(a, l)]
-                xs = [x for x in xs if x is not None]
-                cells.append(_fmt(sum(xs) / len(xs)) if xs else "-")
+                runs = by_label(a, l)
+                xs = [x for x in (r["final"].get(key) for r in runs) if x is not None]
+                # (a run recorded before a field existed has none: a mean over fewer runs says how many)
+                cells.append((_fmt(sum(xs) / len(xs)) + (f" ({len(xs)} of {len(runs)} runs)" if len(xs) < len(runs) else ""))
+                             if xs else "-")
             L.append(f"| {name} | " + " | ".join(cells) + " |")
         L += ["", "Means over seeds.", ""]
     if a["events"]:

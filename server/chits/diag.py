@@ -320,7 +320,7 @@ def action_finished(world, a, step, result: str) -> None:
     record = {"world": world.id, "world_uuid": world.uuid, "epoch": world.epoch, "tick": world.tick,
               "agent": a.id, "plan_id": None if step.get("_reflex") else a.plan_id, "decision_id": step.get("_decision_id"),
               "step_id": step.get("_step_id"), "tick_started": step.get("_tick_started"),
-              "source": origin, "provenance": PV.of_step(step), "verb": step.get("do"),
+              "source": origin, "provenance": PV.of_step(step, a.plan_source), "verb": step.get("do"),
               **({"executed_as": redirect} if redirect else {}),
               "outcome": "executed" if result == "done" else "failed",
               "result": state.get("note", "") if result == "done" else result,

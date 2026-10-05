@@ -44,6 +44,9 @@ _ORIGINS = {
     "model_generated": "model_plan", "model_selected": "model_choice", "model_repaired": "model_repair",
     "reflex": "body_reflex", "routine": "routine", "instinct": "instinct_plan", "duty": "instinct_plan",
     "fallback": "fallback", "shed": "fallback", "filler": "filler",
+    # a chit's plan_source, for a step with no label of its own (an instinct-only Lab run installs plans directly)
+    "instinct-routine": "routine", "instinct-duty": "instinct_plan", "instinct-filler": "filler",
+    "instinct-fallback": "fallback",
 }
 
 
@@ -52,13 +55,14 @@ def category(origin: Any) -> str:
     return _ORIGINS.get(str(origin or ""), "unknown")
 
 
-def of_step(step: Mapping[str, Any]) -> str:
-    """A step's category: its body reflex and filler flags first, then its origin label."""
+def of_step(step: Mapping[str, Any], fallback: Any = None) -> str:
+    """A step's category: its body reflex and filler flags first, then its origin label, then `fallback` (the plan's
+    source, for a step with no label of its own)."""
     if step.get("_reflex"):
         return "body_reflex"
     if step.get("_filler"):
         return "filler"
-    return category(step.get("_origin"))
+    return category(step.get("_origin") or fallback)
 
 
 def _shares(counts: Mapping[str, int]) -> Dict[str, Any]:

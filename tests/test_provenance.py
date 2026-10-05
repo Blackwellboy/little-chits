@@ -116,3 +116,41 @@ def test_the_report_lists_redirects():
     from chits.lab import report
 
     assert "redirects" in {k for _, k in report.OPPORTUNITY_ROWS}
+
+
+def test_a_step_with_no_label_of_its_own_takes_its_plans_source():
+    """Codex on #139: an instinct-only Lab run installs plans with no `_origin`; the per-step record said unknown."""
+    assert PV.of_step({"do": "gather"}, "instinct") == "instinct_plan"
+    assert PV.of_step({"do": "gather", "_origin": "model_generated"}, "instinct") == "model_plan"
+    assert PV.of_step({"do": "eat"}, "instinct-routine") == "routine"
+    from chits.brain.instinct import Instinct
+
+    w = World("A", "A", 3, "direct", 64, 3)
+    ins = Instinct()
+
+    def hook(world, a):  # (as lab/run.py's instinct arm: plans installed without a label)
+        if not a.plan:
+            p = ins.plan(world, a)
+            a.plan, a.goal = p["steps"], p["goal"]
+
+    for _ in range(240):
+        w.step(hook)
+    recs = list(diag.of(w).recent_steps)
+    assert recs and not [r for r in recs if r["provenance"] == "unknown"]
+
+
+def test_an_instinct_only_report_shows_who_drove_it_and_a_partial_mean_says_so(tmp_path):
+    from chits.lab import report, run
+    from chits.lab.spec import ExperimentSpec
+
+    spec = ExperimentSpec.from_dict({"name": "drivers", "arms": [{"name": "a"}, {"name": "b"}], "seeds": [3, 4],
+                                     "days": 1, "size": 64, "population": 4})
+    run.run(spec, tmp_path / "out")
+    text = report.write_pack(tmp_path / "out").read_text()
+    assert "Thinking opportunities" in text and "heuristic instinct share of steps" in text
+    # a run from before a field existed (a resumed older experiment): its mean says how many runs it covers
+    p = next((tmp_path / "out" / "runs").glob("3_*/result.json"))
+    r = json.loads(p.read_text())
+    r["final"].pop("instinct_step_share")
+    p.write_text(json.dumps(r))
+    assert "(1 of 2 runs)" in report.write_pack(tmp_path / "out").read_text()
