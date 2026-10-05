@@ -555,6 +555,8 @@ class Runtime:
         their bodies' reflexes and the executor stay. Kept by the game; recorded in diagnostics and the manifest."""
         from . import diag
 
+        if on and self.mind.model_only:
+            raise ValueError("model-only is on: switch it off before playing model-led (they are different modes)")
         was, self.mind.model_led = self.mind.model_led, bool(on)
         self.store.set_meta("model_led", "1" if on else "0")
         for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:
@@ -562,10 +564,15 @@ class Runtime:
                 self.mind.start_model_led(w)  # (no instinct plan from before the switch runs on after it)
             elif not on:
                 diag.model_led_from(w, None)
+        if was != self.mind.model_led and self.worlds and not getattr(self, "_resetting", False):
+            self.write_manifest()  # (the run's manifest says how it is driven: a change mid-game is written there too)
 
     def set_model_only(self, on: bool) -> None:
         """The model-only diagnostic (brain/mind.py): no instinct menu, fallback or reflexes, in every world."""
         from . import diag
+
+        if on and self.mind.model_led:
+            raise ValueError("model-led is on: switch it off before the model-only diagnostic (they are different modes)")
 
         was, self.mind.model_only = self.mind.model_only, bool(on)
         for w in list(self.worlds.values()) + [f["world"] for f in self.forks.values() if "world" in f]:

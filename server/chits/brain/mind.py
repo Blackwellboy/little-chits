@@ -335,7 +335,9 @@ class Mind:
                 # a reply's "say" answers whoever just spoke to this chit (it went to "all" and never counted)
                 heard = a.spoken_to or {}
                 to = heard.get("name") if heard.get("id") in world.agents and world.tick - heard.get("tick", 0) < 240 else "all"
-                a.plan.insert(0, {"do": "say", "to": to, "text": p["say"]})
+                # (the model's own words: they carry its plan's provenance, provenance.py; untagged, they were unknown)
+                a.plan.insert(0, {"do": "say", "to": to, "text": p["say"], "_origin": origin,
+                                  "_decision_id": rec.get("request_id") if rec else None})
             return
         # ask ahead of time: on the last step, or two steps before the end when the model is slow to answer (the
         # 5090's replies took 12.7 s at the median, 25 ticks, while a step often takes fewer)
@@ -428,6 +430,8 @@ class Mind:
         keep = [s for s in a.plan if (s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler"))
                 or (led and s.get("_reflex"))]
         dropped = len(a.plan) - len(keep)
+        if a.plan and (not keep or keep[0] is not a.plan[0]):  # the step under way went: its progress goes with it,
+            a.path, a.work_acc = [], 0.0  # or the model's next step would finish on work done for it (Codex on #140)
         a.plan = keep
         if a.pending_plan is not None and not led:
             rec = getattr(a, "_decision", None)

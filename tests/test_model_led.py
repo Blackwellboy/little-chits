@@ -190,3 +190,55 @@ def test_the_harness_refuses_both_modes_at_once():
     r = subprocess.run([sys.executable, str(root / "tools" / "harness" / "run.py"), "3", "--days", "1", "--mind",
                         "scripted", "--model-led", "--model-only"], capture_output=True, text=True)
     assert r.returncode != 0 and "pick one" in r.stderr
+
+
+def test_switching_on_keeps_the_models_spoken_reply_and_drops_the_progress_of_a_dropped_step():
+    """Codex on #140: the model's spoken reply was untagged and dropped; an instinct step dropped mid-way left its
+    progress for the model's next step."""
+    w, a, m = _setup(False)
+    a.plan = [{"do": "gather", "what": "wood", "qty": 5, "_origin": "instinct"},
+              {"do": "say", "to": "all", "text": "hello", "_origin": "model_generated"}]
+    a.work_acc, a.path = 3.5, [(1, 1)]
+    m.model_led = True
+    m.start_model_led(w)
+    assert [s["do"] for s in a.plan] == ["say"] and a.work_acc == 0.0 and a.path == []
+    b = [o for o in w.agents.values() if o is not a][0]
+    b.plan = [{"do": "gather", "what": "wood", "qty": 5, "_origin": "model_generated"}]
+    b.work_acc = 2.0
+    m._model_only_clean(w, b, "again", led=True)
+    assert b.work_acc == 2.0  # (its own step kept: its progress too)
+
+
+def test_the_two_model_modes_are_never_on_together_and_a_toggle_rewrites_the_manifest(tmp_path, monkeypatch):
+    import json as J
+
+    from fastapi.testclient import TestClient
+
+    _game(tmp_path, monkeypatch)
+    from chits.app import R, app
+
+    with TestClient(app) as c:
+        r = R()
+        assert c.post("/api/model-led", json={"on": True}).status_code == 200
+        man = J.loads((tmp_path / "runs" / r.run_id / "manifest.json").read_text())
+        assert man["model_led"] is True
+        assert c.post("/api/model-only", json={"on": True}).status_code == 409
+        assert c.post("/api/model-led", json={"on": False}).status_code == 200
+        assert J.loads((tmp_path / "runs" / r.run_id / "manifest.json").read_text())["model_led"] is False
+        assert c.post("/api/model-only", json={"on": True}).status_code == 200
+        assert c.post("/api/model-led", json={"on": True}).status_code == 409
+        assert r.mind.model_only and not r.mind.model_led
+
+
+def test_a_spoken_reply_adopted_with_its_plan_survives_switching_on():
+    w, a, m = _setup(False)
+    m.hook(w, a)
+    rec = a._decision
+    rec["parse"] = "ok"
+    a.thinking = False
+    a.pending_plan = {"goal": "talk", "thought": "", "steps": [{"do": "rest"}], "say": "hello all", "objective": ""}
+    m.hook(w, a)  # adopted: the reply's "say" is put first
+    assert a.plan[0]["do"] == "say"
+    m.model_led = True
+    m.start_model_led(w)
+    assert [s["do"] for s in a.plan][:2] == ["say", "rest"]

@@ -595,7 +595,10 @@ def set_model_led(body: ModelOnlyBody):
     r = R()
     if r.contract == "experiment":
         raise HTTPException(409, "an experiment run is stricter than model-led already")
-    r.set_model_led(body.on)
+    try:
+        r.set_model_led(body.on)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     return {"ok": True, "model_led": r.mind.model_led}
 
 
@@ -607,7 +610,10 @@ def set_model_only(body: ModelOnlyBody):
     r = R()
     if r.contract == "experiment":
         raise HTTPException(409, "model-only is a play-mode diagnostic, not for an experiment run")
-    r.set_model_only(body.on)
+    try:
+        r.set_model_only(body.on)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
     return {"ok": True, "model_only": r.mind.model_only}
 
 
