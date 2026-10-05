@@ -311,3 +311,19 @@ def test_a_save_file_whose_worlds_have_different_rules_is_not_one_game():
     a = World("A", "A", 5, "direct", 64, 4).to_dict()
     b = World("B", "B", 5, "direct", 64, 4, rules=OFF).to_dict()
     assert Runtime._match_problem({"A": a, "B": b}) == "they have different world rules"
+
+
+def test_the_harness_refuses_rules_that_are_not_a_rules_object():
+    """Codex on #137: --rules false (or 0, or []) ran with the legacy rules and left them out of the row."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    for bad in ("false", "0", "[]", '{"religion": "no"}'):
+        r = subprocess.run([sys.executable, str(root / "tools" / "harness" / "run.py"), "3", "--days", "1", "--size",
+                            "64", "--chits", "4", "--rules", bad], capture_output=True, text=True)
+        assert r.returncode != 0, bad
+    ok = subprocess.run([sys.executable, str(root / "tools" / "harness" / "run.py"), "3", "--days", "1", "--size", "64",
+                         "--chits", "4", "--rules", '{"religion": false}'], capture_output=True, text=True)
+    assert ok.returncode == 0 and json.loads(ok.stdout.strip().splitlines()[-1])["rules"] == {"religion": False}

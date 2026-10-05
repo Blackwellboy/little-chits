@@ -63,8 +63,9 @@ def metrics(w, low: int, starved: int) -> dict:
 
 
 def world_rules(rules):
-    """The tree under test's WorldRules for a rules object ({} or None: the world's default, as before rules)."""
-    if not rules:
+    """The tree under test's WorldRules for a rules object (None: the world's default, as before rules). Anything else
+    that isn't a rules object (false, 0, []) is refused by WorldRules, never read as the default (Codex on #137)."""
+    if rules is None:
         return {}
     from chits.sim.rules import WorldRules  # (a tree from before world rules has none: asking for rules there fails)
 
@@ -95,7 +96,8 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
                 w.step(p.hook)
                 p.after_tick()
                 low = min(low, len(w.agents))  # (every tick: a death and a birth between daily samples hid a dip)
-    row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture, **({"rules": rules} if rules else {})}
+    row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture,
+           **({"rules": rules} if rules is not None else {})}
     row.update(metrics(w, low, len(p.starved)))
     row["births"] = p.events.get("birth", 0)
     row["forgot"] = p.events.get("forgotten", 0)
@@ -161,7 +163,7 @@ def main(argv=None) -> None:
                 "tick_seconds": args.tick_seconds, "model_only": args.model_only}
     try:
         row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind,
-                     json.loads(args.rules) if args.rules else None, **opts)
+                     json.loads(args.rules) if args.rules != "" else None, **opts)
     except ValueError as e:
         sys.exit(str(e))
     if args.autopsy:
