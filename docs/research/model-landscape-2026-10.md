@@ -47,10 +47,11 @@ A desk survey that comes before anything is downloaded or run. Repo ids were che
    - whether a failure note is used, once the Lab can run repair as an arm
    - Reject what is plainly unusable. Order: Qwen3.5-9B, Granite 4.2 8B, Gemma 4 12B Q8_0, Ministral 3 14B; then the MoEs (Gemma 4 26B-A4B, Qwen3.6-35B-A3B); then Qwen3.8-27B and Gemma 4 31B.
 2. **Stage B, the model in the loop** (`tools/harness/run.py --mind URL`, several seeds):
-   - model-led and model-only
+   - each model in its normal mode, and model-led play
    - starvation and stuck loops
    - invented or missing items and malformed actions
-   - who drove the world (docs/PROVENANCE.md)
+   - who drove the world: the provenance categories, added in the provenance PR as docs/PROVENANCE.md
+   - Model-only runs (`--model-only`) are a diagnostic of what a model does with no body reflexes and no menu. They are never a screening arm: they force the full prompt, which also takes a letter model such as JevK5 out of its interface.
 3. **Stage C, the Lab:** pre-registered, same rules and culture, matched seeds, lockstep, request seeds, matched sampling, blinded, BrainTape, invalid-run handling, and a seed count justified by the measured variance.
 
 Every model is reported on civilisation quality **and** on thinking cost (requests, tokens and seconds per chit-day, VRAM, wall time). No single score hides the parts.
