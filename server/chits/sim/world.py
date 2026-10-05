@@ -29,6 +29,7 @@ from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
 from . import projects as PROJECTS  # village projects, research and wants (their shared state: world.civic)
 from . import buildings as BLD
+from . import rules as RL
 
 SEASONS = ("spring", "summer", "autumn", "winter")
 DAYS_PER_SEASON = 3
@@ -275,8 +276,9 @@ class Event:
 class World:
     def __init__(self, world_id: str, name: str, seed: int, culture: str = "direct", size: int = 128,
                  n_agents: int = 18, label: str = "", pack: Optional[Dict[str, Any]] = None,
-                 rng_scheme: Optional[int] = None):
-        """`rng_scheme`: the random-number scheme (2 or 3), when it must match a twin's; otherwise scheme_now()."""
+                 rng_scheme: Optional[int] = None, rules: Optional[RL.WorldRules] = None):
+        """`rng_scheme`: the random-number scheme (2 or 3), when it must match a twin's; otherwise scheme_now().
+        `rules`: what kinds of civilisation it allows (sim/rules.py), fixed for its life; by default the legacy set."""
         if rng_scheme not in (None, RNG_RUNNING, RNG_STREAMED):
             raise ValueError(f"unsupported RNG scheme {rng_scheme}")
         self.id = world_id
@@ -285,6 +287,7 @@ class World:
         self.seed = seed
         self.culture = culture
         self.flags = dict(CULTURE_FLAGS[culture])
+        self.rules = rules if rules is not None else RL.LEGACY
         self.w = self.h = size
         self.tick = 0
         self._rngs: Dict[str, random.Random] = {}
@@ -826,7 +829,7 @@ class World:
 
     # ------------------------------------------------------------------ beliefs (T21)
     def found_belief(self, a: Agent, name: Any, tenet: Any) -> Optional[str]:
-        if a.belief:
+        if a.belief or not self.rules.religion:  # (a world without religion: no faith can be founded, sim/rules.py)
             return None
         tenet = str(tenet or "").strip()
         if len(tenet) > 160:  # trim to the last clause, not mid-phrase
@@ -889,7 +892,7 @@ class World:
 
     def convert(self, a: Agent, belief_id: str, how: str) -> bool:
         b = self.beliefs.get(belief_id)
-        if a.belief or not b:
+        if a.belief or not b or not self.rules.religion:
             return False
         a.belief = belief_id
         if a.id not in b["followers"]:
@@ -902,7 +905,7 @@ class World:
 
     def _belief_tick(self) -> None:
         """Every 10 ticks: co-believers warm to each other; a shrine of your own belief lifts your mood."""
-        followers = [a for a in self.agents.values() if a.belief]
+        followers = [a for a in self.agents.values() if a.belief] if self.rules.religion else []
         if not followers:
             return
         shrines = [s for s in self.structures.values() if s.design == "shrine" and s.functional and s.belief]
@@ -1577,7 +1580,10 @@ class World:
         self.emit("first", text, 5, agent.id, agent.x, agent.y, key=key)
 
     def learned(self, agent: Agent, knowledge: str, how: str, source: Optional[Agent] = None) -> bool:
-        """Grant knowledge with provenance + events. Returns True if new."""
+        """Grant knowledge with provenance + events. Returns True if new. Knowledge the world's rules rule out (a
+        shrine where there is no religion) is never learned, by any route: insight, teaching, reading or study."""
+        if not self.rules.allows_knowledge(knowledge):
+            return False
         if not agent.learn(knowledge, how, self.tick, source.id if source else None):
             return False
         agent.bump_rev(f"it learned {knowledge.split(':', 1)[-1]} ({how})")
@@ -2151,6 +2157,7 @@ class World:
             "ground": self.ground, "artifact_uses": self.artifact_uses, "outbox": self.outbox,
             "animals": self.animals, "relations": self.relations, "civic": PROJECTS.save(self),
             "schema": SNAPSHOT_SCHEMA, "uuid": self.uuid, "epoch": self.epoch, "epochs": self.epochs, "build": BUILD,
+            "rules": self.rules.to_dict(),
         }
 
     def deliver(self, channel: str, frm: Optional[Agent], to: Agent, knowledge: Optional[str], message: Optional[str]) -> None:
@@ -2234,6 +2241,9 @@ class World:
         w.signs_dirty = False
         w.id, w.name, w.label, w.seed, w.culture = d["id"], d["name"], d.get("label", d["name"]), d["seed"], d["culture"]
         w.flags = dict(CULTURE_FLAGS[w.culture])
+        # world rules (sim/rules.py) carry their own version. A save from before them has none and played by the
+        # rules every world had then: the legacy set. A rules record from a newer build is refused, never guessed
+        w.rules = RL.WorldRules.from_dict(d.get("rules"))
         w.w = w.h = d["size"]
         w.tick = d["tick"]
         scheme = int(d.get("rng_scheme", 1))
