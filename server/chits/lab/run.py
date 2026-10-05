@@ -518,8 +518,15 @@ def migrate_legacy(out) -> List[str]:
             raw = json.loads(p.read_text())
         except ValueError:
             continue
-        if sealed.exists() or not ({"arm", "brain"} & set(raw)):
-            continue
+        if not ({"arm", "brain"} & set(raw)):
+            continue  # (already blind)
+        if sealed.exists():
+            # a migration that stopped between its two writes: the raw record is kept already; the public one is
+            # redacted from it now, rather than left raw for every blind read after (Codex on #123, issue #125)
+            try:
+                raw = json.loads(sealed.read_text())
+            except ValueError:
+                pass
         if spec is None:
             spec = ExperimentSpec.from_dict(json.loads(man.read_text())["protocol"])
         label = str(raw.get("label") or p.parent.name.split("_", 1)[-1])
@@ -532,11 +539,12 @@ def migrate_legacy(out) -> List[str]:
         by_kind: Dict[str, int] = {}
         for b in broken:
             by_kind[b.get("kind", "?")] = by_kind.get(b.get("kind", "?"), 0) + 1
-        when = time.strftime("%Y-%m-%dT%H:%M:%S")
-        raw = {"breaks": len(broken), "by_kind": by_kind, **raw,
-               "migrated": {"at": when, "from": p.name, "note": "a record from before invalid runs were kept blind; "
-                                                                 "it kept at most 20 breaks"}}
-        _write_json(sealed, raw)
+        if not sealed.exists():  # (a sealed record is never rewritten)
+            when = time.strftime("%Y-%m-%dT%H:%M:%S")
+            raw = {"breaks": len(broken), "by_kind": by_kind, **raw,
+                   "migrated": {"at": when, "from": p.name, "note": "a record from before invalid runs were kept "
+                                                                     "blind; it kept at most 20 breaks"}}
+            _write_json(sealed, raw)
         blind = redact_record({k: v for k, v in raw.items() if k not in ("arm", "brain")}, names)
         _write_json(p, blind)
         moved.append(str(p.relative_to(out)))

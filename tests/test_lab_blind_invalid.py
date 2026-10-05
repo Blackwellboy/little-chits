@@ -285,3 +285,30 @@ def test_a_model_the_server_chose_is_redacted_too(secret_server, tmp_path, monke
     for where, text in _blind_files(tmp_path).items():
         for s in (chosen, chosen.rsplit(".", 1)[0], "Hiddenpick"):
             assert s.lower() not in text.lower(), f"{s!r} in {where}"
+
+
+def test_a_migration_stopped_between_its_two_writes_is_finished_blind(fake_fast, tmp_path):
+    """Codex on #123 (issue #125): the sealed copy was written, then the process stopped before the public record was
+    redacted. The next migration saw the sealed copy and skipped the record, so invalid.json stayed raw for good."""
+    brain = {"id": BRAIN, "label": LABEL, "base_url": fake_fast, "model": MODEL, "max_concurrency": 4,
+             "max_tokens": 100}
+    proto = {"name": "blind", "arms": [{"name": ARM, "brain": BRAIN}, {"name": "baseline"}], "allow_models": True,
+             "brains": {BRAIN: brain}, "seeds": [3], "days": 1, "size": 64, "population": 4}
+    from chits.lab.spec import ExperimentSpec
+
+    out = tmp_path / "out"
+    run.start(ExperimentSpec.from_dict(proto), out)
+    names = json.loads((out / "sealed" / "assignment.json").read_text())
+    label = next(l for l, n in names.items() if n == ARM)
+    legacy = {"seed": 3, "label": label, "arm": ARM, "brain": BRAIN, "kind": "brain_unavailable",
+              "what": f"{LABEL}: 12 requests failed in a row", "tick": 40, "day": 1,
+              "broken": [{"kind": "brain_unavailable", "level": "hard", "tick": 40, "what": f"{MODEL} down"}]}
+    rd = out / "runs" / f"3_{label}"
+    rd.mkdir(parents=True)
+    sealed = dict(legacy, migrated={"at": "then", "from": "invalid.json", "note": "first write"})
+    (rd / "invalid-sealed.json").write_text(json.dumps(sealed))  # the first write happened...
+    (rd / "invalid.json").write_text(json.dumps(legacy))  # ...the second did not
+    rows = run.invalid(out)
+    assert len(rows) == 1 and "arm" not in rows[0] and "brain" not in rows[0]
+    _assert_blind(_blind_files(out), fake_fast)
+    assert json.loads((rd / "invalid-sealed.json").read_text()) == sealed  # the sealed record is left as it was
