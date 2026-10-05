@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from . import assign, stats
-from .run import results
+from .run import invalid, results
 from .spec import ExperimentSpec
 
 DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron", "villages", "homes", "useful",
@@ -69,20 +69,42 @@ def analyze(out, unblind: bool = False) -> Dict[str, Any]:
             times = [stats.first_day(r["daily"], ev["metric"], ev["at_least"]) for r in by[l].values()]
             events[name][l] = {"reached": sum(1 for t in times if t is not None), "runs": len(times),
                                "km_median_day": stats.km_median(times, spec.days)}
+    # runs that broke a hard invariant: listed (by label, blind), never in a mean or a paired difference
+    bad = [{k: b.get(k) for k in ("seed", "label", "kind", "what", "tick", "day")}
+           | ({"arm": names.get(b["label"])} if unblind else {}) for b in invalid(out)]
     return {"spec": spec, "manifest": manifest, "labels": labels, "show": show, "metrics": metrics, "table": table,
-            "pairs": pairs, "ref": ref, "events": events, "runs": runs, "unblinded": unblind}
+            "pairs": pairs, "ref": ref, "events": events, "runs": runs, "unblinded": unblind, "invalid": bad}
 
 
 def markdown(a: Dict[str, Any]) -> str:
     spec, man, show = a["spec"], a["manifest"], a["show"]
     n = len(a["runs"])
     total = len(spec.seeds) * len(spec.arms)
+    bad = a.get("invalid") or []
+    retried = sum(1 for r in a["runs"] if r.get("invalid_attempts"))
+    if bad:
+        done = (f"Runs finished: {n} of {total} ({len(bad)} invalid: they broke a hard invariant and are left out of "
+                "every mean and difference)." + ("" if n + len(bad) == total else " **Incomplete: resume before drawing "
+                                                                                  "conclusions.**"))
+    else:
+        done = f"Runs finished: {n} of {total}." + ("" if n == total else " **Incomplete: resume before drawing conclusions.**")
+    if retried:
+        done += f" {retried} run(s) retried after an invalid attempt (`resume --retry-invalid`; the attempts are kept)."
     L = [f"# {spec.name}", "",
          f"Protocol `{man['fingerprint']}` · code `{man['commit']}` · {len(spec.seeds)} seeds × {len(spec.arms)} arms · "
          f"{spec.days} days · island {spec.size} · {spec.population} founders · {spec.contract} contract",
-         f"Runs finished: {n} of {total}." + ("" if n == total else " **Incomplete: resume before drawing conclusions.**"),
+         done,
          ("Arms are **unblinded** (seal checked)." if a["unblinded"] else
           "Arms are shown **blind** by label; `analyze --unblind` names them after checking the seal."), ""]
+    if bad:
+        L += ["## Invalid runs", "",
+              "A run that broke a hard invariant isn't a result. Final values leave it out, and every paired difference "
+              "involving its arm leaves its seed out. Its record is `runs/<seed>_<label>/invalid.json`, with its last model calls.", "",
+              "| seed | arm | day | invariant | what |", "|---|---|---|---|---|"]
+        for b in bad:
+            arm = f"{b['label']} ({b['arm']})" if a["unblinded"] else b["label"]
+            L.append(f"| {b['seed']} | {arm} | {b['day']} | {b['kind']} | {b['what']} |")
+        L.append("")
     if spec.interventions:
         L += ["Interventions, identical in every arm: " + "; ".join(f"day {i.day} {i.kind}" for i in spec.interventions), ""]
     L += ["## Final values", "", "| metric | " + " | ".join(show[l] for l in a["labels"]) + " |",

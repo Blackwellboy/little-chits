@@ -106,6 +106,30 @@ Two things to expect on the real cards:
 - `waiting_share` is 0 in lockstep. The cost of thinking shows up in `wait_seconds_per_chit_day` and the wall time
   instead.
 
+## Invalid runs
+
+A run that breaks a hard invariant (`invariants.py`) isn't a result. This includes a model server that fails 12
+requests in a row (`brain_unavailable`). That run alone stops, and the rest of the batch carries on.
+
+- **The record.** The run gets `runs/<seed>_<label>/invalid.json` instead of `result.json`. It holds the
+  invariant's kind and what broke, the tick and day, the seed and arm, every break found at that tick, and its last
+  5 model calls from the tape.
+- **Exit code.** `make lab` finishes the batch, lists the invalid runs by label and exits 3.
+- **The report.** An "Invalid runs" table lists them by label, blind. They are left out of the final values, and
+  every paired difference involving that arm leaves the seed out.
+- **Resuming.** A resume **keeps** an invalid run; it does not rerun it. Rerunning only the runs that broke, until
+  they don't, would keep the lucky draws: a model whose server falls over on hard seeds would end up measured on the
+  easy ones. When the cause was outside the experiment, such as a server that went down, use
+  `make lab ARGS="resume DIR --retry-invalid"`. That declares the retry. Each earlier attempt is kept as
+  `invalid-attempt-N.json` and `tape-attempt-N.jsonl`, the new `result.json` carries `invalid_attempts`, and the
+  report says how many runs were retried.
+
+**The first real study (2026-10-05)** lost its whole batch this way, after about 2 hours. Run `42_B` (JevK5 on
+:18195) got 12 `ReadTimeout`s in a row after 653 good replies. The last good replies took 3-4 s against a 180 s
+timeout, so the server stopped answering; nothing broke in the world. The `brain_unavailable` break was raised in
+the worker, but `InvariantBroken` couldn't be unpickled in the parent process. That broke the process pool, and the
+Gemma run beside it died too. Both causes are fixed: the exception now pickles, and a break ends only its own run.
+
 ## Not done yet
 
 - Replaying a Lab run from its tape. The tape is recorded; `make experiment --replay` is still the only replay.

@@ -1,4 +1,5 @@
-"""python -m chits.lab run PROTOCOL --out DIR [--jobs N] [--url BRAIN=URL ...] | resume DIR [--jobs N] | analyze DIR [--unblind]
+"""python -m chits.lab run PROTOCOL --out DIR [--jobs N] [--url BRAIN=URL ...] | resume DIR [--jobs N] [--retry-invalid]
+| analyze DIR [--unblind]
 | lint PACK (a TreatmentPack: its problems and what it covers)"""
 
 from __future__ import annotations
@@ -39,6 +40,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     s = sub.add_parser("resume", help="finish the runs a stopped batch didn't")
     s.add_argument("out")
     s.add_argument("--jobs", type=int, default=1)
+    s.add_argument("--retry-invalid", action="store_true",
+                   help="also rerun runs that broke a hard invariant (for a cause outside the experiment, such as a "
+                        "model server that went down); each invalid attempt is kept as invalid-attempt-N.json")
     a = sub.add_parser("analyze", help="write the comparison pack")
     a.add_argument("out")
     a.add_argument("--unblind", action="store_true")
@@ -75,8 +79,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 spec = ExperimentSpec.from_dict(json.loads((Path(args.out) / "manifest.json").read_text())["protocol"])
             prog = lambda d, n: print(f"  run {d}/{n}", file=sys.stderr, flush=True)
             res = run.run(spec, args.out, jobs=args.jobs, commit=_commit(),
-                          started=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), progress=prog)
+                          started=datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"), progress=prog,
+                          retry_invalid_runs=getattr(args, "retry_invalid", False))
             print(f"{res['ran']} runs this time; {res['total']} in the experiment. Now: python -m chits.lab analyze {args.out}")
+            if res["invalid"]:
+                bad = run.invalid(args.out)
+                print(f"stopped: an invariant broke in {res['invalid']} of {res['total']} runs (the others finished; "
+                      "the report lists these and leaves them out):", file=sys.stderr)
+                for b in bad:
+                    print(f"  seed {b['seed']} {b['label']}: day {b['day']}, {b['kind']}: {b['what']}", file=sys.stderr)
+                return 3
         else:
             path = report.write_pack(args.out, unblind=args.unblind)
             print(path.read_text())
