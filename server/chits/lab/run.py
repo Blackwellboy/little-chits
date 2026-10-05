@@ -77,10 +77,12 @@ def check_servers(spec: ExperimentSpec) -> Dict[str, List[str]]:
     for a in spec.arms:
         if a.brain == "instinct":
             continue
-        for i in range(min(2, len(spec.seeds))):
-            cfg = spec.brain_for(a.brain, i)
-            cfgs[cfg["base_url"]] = cfg
-            want.setdefault(cfg["base_url"], set()).add(cfg.get("model") or "")
+        planner = str(spec.brains[a.brain].get("escalate_to") or "")
+        for bid in [a.brain] + ([planner] if planner else []):  # (a two-level mind's planner is checked too)
+            for i in range(min(2, len(spec.seeds))):
+                cfg = spec.brain_for(bid, i)
+                cfgs[cfg["base_url"]] = cfg
+                want.setdefault(cfg["base_url"], set()).add(cfg.get("model") or "")
     if not want:
         return {}
 
@@ -210,15 +212,22 @@ def identities(spec: ExperimentSpec, arm: Arm, models: Optional[set] = None) -> 
     and its host:port. Matched in any case (redact). Longest first, so a URL goes before its host and a label before
     its words."""
     out = {arm.name, arm.brain} - {"instinct", ""}
-    cfg = spec.brains.get(arm.brain) or {}
-    out |= {str(cfg.get(k) or "") for k in ("id", "label")}
-    out |= {w for w in str(cfg.get("label") or "").split() if len(w) >= 3 and any(c.isalpha() for c in w)}
-    for m in {str(cfg.get("model") or "")} | set(models or ()):
-        out |= _model_spellings(m)
-    for u in (cfg.get("base_url") or "", spec.card_swap.get(arm.brain, "")):
-        if u:
-            bare = u.split("//", 1)[-1]
-            out |= {u, u.rstrip("/"), bare, bare.rstrip("/"), bare.split("/", 1)[0]}
+    bids = [arm.brain]
+    planner = str((spec.brains.get(arm.brain) or {}).get("escalate_to") or "")
+    if planner:  # (a two-level mind: its planner names the arm as surely as its own brain does)
+        bids.append(planner)
+    for bid in bids:
+        out.add(bid)
+        cfg = spec.brains.get(bid) or {}
+        out |= {str(cfg.get(k) or "") for k in ("id", "label")}
+        out |= {w for w in str(cfg.get("label") or "").split() if len(w) >= 3 and any(c.isalpha() for c in w)}
+        for m in {str(cfg.get("model") or "")} | (set(models or ()) if bid == arm.brain else set()):
+            out |= _model_spellings(m)
+        for u in (cfg.get("base_url") or "", spec.card_swap.get(bid, "")):
+            if u:
+                bare = u.split("//", 1)[-1]
+                out |= {u, u.rstrip("/"), bare, bare.rstrip("/"), bare.split("/", 1)[0]}
+    out.discard("instinct")
     return sorted((s for s in out if s.strip() and s.lower() not in _PLAIN_WORDS), key=len, reverse=True)
 
 
@@ -426,6 +435,16 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
     brain.cooldown = False  # lockstep: wall-clock backoff would only add noise
     brain.seed_base = seed
     brain.tape = BrainTape(rd / "tape.jsonl", "record")  # every call and its answer: the run can be replayed (item 39)
+    planner = None
+    if cfg.escalate_to:  # a two-level mind (docs/TWO_LEVEL.md): its sealed planner, on the same terms and the same tape
+        praw = spec.brain_for(cfg.escalate_to, spec.seeds.index(seed))
+        praw["extra_body"] = {**SAMPLING, **(praw.get("extra_body") or {})}
+        planner = mind.upsert(dict(BrainConfig(**praw).__dict__))
+        planner.cooldown = False
+        planner.seed_base = seed
+        planner.tape = brain.tape
+        served["planner"] = {"brain": planner.id, "base_url": planner.cfg.base_url, "model": planner.cfg.model}
+        _write_json(rd / "server.json", served)  # (kept in `served`, so the resolved-model rewrite below keeps it)
     by_day: Dict[int, List[Any]] = {}
     for iv in spec.interventions:
         by_day.setdefault(iv.day, []).append(iv)
@@ -437,9 +456,10 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
             while mind._tasks:
                 await asyncio.wait(list(mind._tasks))
             wait_s += time.monotonic() - waited
-            if brain.stats.consecutive_fail >= BRAIN_FAIL_STOP:
-                raise INV.InvariantBroken([{"kind": "brain_unavailable", "level": "hard", "tick": w.tick,
-                                            "what": f"{brain.label}: {brain.stats.consecutive_fail} requests failed in a row"}])
+            for b in (brain, planner):
+                if b is not None and b.stats.consecutive_fail >= BRAIN_FAIL_STOP:
+                    raise INV.InvariantBroken([{"kind": "brain_unavailable", "level": "hard", "tick": w.tick,
+                                                "what": f"{b.label}: {b.stats.consecutive_fail} requests failed in a row"}])
             if t % TICKS_PER_DAY == 0:
                 day = t // TICKS_PER_DAY + 1
                 for iv in by_day.get(day, []):
@@ -464,12 +484,17 @@ async def _run_model_one(spec: ExperimentSpec, arm: Arm, w, rd: Path, founders: 
             f.write(json.dumps(row) + "\n")
     st = brain.stats
     summ = extract.summary(w, daily, founders, blind=spec.blind)
-    summ["final"].update(opportunities(w, chit_ticks, st.requests, wait_s))
+    pst = planner.stats if planner is not None else None
+    summ["final"].update(opportunities(w, chit_ticks, st.requests + (pst.requests if pst else 0), wait_s))
     result = {"seed": seed, "label": w.name, "days": spec.days, "wall_s": round(time.monotonic() - t0, 1),
               "interventions": log,
               "compute": {"requests": st.requests, "failed_requests": st.failed, "tokens_in": st.tokens_in,
                           "tokens_out": st.tokens_out, "tokens": st.tokens_in + st.tokens_out,
-                          "chit_days": round(chit_ticks / TICKS_PER_DAY, 2), "tape_calls": brain.tape.recorded},
+                          "chit_days": round(chit_ticks / TICKS_PER_DAY, 2), "tape_calls": brain.tape.recorded,
+                          # a two-level mind's planner: its own share of the thinking (the totals above are the
+                          # decision brain's alone)
+                          **({"planner": {"requests": pst.requests, "failed_requests": pst.failed,
+                                          "tokens_in": pst.tokens_in, "tokens_out": pst.tokens_out}} if pst else {})},
               **summ, **_model_only(spec, w)}
     _write_json(rd / "result.json", result)
     return result
