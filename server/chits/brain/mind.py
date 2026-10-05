@@ -61,6 +61,12 @@ def _lesson_words(text: str) -> set:
     return {w for w in "".join(c.lower() if c.isalpha() else " " for c in text).split() if len(w) >= 4}
 
 
+
+def brain_instructions(brain: LLMBrain) -> str:
+    """Optional gameplay flavour from BrainConfig.instructions (empty = unchanged prompts)."""
+    return (getattr(brain.cfg, "instructions", None) or "").strip()
+
+
 def reflection_due(a: Agent, day: int, hour: int) -> bool:
     """Once a week. Daily reflections flooded the chronicle with "reflected:" notes and took about half of a slow
     GPU's time. Each chit has its own day of the week and hour (all at once doubled plan latency); a busy brain can
@@ -645,7 +651,7 @@ class Mind:
         if style in ("choose", "cascade"):
             return self._ask_choice(world, a, brain, cascade=style == "cascade")
         rep = self._repair_note(world, a)
-        msgs = P.messages(world, a, style=style)
+        msgs = P.messages(world, a, style=style, instructions=brain_instructions(brain))
         if rep:
             msgs = P.with_repair(msgs, rep)
         a.thinking = True
@@ -670,7 +676,7 @@ class Mind:
                 raise StaleMatch()  # a new match started while this waited: don't spend the GPU on it
             # model-only switched on while this was queued: it goes out as full, as model-only requires. The switch
             # bumps rev, and at_send resets rev_requested, so the old style would pass the stale check (Codex, #120)
-            fresh = P.messages(world, a, style="full" if self.model_only else style)
+            fresh = P.messages(world, a, style="full" if self.model_only else style, instructions=brain_instructions(brain))
             if rep:
                 fresh = P.with_repair(fresh, rep)
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
@@ -709,7 +715,7 @@ class Mind:
             # shuffled, so the model's pick is its own and not "always the first one" (instinct's)
             random.Random(world.tick * 13 + zlib.crc32(a.id.encode())).shuffle(opts)
             sent["options"] = opts
-            msgs = P.choice_messages(world, a, opts, own_idea=cascade, repair=rep)
+            msgs = P.choice_messages(world, a, opts, own_idea=cascade, repair=rep, instructions=brain_instructions(brain))
             rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
             rec["prompt_hash"] = hashlib.sha256(json.dumps(msgs, sort_keys=True).encode()).hexdigest()[:16]
             return msgs
@@ -722,7 +728,7 @@ class Mind:
         from ..sim import projects as PJ
 
         options = list(ask["options"])
-        msgs = P.chief_project_messages(world, a, options)
+        msgs = P.chief_project_messages(world, a, options, instructions=brain_instructions(brain))
         rec = {"request_id": uuid.uuid4().hex, "world": world.id, "epoch": getattr(world, "epoch", ""),
                "agent": a.id, "agent_name": a.name, "brain": brain.id, "style": "chief-project",
                "model": brain.cfg.model or brain.stats.resolved_model, "base_url": brain.cfg.base_url,
@@ -886,7 +892,7 @@ class Mind:
                 def full_at_send():
                     if rec.get("match") != self.match:
                         raise StaleMatch()
-                    fresh = P.messages(world, a, style="full")
+                    fresh = P.messages(world, a, style="full", instructions=brain_instructions(brain))
                     if sent.get("repair"):  # the plan it writes answers the failure, as a full brain's does
                         fresh = P.with_repair(fresh, sent["repair"])
                     rec["prompt_hash"] = hashlib.sha256(json.dumps(fresh, sort_keys=True).encode()).hexdigest()[:16]
@@ -988,7 +994,7 @@ class Mind:
         def at_send():
             if self.match != match:
                 raise StaleMatch()
-            return P.reflection_messages(world, a)
+            return P.reflection_messages(world, a, instructions=brain_instructions(brain))
 
         try:
             res = await brain.chat(at_send, max_tokens=450, temperature=0.6)

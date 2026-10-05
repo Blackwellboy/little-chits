@@ -50,6 +50,8 @@ class BrainConfig:
     focus: bool = True  # play games: plans that are only eating, sleeping, resting, sheltering or hauling are left to
     #                     instinct, so the model's time goes to the decisions that matter (never in an experiment)
     detect: bool = False  # added without saying what its server takes: its first Test finds out (brain/checkup.py)
+    # Optional gameplay flavour appended to every system prompt for this brain (Mad Max vs egalitarian, etc.).
+    instructions: str = ""
 
     def key(self) -> str:
         k = self.api_key or ""
