@@ -149,7 +149,8 @@ def apply(world, pack: Dict[str, Any], seed: int) -> Dict[str, Any]:
     told = random.Random(f"{seed}|{pack['id']}|{pack['version']}").sample(founders, min(n, len(founders)))
     for a in told:
         for p in pack.get("practices") or []:
-            a.learn(p["knowledge"], "taught", world.tick, source=tag)
+            if world.rules.allows_knowledge(p["knowledge"]):  # (as World.learned: nothing the rules rule out)
+                a.learn(p["knowledge"], "taught", world.tick, source=tag)
         for c in pack.get("claims") or []:
             a.remember(world.tick, c["text"], 3, "teaching")
     return {"pack": tag, "fingerprint": fingerprint(pack), "told": sorted(a.id for a in told), "of": len(founders)}

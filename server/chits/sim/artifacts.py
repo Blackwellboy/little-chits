@@ -100,6 +100,8 @@ def on_inspect(world, a, key: str, s: Dict[str, Any]) -> Optional[str]:
                    a.id, a.x, a.y, artifact=key, knowledge=f"recipe:{k}")
         return f"Studied the {art} and understood how to make {world.item_name(k)}"
     if key == "holy_book":
+        if not world.rules.religion:  # (a world without religion: only a strange old book, sim/rules.py)
+            return "Read the strange words of an old book; they meant nothing in particular"
         a.mood = min(100.0, a.mood + 10)
         if hasattr(world, "found_belief") and not a.belief:
             existing = next((bid for bid, b in world.beliefs.items() if b["name"] == "The Book"), None)

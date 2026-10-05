@@ -90,7 +90,8 @@ def b64(data) -> str:
 
 def world_meta(w: World) -> Dict[str, Any]:
     return {"id": w.id, "name": w.name, "label": w.label, "culture": w.culture, "flags": w.flags, "size": w.w,
-            "seed": w.seed, "uuid": w.uuid, "epoch": w.epoch, "leader": w.leader, "laws": w.laws}
+            "seed": w.seed, "uuid": w.uuid, "epoch": w.epoch, "leader": w.leader, "laws": w.laws,
+            "rules": w.rules.to_dict()}
 
 
 def snapshot(w: World, events_limit: int = 80) -> Dict[str, Any]:

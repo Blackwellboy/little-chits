@@ -54,7 +54,7 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "",
                       # model arms: every call of a tick answered before the next, each request seeded from the run's
                       # seed and its prompt, and this sampling unless a brain's extra_body sets its own
                       "lockstep": True, "request_seeds": True, "sampling": dict(SAMPLING), "servers": servers,
-                      "model_only": spec.model_only,
+                      "model_only": spec.model_only, "world_rules": spec.world_rules().to_dict(),
                       **({"model_only_note": MODEL_ONLY_NOTE} if spec.model_only else {}),
                       "runs": [{"seed": s, "labels": assign.run_order(spec, i),
                                 **({"card_swapped": spec.swapped(i)} if spec.card_swap else {})}
@@ -336,7 +336,7 @@ def _run_one(spec: ExperimentSpec, arm: Arm, rd: Path, seed: int, label: str, t0
     from ..brain.instinct import Instinct
     from ..sim.world import World
 
-    w = World("A", label, seed, arm.culture, spec.size, spec.population)
+    w = World("A", label, seed, arm.culture, spec.size, spec.population, rules=spec.world_rules())
     w.flags.update(arm.flags)
     w.model_only = spec.model_only  # (a diagnostic: the body's reflexes off, sim/actions.py)
     if arm.treatment:  # (kept apart from result.json, which the blind report reads: who was told names the arm)
