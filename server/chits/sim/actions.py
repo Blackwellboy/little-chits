@@ -3425,15 +3425,15 @@ def harvest_source(world, a: Agent, target: Any = None):
 
 def _ripe_farm(world, a: Agent, x) -> bool:
     """A farm with a crop to take, that this chit hasn't lately failed to reach."""
-    return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0         and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+    return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
+        and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
 
 
 def _do_harvest(world, a: Agent, step, s) -> str:
     if s.get("redirect"):
         return _redirect(world, a, s)
     def ripe(x) -> bool:
-        return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
-            and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+        return _ripe_farm(world, a, x)
 
     held = world.structures.get(s.get("farm") or "") if RIPE_TARGET else None
     if held is not None and ripe(held):
