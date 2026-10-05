@@ -5,7 +5,7 @@ failed model steps were drafted options failing at once."""
 import json
 
 from chits.brain.instinct import Instinct, _drafted_runs
-from chits.sim.actions import build_could_start
+from chits.sim.actions import build_could_start, build_course, store_place
 from chits.sim.items import DESIGNS
 from chits.sim.world import World
 
@@ -103,6 +103,7 @@ def test_an_invention_is_not_offered_from_parts_the_chits_own_plan_is_about_to_u
     # the mind asks for the next plan while this one's last steps are still to run: the same parts go into this
     a.plan = [{"do": "invent", "with": ["fiber", "wood"], "name": "Twine Rig", "purpose": "to catch fish"}]
     assert not invents(_menu(w, a))
+    _stockpile(w, a)
     a.plan = [{"do": "store", "what": "all"}]  # everything it carries goes into the stores
     assert not invents(_menu(w, a))
     a.plan = [{"do": "eat"}]
@@ -304,3 +305,47 @@ def test_a_menu_with_nothing_that_can_run_still_offers_instincts_pick_and_change
     before = json.dumps(w.to_dict(), sort_keys=True, default=str)
     assert [o["goal"] for o in ins.options(w, a)] == ["store the grain"]
     assert json.dumps(w.to_dict(), sort_keys=True, default=str) == before
+
+
+def test_a_store_of_everything_with_nowhere_to_store_keeps_the_load():
+    # (Codex on #119, issue #121) _do_store keeps the load when no store stands within reach; the projection emptied
+    # the hands anyway, and an invention from what it still carries was left off the menu
+    w, a = _world()
+    assert store_place(w, a) is None  # (a new world: no store stands yet)
+    a.inventory.update({"fiber": 2, "wood": 1})
+    a.plan = [{"do": "store", "what": "all"}]
+    assert [g for g in _menu(w, a) if g.startswith("invent")]
+
+
+def test_a_build_that_feeds_the_fire_beside_it_takes_only_the_fuel():
+    # (Codex on #119, issue #121) beside a lit campfire "build campfire" feeds it (at most 3 wood) instead of building:
+    # the projection took a whole campfire's wood and stone, and an experiment with the stone left was not offered
+    w, a = _world()
+    a.learn("design:campfire", "taught", w.tick)
+    fire = w.place_site("campfire", *w.find_site("campfire", a.x + 2, a.y, 8), a)
+    w.complete_structure(fire, a)
+    fire.fuel = 20
+    exp = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["stone", "stone"]}]}
+    a.inventory.update({"wood": 1, "stone": 2})
+    a.plan = [{"do": "build", "what": "campfire"}]
+    assert build_course(w, a, a.plan[0])[0] == "reuse"
+    assert "experiment" in _menu(w, a, exp)  # the stone stays in hand
+    burn = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["wood"]}]}
+    assert "experiment" not in _menu(w, a, burn)  # (its one wood went on the fire)
+    fire.durability = 0  # a ruin: it builds a new one, and that takes the stone
+    assert build_course(w, a, a.plan[0])[0] == "new"
+    assert "experiment" not in _menu(w, a, exp)
+
+
+def test_a_build_that_sows_the_empty_farm_beside_it_takes_two_seeds():
+    w, a = _world()
+    a.learn("design:farm", "taught", w.tick)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    farm.planted = False
+    a.inventory.update({"seeds": 2, "wood": 5, "stone": 5})
+    a.plan = [{"do": "build", "what": "farm"}]
+    assert build_course(w, a, a.plan[0])[0] == "reuse"
+    seeds = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds"]}]}
+    wood = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["wood"]}]}
+    assert "experiment" not in _menu(w, a, seeds) and "experiment" in _menu(w, a, wood)
