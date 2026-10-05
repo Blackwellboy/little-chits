@@ -28,7 +28,9 @@ from ..sim.items import DESIGNS
 USE_PER_DAY = {"wood": 1.0, "stone": 0.35, "fiber": 0.3, "clay": 0.25, "sand": 0.2, "charcoal": 0.15, "brick": 0.2,
                "seeds": 0.2, "flour": 0.2}
 CEILING_DAYS = 5  # the stores hold enough of a good at this many days of the village's use
-GRAIN_DAYS = 1.0  # ...and of grain at this many days of everyone's food: more is better ground and baked than kept
+GRAIN_DAYS = 4.0  # ...and of grain at this many days of everyone's food: more is ground and baked. Grain is the food
+# reserve (flour feeds nobody until baked): at 1 day the mill ground it away and chits starved by stores holding 2-8 food
+# (seed 42); at 4 days the 24-seed A/B gained 5.8 and 2.7 discoveries with no starvation of its own
 MIN_CEILING = 60  # no ceiling is lower than this: a small village still keeps a building's worth of each good
 PLENTY_SIGHT = food.STORE_SIGHT  # the stores, and the homes, a chit counts as its village's (as it judges food)
 SINK_WEIGHT = 1.5  # how much a shift that works off a surplus counts among a chit's choices (a bill counts 0.4-2.4)

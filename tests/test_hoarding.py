@@ -336,7 +336,10 @@ def test_flour_a_shift_ground_is_baked_before_more_grain_is_ground():
 
 
 # ---------------------------------------------------------------------------- food first
-def test_food_first_grain_is_not_ground_while_the_stores_are_short_of_food():
+def test_food_first_grain_is_not_ground_while_the_stores_are_short_of_food(monkeypatch):
+    # (a one-day grain reserve, so the stores can be over it and short of food at once: at the game's four days, being
+    # over the reserve already means more than three days of food; the guard is what is tested here)
+    monkeypatch.setattr(SUR, "GRAIN_DAYS", 1.0)
     w, a, pile = grown(20)
     put(w, "mill", a, near=(a.x + 5, a.y))
     w.learned(a, "recipe:flour", "taught")
