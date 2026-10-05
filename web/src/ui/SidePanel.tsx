@@ -604,8 +604,14 @@ type ScoreRow = {
   world: string; name: string; label: string; model: string | null; day: number; era_name: string; population: number;
   discoveries: number; discoveries_this_session: number; decisions: number; discoveries_per_100_decisions: number | null;
   model_share_pct: number | null; step_success_pct: number; escalation_pct: number | null; latency_p50_ms: number | null;
-  projects_done: number;
+  projects_done: number; drivers?: Drivers;
 };
+type Drivers = {
+  model_strategic_pct: number | null; model_authored_strategic_pct: number | null; model_steps_pct: number | null;
+  model_authored_steps_pct: number | null; reflex_steps_pct: number | null; routine_steps_pct: number | null;
+  instinct_steps_pct: number | null; waiting_pct: number | null;
+};
+const pct = (x: number | null | undefined) => (x == null ? "—" : `${x}%`);
 
 /** 🏁 Which model is building the better civilisation: the two worlds side by side, the leader on each line marked. */
 /** 🔀 What if: a copy of a world as it is now, stepping alongside it on instinct (or unable to talk), to watch the two
@@ -654,6 +660,15 @@ function Scorecard() {
     ["Chits", "population", (r) => `${r.population}`],
     ["Discoveries / 100 decisions", "discoveries_per_100_decisions", (r) => r.discoveries_per_100_decisions == null ? "—" : `${r.discoveries_per_100_decisions}`],
     ["Plans from the model", "model_share_pct", (r) => r.model_share_pct == null ? "—" : `${r.model_share_pct}%`],
+    // who is driving (provenance.py): a menu choice was the model's decision but instinct's plan; reflexes,
+    // upkeep and instinct are never counted as the model's
+    ["Strategic decisions by the model", "", (r) => pct(r.drivers?.model_strategic_pct)],
+    ["… plans it wrote itself", "", (r) => pct(r.drivers?.model_authored_strategic_pct)],
+    ["Steps from the model's plans", "", (r) => pct(r.drivers?.model_steps_pct)],
+    ["Steps from body reflexes", "", (r) => pct(r.drivers?.reflex_steps_pct)],
+    ["Steps from routine upkeep", "", (r) => pct(r.drivers?.routine_steps_pct)],
+    ["Steps from heuristic instinct", "", (r) => pct(r.drivers?.instinct_steps_pct)],
+    ["Waiting on the model", "", (r) => pct(r.drivers?.waiting_pct)],
     ["Steps that worked", "step_success_pct", (r) => `${r.step_success_pct}%`],
     ["Asked for its own idea", "", (r) => r.escalation_pct == null ? "—" : `${r.escalation_pct}%`],
     ["Time per decision (median)", "latency_p50_ms", (r) => r.latency_p50_ms ? `${(r.latency_p50_ms / 1000).toFixed(1)} s` : "—"],

@@ -18,7 +18,14 @@ DEFAULT_METRICS = ["discoveries", "population", "era", "food", "copper", "iron",
 
 OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waiting share", "waiting_share"),
                     ("seconds waited per chit-day", "wait_seconds_per_chit_day"),
-                    ("model share of steps", "model_step_share")]
+                    ("model share of steps", "model_step_share"),
+                    ("... from plans the model wrote", "model_authored_step_share"),
+                    ("body reflex share of steps", "reflex_step_share"),
+                    ("routine share of steps", "routine_step_share"),
+                    ("heuristic instinct share of steps", "instinct_step_share"),
+                    ("strategic plans the model decided", "model_strategic_share"),
+                    ("... and wrote itself", "model_authored_strategic_share"),
+                    ("steps carried out as another (redirects; a total per run, not per chit-day)", "redirects")]
 
 
 def by_label(a: Dict[str, Any], label: str) -> List[Dict[str, Any]]:
@@ -130,20 +137,23 @@ def markdown(a: Dict[str, Any]) -> str:
                      f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | {_fmt(p['mann_whitney_p'])} |")
         L += ["", "Differences are paired by seed (both arms had the same island). p-values are not corrected for the "
                   "number of metrics: read them as a guide, not a verdict.", ""]
-    if any(r.get("compute") for r in a["runs"]):
+    if any(r.get("compute") or any(r["final"].get(k) is not None for _, k in OPPORTUNITY_ROWS) for r in a["runs"]):
         L += ["## Thinking opportunities", "",
               "Per chit-day (one chit alive for one day). Reported, not equalised: a model whose plans run out sooner "
               "asks more often. Waiting is the share of a model-minded chit's time spent waiting for its answer "
               "(near 0 in lockstep, where the world waits instead); seconds waited is that lockstep wait in wall time, a cost "
               "of the card and the model, not a world fact; model steps are the finished steps that came from the "
-              "model's plans (the rest are reflexes).",
+              "model's plans; the rest are body reflexes, routine upkeep and heuristic instinct (docs/PROVENANCE.md). "
+              "Shares are of finished steps or strategic plans, not per chit-day; redirects are a total per run.",
               "", "| | " + " | ".join(show[l] for l in a["labels"]) + " |", "|---|" + "---|" * len(a["labels"])]
         for name, key in OPPORTUNITY_ROWS:
             cells = []
             for l in a["labels"]:
-                xs = [r["final"].get(key) for r in by_label(a, l)]
-                xs = [x for x in xs if x is not None]
-                cells.append(_fmt(sum(xs) / len(xs)) if xs else "-")
+                runs = by_label(a, l)
+                xs = [x for x in (r["final"].get(key) for r in runs) if x is not None]
+                # (a run recorded before a field existed has none: a mean over fewer runs says how many)
+                cells.append((_fmt(sum(xs) / len(xs)) + (f" ({len(xs)} of {len(runs)} runs)" if len(xs) < len(runs) else ""))
+                             if xs else "-")
             L.append(f"| {name} | " + " | ".join(cells) + " |")
         L += ["", "Means over seeds.", ""]
     if a["events"]:
