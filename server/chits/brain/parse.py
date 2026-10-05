@@ -34,7 +34,8 @@ def strip_reasoning(text: str) -> str:
     return text.strip()
 
 
-def _balanced_objects(text: str) -> List[str]:
+def _balanced_objects(text: str, closed: Optional[List[str]] = None) -> List[str]:
+    """Every balanced {...} in the text, plus a truncated last one closed off (also added to `closed`)."""
     out = []
     depth = 0
     start = -1
@@ -62,6 +63,8 @@ def _balanced_objects(text: str) -> List[str]:
                 out.append(text[start: i + 1])
     if depth > 0 and start >= 0:  # truncated reply (hit max_tokens): close it properly
         out.append(_close_truncated(text[start:]))
+        if closed is not None:
+            closed.append(out[-1])
     return out
 
 
@@ -115,12 +118,14 @@ def extract_json(text: str) -> Dict[str, Any]:
 
 
 def extract_json_ex(text: str):
-    """Like extract_json, but also says whether the reply needed repairing to parse."""
+    """Like extract_json, but also says whether the reply needed repairing to parse. A reply cut off mid-object
+    (closed off here) counts as repaired: it parsed only because the parser finished it, and lost what was cut."""
     text = strip_reasoning(text)
     cands: List[str] = []
+    closed: List[str] = []
     for m in _FENCE.finditer(text):
-        cands += _balanced_objects(m.group(1))
-    cands += _balanced_objects(text)
+        cands += _balanced_objects(m.group(1), closed)
+    cands += _balanced_objects(text, closed)
     # prefer the largest object that parses
     cands.sort(key=len, reverse=True)
     for c in cands:
@@ -130,7 +135,7 @@ def extract_json_ex(text: str):
             except (json.JSONDecodeError, ValueError):
                 continue
             if isinstance(v, dict):
-                return v, i > 0
+                return v, i > 0 or c in closed
     raise ParseError("no JSON object found in reply")
 
 
