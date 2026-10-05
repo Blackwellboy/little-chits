@@ -363,109 +363,134 @@ def _fetch_steps(world, a: Agent, key: str, n: int, room: Optional[float] = None
     return steps
 
 
-def _n(step: Dict[str, Any], default: int) -> int:
-    try:
-        return max(1, int(float(step.get("qty") or default)))
-    except (TypeError, ValueError):
-        return default
+ALL_WORDS = ("all", "everything", "extra", "surplus", "materials")  # (a store of these stores everything: _do_store)
 
 
-def _hand_uses(world, steps: List[Dict[str, Any]]) -> Tuple[Dict[str, int], bool]:
-    """What these steps will take out of the chit's hands, by item, and whether one stores everything it carries."""
-    from ..sim.actions import _experiment_bag
+class _Hands:
+    """What a chit will hold, and the room left in its hands, as steps run: each step by its own rules in sim.actions
+    (the stores a take draws from, how much a gather, pickup, craft or harvest brings in, what a craft, an experiment,
+    an invention, a store, a gift or a building takes out). `run` applies a step and says whether it could start."""
 
-    out: Dict[str, int] = {}
-    everything = False
-    for s in steps:
+    def __init__(self, world, a: Agent):
+        self.w, self.a = world, a
+        self.held: Dict[str, int] = {k: n for k, n in a.inventory.items() if n > 0}
+        self.room = a.free_space()
+        self.unsure = False  # after an eat or a store of everything, the room in its hands is anyone's guess
+        self.drawn: Dict[Tuple[str, str], int] = {}  # (store id, item) -> taken from it by an earlier step
+        self.picked: set = set()  # piles of these on the ground are picked up already
+
+    def _weight(self, k: str) -> int:
+        it = self.w.item(k)
+        return it.weight if it is not None else 1
+
+    def _fits(self, k: str, n: int) -> int:
+        """How many of n fit in hand (all of them once the room is unknown)."""
+        return n if self.unsure else min(n, self.room // max(1, self._weight(k)))
+
+    def _add(self, k: str, n: int) -> None:
+        if n > 0:
+            self.held[k] = self.held.get(k, 0) + n
+            self.room -= n * self._weight(k)
+
+    def _use(self, k: str, n: int) -> None:
+        n = min(n, self.held.get(k, 0))
+        if n > 0:
+            self.held[k] -= n
+            self.room += n * self._weight(k)
+
+    def run(self, s: Dict[str, Any]) -> bool:
+        from ..sim.actions import _experiment_bag, _qty, take_source
+
+        w, a = self.w, self.a
         do = s.get("do")
-        if do in ("invent", "experiment"):
-            for k in _experiment_bag(s, world):
-                if k:
-                    out[k] = out.get(k, 0) + 1
-        elif do == "craft":
-            r = world.recipe(world.norm_item(s.get("what")) or "")
-            for k, m in (r.inputs if r else ()):
-                out[k] = out.get(k, 0) + m * _n(s, 1)
-        elif do in ("build", "help"):  # (what the site still needs goes in from the builder's hands)
-            site = world.structures.get(str(s.get("site") or s.get("target") or ""))
+        k = w.norm_item(s.get("what")) if isinstance(s.get("what"), str) else None
+        done = s.get("_s") or {}  # (a step under way: what it has already brought in is in hand)
+        if do == "take" and k:
+            st = take_source(w, a, k, s.get("target"))
+            left = (st.storage.get(k, 0) - self.drawn.get((st.id, k), 0)) if st is not None else 0
+            got = self._fits(k, min(done.get("want", _qty(s, 3)) - done.get("taken", 0), left))
+            if got <= 0:
+                return False  # no store holds it, or no room in hand
+            self.drawn[(st.id, k)] = self.drawn.get((st.id, k), 0) + got
+            self._add(k, got)
+        elif do == "pickup" and k:
+            pile = 0 if k in self.picked else next(
+                (pl.get(k, 0) for _, _, pl in w.piles_near(a.x, a.y, 20) if pl.get(k, 0) > 0), 0)
+            got = self._fits(k, pile)
+            if got <= 0:
+                return False
+            self.picked.add(k)
+            self._add(k, got)
+        elif do == "gather" and k:
+            got = self._fits(k, done.get("want", _qty(s, 5)) - done.get("got", 0))
+            if got <= 0:
+                return False  # "my hands are full"
+            self._add(k, got)
+        elif do == "harvest":
+            self._add("grain", self._fits("grain", 12 if self.held.get("plough") else 6))  # (_do_harvest's yield)
+        elif do == "craft" and k and (r := w.recipe(k)) is not None:
+            batches = done.get("want", _qty(s, 1, 1, 10)) - done.get("made", 0)
+            stock = {x: n for x, n in _stock_in(w, a, [i for i, _ in r.inputs]).items()}
+            if any(self.held.get(i, 0) + stock.get(i, 0) < m * batches for i, m in r.inputs):
+                return False  # "missing ..."
+            for i, m in r.inputs:
+                self._add(i, max(0, m * batches - self.held.get(i, 0)))  # (fetched from the stores first)
+                self._use(i, m * batches)
+            self._add(k, r.qty * batches)
+        elif do == "work" and k:
+            self._add(k, 1)
+        elif do in ("invent", "experiment"):
+            bag: Dict[str, int] = {}
+            for x in _experiment_bag(s, w):
+                if x:
+                    bag[x] = bag.get(x, 0) + 1
+            if any(self.held.get(x, 0) < n for x, n in bag.items()):
+                return False  # "I'm not carrying enough ..."
+            for x, n in bag.items():
+                self._use(x, n)
+        elif do == "store" and str(s.get("what") or "all").lower() in ALL_WORDS:
+            self.held = {x: n for x, n in self.held.items() if (it := w.item(x)) is not None and it.tool}
+            self.unsure = True
+        elif do in ("store", "give", "drop") and k:
+            if do == "store" and self.held.get(k, 0) <= 0:
+                return False  # "I'm not carrying any ..."
+            self._use(k, _qty(s, 99, 1, 999))
+        elif do == "eat":
+            self.unsure = True
+        elif do in ("build", "help"):  # what the site still needs goes in from the builder's hands
+            site = w.structures.get(str(s.get("site") or s.get("target") or ""))
             key = site.design if site is not None else normalize_design(s.get("what"))
-            for k, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
-                out[k] = out.get(k, 0) + m
-        elif do in ("store", "give", "drop"):
-            if do == "store" and str(s.get("what") or "all").lower() in ("all", "everything", "extra", "surplus", "materials"):
-                everything = True
-            elif k := world.norm_item(s.get("what")):
-                out[k] = out.get(k, 0) + _n(s, 99)
-    return out, everything
+            for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                self._use(x, m)
+        return True
+
+
+def _stock_in(world, a: Agent, keys: List[str]) -> Dict[str, int]:
+    """What the stores a craft step fetches its missing inputs from hold of these (sim.actions._do_craft: 25 tiles)."""
+    out: Dict[str, int] = {}
+    for p in world.structures_near(a.x, a.y, 25):
+        if p.functional and p.design in STORES and world.same_land(a, p):
+            for k in keys:
+                out[k] = out.get(k, 0) + p.storage.get(k, 0)
+    return out
 
 
 def _drafted_runs(world, a: Agent, plan: Dict[str, Any]) -> bool:
     """Whether a plan drafted for a model to choose (Instinct.options) can run from where the chit stands. It is drafted
-    while the chit's own plan still has a step or two to go (brain.mind asks ahead), so what those steps will use up
-    is not counted as in hand, nor what they take from the stores or the ground. Then, step by step: what an invention,
-    an experiment or a store needs must be in hand by then, a take must find a store holding the thing, a pickup a pile
-    of it, the first fetch room in hand (unless something is put down or used first), and a build must find clear
-    ground (sim.actions.build_could_start). With --mind scripted (tools/harness),
-    most failed model steps were drafted options failing at once like this: "I'm not carrying enough wood", "I'm not
-    carrying any grain", "there's no clear ground within 28 tiles"."""
-    ahead = [s for s in a.plan if not s.get("_filler")]
-    used, everything = _hand_uses(world, ahead)
-    held = {} if everything else {k: n - used.get(k, 0) for k, n in a.inventory.items() if n - used.get(k, 0) > 0}
-    taken = {}
-    picked = set()
-    gained: Dict[str, int] = {}  # what the rest of its own plan brings into its hands first
-    for s in ahead:
-        k = world.norm_item(s.get("what"))
-        if s.get("do") == "take" and k:
-            taken[k] = taken.get(k, 0) + _n(s, 3)
-            gained[k] = gained.get(k, 0) + _n(s, 3)
-        elif s.get("do") == "pickup" and k:
-            picked.add(k)
-            gained[k] = gained.get(k, 0) + sum(pile.get(k, 0) for _, _, pile in world.piles_near(a.x, a.y, 20))
-        elif s.get("do") in ("gather", "craft") and k:
-            gained[k] = gained.get(k, 0) + _n(s, 5 if s.get("do") == "gather" else 1)
-    # the room in its hands once those steps have run: what they bring in fills it (up to full), what they use frees it
-    weight = lambda k: (it.weight if (it := world.item(k)) is not None else 1)
-    free = a.free_space()
-    room = max(0, free - sum(weight(k) * n for k, n in gained.items())) + sum(
-        weight(k) * min(n, a.inventory.get(k, 0) + gained.get(k, 0)) for k, n in used.items())
+    while the chit's own plan still has a step or two to go (brain.mind asks ahead), so those steps are run first on
+    a projection of its hands (_Hands: what they bring in and use up, the room they leave, what they draw from the
+    stores and the ground), then the drafted plan's, each of which must be able to start. A build must also find clear
+    ground (sim.actions.build_could_start). With --mind scripted (tools/harness), most failed model steps were drafted
+    options failing at once: "I'm not carrying enough wood", "I'm not carrying any grain", "there's no clear ground"."""
+    hands = _Hands(world, a)
+    for s in a.plan:
+        if not s.get("_filler"):
+            hands.run(s)  # (its own steps: whatever they manage)
     built = False
-    freed = everything or any(s.get("do") == "eat" for s in ahead)
     for s in plan.get("steps") or []:
-        do = s.get("do")
-        k = world.norm_item(s.get("what")) if isinstance(s.get("what"), str) else None
-        if do in ("store", "drop", "eat", "give", "craft"):
-            freed = True  # (from here on the room in its hands is anyone's guess)
-        elif do in ("take", "pickup", "gather") and k and not freed:
-            it = world.item(k)
-            if it is not None and room < it.weight:
-                return False  # "my hands are full"
-        if do == "take" and k:
-            stored = sum(st.storage.get(k, 0) for st in world.structures_near(a.x, a.y, 30)
-                         if st.design in STORES + ("pen",) and st.functional and world.same_land(a, st)
-                         and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick)
-            if stored - taken.get(k, 0) <= 0:
-                return False
-            taken[k] = taken.get(k, 0) + _n(s, 3)
-            held[k] = held.get(k, 0) + _n(s, 3)
-        elif do == "pickup" and k:
-            if k in picked or not any(pile.get(k, 0) > 0 for _, _, pile in world.piles_near(a.x, a.y, 20)):
-                return False
-            picked.add(k)
-            held[k] = held.get(k, 0) + 99
-        elif do in ("gather", "craft", "work") and k:
-            held[k] = held.get(k, 0) + _n(s, 1)
-        elif do == "harvest":
-            held["grain"] = held.get("grain", 0) + 1
-        elif do in ("invent", "experiment", "store"):
-            need, everything = _hand_uses(world, [s])
-            if everything:
-                continue
-            for item, n in need.items():
-                if held.get(item, 0) < (1 if do == "store" else n):
-                    return False
-                held[item] = max(0, held[item] - n)
-        elif do == "build" and not built:
+        if not hands.run(s):
+            return False
+        if s.get("do") == "build" and not built:
             built = True
             if not build_could_start(world, a, s):
                 return False

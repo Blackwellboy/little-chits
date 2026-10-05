@@ -120,8 +120,11 @@ def test_an_experiment_needs_its_items_in_hand_or_a_step_that_gets_them():
     assert "experiment" in _menu(w, a, fetched)
     a.inventory.update({"wood": 1})
     assert "experiment" in _menu(w, a, exp)
-    a.plan = [{"do": "experiment", "with": ["wood", "wood"]}]  # its current plan uses the wood
+    a.plan = [{"do": "experiment", "with": ["sand", "wood"]}]  # its current plan uses the wood...
+    assert "experiment" in _menu(w, a, exp)  # (...it would, but it has no sand: that step fails and uses nothing)
+    a.inventory["sand"] = 1
     assert "experiment" not in _menu(w, a, exp)
+    a.inventory.pop("sand")
     # a building its plan is about to put up takes its materials from its hands (scripted seed 7: "build campfire",
     # then the experiment it had been offered with the same stone and wood)
     a.inventory.update({"wood": 3, "stone": 2})
@@ -237,6 +240,57 @@ def test_a_build_the_step_would_not_reuse_is_judged_on_its_ground():
     fire.durability = 0
     assert fire.ruined
     assert not build_could_start(w, a, {"do": "build", "what": "campfire"})
+
+
+def test_a_take_from_a_named_store_is_judged_by_that_store_at_any_distance():
+    # (Codex, PR #119) outposts.haul_plan names camps up to 60 tiles off; the take step goes to the one named
+    w = World("A", "A", 3, "direct", 128, 2)
+    a = next(iter(w.agents.values()))
+    a.inventory.clear()
+    a.plan = []
+    far = None
+    for dx in range(40, 60):
+        for x in (a.x + dx, a.x - dx):
+            pos = w.find_site("stockpile", x, a.y, 6, reach=(a.x, a.y), widen=False) if 0 < x < w.w else None
+            if pos and max(abs(pos[0] - a.x), abs(pos[1] - a.y)) > 31:
+                far = w.place_site("stockpile", *pos, a)
+                break
+        if far:
+            break
+    assert far is not None
+    w.complete_structure(far, a)
+    far.storage["cord"] = 4
+    take = {"goal": "haul cord", "thought": "", "steps": [{"do": "take", "what": "cord", "qty": 2, "target": far.id}]}
+    assert _drafted_runs(w, a, take)
+    far.storage.clear()
+    assert not _drafted_runs(w, a, take)  # (the named one holds none: the step would come away empty)
+
+
+def test_what_its_own_plan_brings_in_first_is_counted_as_in_hand():
+    # (Codex, PR #119) a gather still to run in its own plan brings the wood a drafted experiment uses
+    w, a = _world()
+    exp = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["stone", "wood"]}]}
+    a.inventory.update({"stone": 1})
+    assert not _drafted_runs(w, a, exp)
+    a.plan = [{"do": "gather", "what": "wood", "qty": 3}]
+    assert _drafted_runs(w, a, exp)
+    a.plan = [{"do": "gather", "what": "wood", "qty": 3, "_s": {"want": 3, "got": 3}}]  # (done: nothing more comes)
+    assert not _drafted_runs(w, a, exp)
+
+
+def test_a_craft_brings_in_its_recipes_whole_output():
+    # (Codex, PR #119) a batch of a recipe that makes two gives two, and a following experiment can use both
+    from chits.sim.items import RECIPES
+
+    w, a = _world()
+    key, r = next((k, r) for k, r in sorted(RECIPES.items()) if r.qty >= 2 and w.recipe(k) is not None)
+    r = w.recipe(key)
+    a.inventory.update({i: m for i, m in r.inputs})
+    a.plan = [{"do": "craft", "what": key, "qty": 1}]
+    exp = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": [key] * r.qty}]}
+    assert _drafted_runs(w, a, exp)
+    more = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": [key] * (r.qty + 1)}]}
+    assert not _drafted_runs(w, a, more)
 
 
 # ---------------------------------------------------------------------------- the menu is never empty, and costs nothing

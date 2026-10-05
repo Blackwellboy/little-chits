@@ -2710,6 +2710,14 @@ def _do_store(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def take_source(world, a: Agent, k: str, target: Any = None):
+    """The store a take of `k` draws from: the one named (by id, at any distance: an outpost haul's camp can be 60 tiles
+    off), or the nearest within 30 tiles that holds some (the take step, and the options preflight in brain.instinct)."""
+    return _find_structure(world, a, target, 30, lambda x: x.design in STORES + ("pen",) and x.functional
+                           and x.storage.get(k, 0) > 0 and world.same_land(a, x)
+                           and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+
+
 def _do_take(world, a: Agent, step, s) -> str:
     k = world.norm_item(step.get("what"))
     if not k:
@@ -2718,9 +2726,7 @@ def _do_take(world, a: Agent, step, s) -> str:
     taken = s.get("taken", 0)
     if taken >= want:
         return DONE
-    st = _find_structure(world, a, step.get("target"), 30, lambda x: x.design in STORES + ("pen",) and x.functional
-                         and x.storage.get(k, 0) > 0 and world.same_land(a, x)
-                         and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick)
+    st = take_source(world, a, k, step.get("target"))
     if not st:
         return f"no stockpile nearby has {world.item_name(k)} (still need {want - taken})"
     mv = _goto_structure(world, a, s, st)
