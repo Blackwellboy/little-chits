@@ -214,6 +214,8 @@ class Mind:
         for a in targets:
             a.brain = brain_id
             a.pending_plan = None
+            if self.model_only:
+                self._became_model_driven(world, a)
         self.save()
 
     def brain_for(self, a: Agent) -> Optional[LLMBrain]:
@@ -226,6 +228,8 @@ class Mind:
         world.__dict__["_mind_strict"] = self.strict  # (the prompt's loop note is for play only)
         if self.model_only or world.__dict__.get("model_only"):
             world.__dict__["model_only"] = self.model_only  # (the body's reflexes follow the mind's switch)
+        if self.model_only:
+            self._became_model_driven(world, a)
         brain = self.brain_for(a)
         if brain is not None:
             dg = diag.of(world)
@@ -396,22 +400,34 @@ class Mind:
         reflex, filler, routine, duty, fallback and menu choices) and every request in flight goes stale (its rev is
         bumped), so nothing from before the switch acts after it. The moment is recorded (diag.model_only_from).
         Returns how many steps were dropped."""
-        own = ("model_generated", "model_repaired")
-        dropped = 0
-        for a in world.agents.values():
-            keep = [s for s in a.plan if s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler")]
-            dropped += len(a.plan) - len(keep)
-            a.plan = keep
-            if a.pending_plan is not None:
-                rec = getattr(a, "_decision", None)
-                if rec is not None and rec.get("parse") == "choice":
-                    a.pending_plan = None
-                    rec["stale_why"] = "model-only: a menu choice"
-                    self._resolve(rec, "stale", world.tick)
-            a.bump_rev("model-only switched on")
+        dropped = sum(self._model_only_clean(world, a, "model-only switched on") for a in world.agents.values())
         world.model_only = True
         diag.model_only_from(world, dropped)
         return dropped
+
+    def _model_only_clean(self, world, a: Agent, why: str) -> int:
+        """One chit, under model-only: drop the steps its model didn't write and any menu choice waiting to be
+        adopted, and stale what is in flight. Marked with its brain, so it isn't cleaned twice under the same one.
+        Returns the steps dropped."""
+        own = ("model_generated", "model_repaired")
+        keep = [s for s in a.plan if s.get("_origin") in own and not s.get("_reflex") and not s.get("_filler")]
+        dropped = len(a.plan) - len(keep)
+        a.plan = keep
+        if a.pending_plan is not None:
+            rec = getattr(a, "_decision", None)
+            if rec is not None and rec.get("parse") == "choice":
+                a.pending_plan = None
+                rec["stale_why"] = "model-only: a menu choice"
+                self._resolve(rec, "stale", world.tick)
+        a.bump_rev(why)
+        a.__dict__["_model_only_brain"] = a.brain
+        return dropped
+
+    def _became_model_driven(self, world, a: Agent) -> None:
+        """Under model-only, a chit that has just come under a model (assigned one, or arriving where one drives
+        it) leaves its instinct plan behind before it acts."""
+        if a.brain != INSTINCT and a.__dict__.get("_model_only_brain") != a.brain:
+            diag.model_only_dropped(world, self._model_only_clean(world, a, "model-only: a model took over"))
 
     def no_stand_in(self) -> bool:
         """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""

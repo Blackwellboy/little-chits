@@ -321,3 +321,50 @@ def test_every_world_put_in_place_under_model_only_is_sanitized_and_a_new_game_t
         assert c.post("/api/reset", json={"seed": 7, "chits": 4, "size": 64}).status_code == 200
         assert r.mind.model_only is False and not any(getattr(w, "model_only", False) for w in r.worlds.values())
         assert c.get("/api/brains").json()["model_only"] is False
+
+
+def test_a_chit_that_becomes_model_driven_under_model_only_drops_its_instinct_plan():
+    """Codex P2 on #118: model-only on while a world ran on instinct, then a model assigned to it. Mind.assign kept
+    the chits' instinct plans, and nothing cleaned them (the switch was already on). Whenever a chit becomes
+    model-driven under model-only (assigned a model, or arriving where a model drives it) it is cleaned."""
+    from chits.runtime import Runtime
+
+    w, a = _chit()
+    others = [x for x in w.agents.values() if x is not a]
+    mind = Mind(None)
+    mind.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1"})
+    rt = Runtime.__new__(Runtime)
+    rt.mind, rt.worlds, rt.forks = mind, {w.id: w}, {}
+    rt.set_model_only(True)  # the world is still on instinct: its chits plan on instinct, as is theirs to do
+    instinct = [{"do": "gather", "what": "wood", "_origin": "instinct"}, {"do": "rest", "_filler": True}]
+    for x in w.agents.values():
+        x.plan = [dict(s) for s in instinct]
+    rev = a.rev
+    mind.assign(w, "m", [a.id])  # one chit gets the model, through the API's path
+    assert a.plan == [] and a.rev > rev
+    assert all(len(x.plan) == 2 for x in others)  # still on instinct: their plans are their own mind's
+    assert diag.of(w).model_only_dropped == 2
+    # a chit made model-driven any other way (a voyager taking its new home's brain) is cleaned before it acts
+    b_ = others[0]
+    b_.brain = "m"
+    mind.hook(w, b_)
+    assert not any(s.get("_origin") == "instinct" or s.get("_filler") for s in b_.plan)
+    assert diag.of(w).model_only_dropped == 4
+    a.plan = [{"do": "gather", "what": "stone", "_origin": "model_generated"}]
+    mind.hook(w, a)  # already cleaned under this brain: its own plan stands
+    assert a.plan[0]["what"] == "stone"
+
+
+def test_one_uninterrupted_need_is_one_onset_even_when_its_first_verb_changes():
+    """Codex P2 on #118: onsets were counted on verb changes, so one food need that went from gather or explore to
+    eat counted twice. An onset is a kind starting to fire."""
+    w, a = _chit()
+    for verb in ("gather", "gather", "explore", "eat", "eat"):
+        diag.reflex_would(w, a, verb)
+    diag.reflex_would(w, a, None)  # fed
+    diag.reflex_would(w, a, "eat")  # hungry again: a second need
+    diag.reflex_would(w, a, "sleep")  # food need over, a sleep need starts
+    rw = diag.reflex_would_summary(w)
+    assert rw["onsets_by_kind"] == {"food": 2, "sleep": 1}
+    assert rw["onsets"] == {"eat": 1, "gather": 1, "sleep": 1}  # by the verb each need began with
+    assert rw["ticks"] == {"eat": 3, "explore": 1, "gather": 2, "sleep": 1}
