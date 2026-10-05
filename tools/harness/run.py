@@ -62,8 +62,18 @@ def metrics(w, low: int, starved: int) -> dict:
             "loose": sum(n for pile in w.ground.values() for k, n in pile.items() if k != "_t")}
 
 
+def world_rules(rules):
+    """The tree under test's WorldRules for a rules object (None: the world's default, as before rules). Anything else
+    that isn't a rules object (false, 0, []) is refused by WorldRules, never read as the default (Codex on #137)."""
+    if rules is None:
+        return {}
+    from chits.sim.rules import WorldRules  # (a tree from before world rules has none: asking for rules there fails)
+
+    return {"rules": WorldRules.from_dict(rules)}
+
+
 def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "direct", tag: str = "",
-        mind: str = "", **mind_opts):
+        mind: str = "", rules=None, **mind_opts):
     """Run the world with a Probe attached; returns (the JSON row, the probe). With ``mind`` ("scripted" or a server
     URL) the chits are driven through the game's Mind instead of instinct (mindrun.py): the row gains a "mind" section
     and the probe a ``.mind`` (the ModelProbe)."""
@@ -74,10 +84,10 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
     if mind:
         from mindrun import run_world
 
-        w, p, mp, low, report = run_world(seed, days, size, chits, culture, mind, **mind_opts)
+        w, p, mp, low, report = run_world(seed, days, size, chits, culture, mind, rules=rules, **mind_opts)
         p.mind = mp
     else:
-        w = World("A", "A", seed, culture, size, chits)
+        w = World("A", "A", seed, culture, size, chits, **world_rules(rules))
         p = Probe(w)
         p.mind = None
         low = len(w.agents)
@@ -86,7 +96,8 @@ def run(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "
                 w.step(p.hook)
                 p.after_tick()
                 low = min(low, len(w.agents))  # (every tick: a death and a birth between daily samples hid a dip)
-    row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture}
+    row = {"tag": tag, "seed": seed, "days": days, "size": size, "culture": culture,
+           **({"rules": rules} if rules is not None else {})}
     row.update(metrics(w, low, len(p.starved)))
     row["births"] = p.events.get("birth", 0)
     row["forgot"] = p.events.get("forgotten", 0)
@@ -105,6 +116,7 @@ def main(argv=None) -> None:
     ap.add_argument("--size", type=int, default=128)
     ap.add_argument("--chits", type=int, default=18)
     ap.add_argument("--culture", default="direct")
+    ap.add_argument("--rules", default="", help='world rules as JSON, e.g. {"religion": false} (docs/WORLD_RULES.md)')
     ap.add_argument("--server", default=str(HERE.parents[1] / "server"), help="the server dir of the tree under test")
     ap.add_argument("--tag", default="")
     ap.add_argument("--autopsy", action="store_true", help="print the starved chits' last moments and stuck chits")
@@ -154,7 +166,8 @@ def main(argv=None) -> None:
                 "plan_ticks": args.plan_ticks, "choice_ticks": args.choice_ticks, "loop_after": args.loop_after,
                 "tick_seconds": args.tick_seconds, "model_only": args.model_only, "model_led": args.model_led}
     try:
-        row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind, **opts)
+        row, p = run(args.seed, args.days, args.size, args.chits, args.culture, args.tag, args.mind,
+                     json.loads(args.rules) if args.rules != "" else None, **opts)
     except ValueError as e:
         sys.exit(str(e))
     if args.autopsy:

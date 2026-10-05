@@ -898,6 +898,18 @@ class Reset(BaseModel):
     # current pack. {}: play without one. Refused in experiments.
     pack: Optional[Dict[str, Any]] = None
     model_led: Optional[bool] = None  # play the new match model-led (docs/MODEL_LED.md). Left out: keep the current
+    # the new match's world rules (sim/rules.py, docs/WORLD_RULES.md), fixed for its life. Left out: keep the current
+    rules: Optional[Dict[str, Any]] = None
+
+
+@app.get("/api/rules")
+def get_rules():
+    """What rules a world can have (labels, defaults, meanings) and the rules the running worlds were made with."""
+    from .sim import rules as RL
+
+    r = R()
+    return {**RL.describe(), "current": r.rules.to_dict(),
+            "worlds": {wid: w.rules.to_dict() for wid, w in r.worlds.items()}}
 
 
 @app.post("/api/reset")
@@ -917,7 +929,7 @@ def reset(body: Reset):
         raise HTTPException(400, f"contract must be one of {', '.join(CONTRACTS)}")
     try:
         r.reset(body.seed, body.chits, body.size, body.mode, body.brains, body.contract, body.contact, body.pack,
-                model_led=body.model_led)
+                body.rules, model_led=body.model_led)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"ok": True, "worlds": [views.world_meta(w) for w in r.worlds.values()]}

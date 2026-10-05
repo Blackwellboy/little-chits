@@ -20,6 +20,7 @@ from . import theme, views
 from .brain.mind import INSTINCT, Mind
 from .recorder import Recorder
 from .sim.agent import TICKS_PER_DAY
+from .sim.rules import WorldRules
 from .sim.world import CULTURE_FLAGS, ERAS, POP_CAP_MIN, World
 from .store import Store
 
@@ -126,6 +127,9 @@ class Runtime:
         self.run_id = self.store.get_meta("run_id") or uuid.uuid4().hex
         self.contact = (self.store.get_meta("contact") or os.environ.get("CHITS_CONTACT", "0")) in ("1", "true")
         self.pack: Optional[Dict[str, Any]] = self._starting_pack()  # a content pack: every world of the match gets it
+        # the world rules every world of the match is made with (sim/rules.py): the game's own choice, else legacy
+        kept_rules = self.store.get_meta("rules")
+        self.rules: WorldRules = WorldRules.from_dict(json.loads(kept_rules)) if kept_rules else WorldRules()
         self.mind.strict = self.contract == "experiment"
         self.mind.model_only = False  # (a diagnostic, switched on by hand in play: never kept over a restart)
         # model-led is a way to play, not a diagnostic: the game keeps its choice (never in an experiment, which is
@@ -313,7 +317,8 @@ class Runtime:
         # so the only thing that differs is the mind (or, in "culture" mode, one recorded law)
         culture = MODES[self.mode]["culture"][wid]
         label = {"direct": "Direct culture", "stigmergy": "Stigmergy only"}[culture]
-        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack, rng_scheme=rng_scheme)
+        w = World(wid, theme.world_name(wid), seed, culture, size, n, label=label, pack=self.pack, rng_scheme=rng_scheme,
+                  rules=self.rules)
         # a new play game's limit on each world's people (0: the island's own). Never an experiment's: its worlds run
         # by the island's own rules, whatever this machine's settings say (Codex, #79)
         cap = _env_int("CHITS_POP_CAP", 0) if self.contract != "experiment" else 0
@@ -324,6 +329,9 @@ class Runtime:
 
     def _attach(self, w: World) -> None:
         self.worlds[w.id] = w
+        if w.rules != self.rules:  # (a loaded or restored game brings its own rules: a world made after it shares them)
+            self.rules = w.rules
+            self.store.set_meta("rules", json.dumps(w.rules.to_dict()))
         if self.mind.model_only:  # (a restored save, a rewind or a loaded file: its saved instinct steps go too)
             self.mind.start_model_only(w)
         elif self.mind.model_led:  # (likewise: instinct's saved plans don't run on under model-led)
@@ -347,12 +355,15 @@ class Runtime:
     def reset(self, seed: Optional[int] = None, chits: Optional[int] = None, size: Optional[int] = None,
               mode: Optional[str] = None, brains: Optional[Dict[str, str]] = None,
               contract: Optional[str] = None, contact: Optional[bool] = None,
-              pack: Optional[Dict[str, Any]] = None, model_led: Optional[bool] = None) -> None:
+              pack: Optional[Dict[str, Any]] = None, rules: Optional[Dict[str, Any]] = None,
+              model_led: Optional[bool] = None) -> None:
         """Start a new match (see _reset). The loop stops stepping meanwhile: it used to keep stepping the old
         worlds, so the new A and B started ticks apart and old decisions landed in the new run's records.
         `pack`: a content pack for the new match (None keeps the current one, {} plays without).
+        `rules`: the new match's world rules (sim/rules.py), fixed for its life (None keeps the current ones).
         `model_led`: play the new match model-led (docs/MODEL_LED.md); None keeps the current choice."""
         self._check_reset(mode, contract, contact)  # a rejected reset leaves the running match untouched
+        new_rules = WorldRules.from_dict(rules) if rules is not None else self.rules  # (a bad set raises: no reset)
         new_pack = self._new_pack(pack, contract or self.contract)  # (so does a pack that doesn't validate)
         self._resetting = True
         try:
@@ -361,6 +372,8 @@ class Runtime:
             # over a restart or into an experiment. Turned on again by hand, it sanitizes the new worlds as usual
             self.set_model_only(False)
             self.pack = new_pack
+            self.rules = new_rules
+            self.store.set_meta("rules", json.dumps(new_rules.to_dict()))
             if model_led is not None or contract == "experiment":  # (an experiment is stricter: never model-led)
                 self.set_model_led(bool(model_led) and contract != "experiment")
             self._reset(seed, chits, size, mode, brains, contract, contact)
@@ -501,7 +514,7 @@ class Runtime:
                          "extra_body": {k: v for k, v in (c.extra_body or {}).items()
                                         if not any(s in k.lower() for s in ("key", "token", "secret", "auth"))}}
             worlds[wid] = {"culture": w.culture, "flags": dict(w.flags), "brain": brain, "uuid": w.uuid, "epoch": w.epoch,
-                           "rng_scheme": w.rng_scheme}
+                           "rng_scheme": w.rng_scheme, "rules": w.rules.to_dict()}
         schemes = {w.rng_scheme for w in self.worlds.values()}
         if len(schemes) > 1:  # (twins run one algorithm: _load_or_create sees to it, so this is a defect, not a state)
             raise RuntimeError(f"the worlds of this run use different random-number schemes: {sorted(schemes)}")
@@ -1452,7 +1465,7 @@ class Runtime:
             return "no game mode has worlds with these cultures (" + ", ".join(str(c)[:20] for c in cultures) + ")"
         for key, what, default in (("seed", "seeds", None), ("size", "sizes", None),
                                    ("terrain_version", "terrain versions", 1), ("rng_scheme", "random-number schemes", 1),
-                                   ("schema", "snapshot versions", 1)):
+                                   ("schema", "snapshot versions", 1), ("rules", "world rules", None)):
             if len({json.dumps(worlds[wid].get(key, default)) for wid in ids}) > 1:
                 return f"they have different {what}"
         ticks = [worlds[wid]["tick"] for wid in ids]

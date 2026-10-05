@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .. import diag
+from ..sim import rules as RL
 from ..sim.agent import TICKS_PER_DAY, Agent
 from . import prompt as P
 from .instinct import Instinct, tools_first
@@ -113,6 +114,8 @@ def apply_reflection(world, a: Agent, text: str) -> Dict[str, Any]:
         from ..sim.projects import name_project
 
         name_project(world, a, parsed["project"])  # the chief sets the village's project (checked by the world)
+    if not getattr(world, "rules", RL.LEGACY).religion:
+        parsed["belief"] = None  # (a world without religion: a conviction named anyway is not kept, even as text)
     bel = parsed.get("belief")
     if bel and not a.belief:  # meaning comes from minds: only a reflection can found a belief (T21)
         norm = lambda s: " ".join("".join(c.lower() if c.isalnum() else " " for c in s).split()).removeprefix("the ")

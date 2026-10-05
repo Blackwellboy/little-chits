@@ -35,6 +35,9 @@ def server_dir(p: str) -> Path:
 def one(server: Path, seed: int, tag: str, args, logs: Path) -> dict:
     cmd = [sys.executable, str(HERE / "run.py"), str(seed), "--days", str(args.days), "--size", str(args.size),
            "--culture", args.culture, "--server", str(server), "--tag", tag, "--autopsy"]
+    rules = args.new_rules if tag == "new" and args.new_rules else args.rules
+    if rules:
+        cmd += ["--rules", rules]
     r = subprocess.run(cmd, capture_output=True, text=True)
     out = logs / f"{seed}-{tag}.txt"
     out.write_text(r.stdout + (("\n--- stderr\n" + r.stderr) if r.stderr.strip() else ""))
@@ -129,6 +132,8 @@ def main(argv=None) -> None:
     ap.add_argument("--jobs", type=int, default=8)
     ap.add_argument("--culture", default="direct")
     ap.add_argument("--size", type=int, default=128)
+    ap.add_argument("--rules", default="", help="world rules (JSON) for both trees (docs/WORLD_RULES.md)")
+    ap.add_argument("--new-rules", default="", help="world rules (JSON) for NEW only: the same tree twice A/Bs a rule")
     ap.add_argument("--out", default="harness-out")
     args = ap.parse_args(argv)
     trees = {"base": server_dir(args.base), "new": server_dir(args.new)}

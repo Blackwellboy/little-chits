@@ -272,7 +272,7 @@ def _pin_latency(brain, model) -> None:
 
 
 async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad_kinds, choice_ticks, plan_ticks,
-               slots, loop_after, tick_seconds, model_only=False, model_led=False):
+               slots, loop_after, tick_seconds, model_only=False, rules=None, model_led=False):
     import httpx
 
     from chits.brain.mind import Mind
@@ -281,7 +281,9 @@ async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad
     from scripted import ScriptedModel, ScriptedTransport, TickClock
 
     scripted = mind_spec == "scripted"
-    w = World("A", "A", seed, culture, size, chits)
+    from run import world_rules
+
+    w = World("A", "A", seed, culture, size, chits, **world_rules(rules))
     mind = Mind(None)
     if model_only:  # a diagnostic: nothing from instinct covers for the model (no menu, fallback or reflexes)
         mind.model_only = w.model_only = True
@@ -341,7 +343,7 @@ async def _run(seed, days, size, chits, culture, mind_spec, style, bad_rate, bad
 def run_world(seed: int, days: int, size: int = 128, chits: int = 18, culture: str = "direct",
               mind: str = "scripted", style: str = "cascade", bad_rate: float = 0.15, bad_kinds=None,
               choice_ticks: int = 1, plan_ticks: int = 8, slots: int = 8, loop_after: int = LOOP_AFTER,
-              tick_seconds: float = 0.5, model_only: bool = False, model_led: bool = False):
+              tick_seconds: float = 0.5, model_only: bool = False, rules=None, model_led: bool = False):
     """One world with every chit on one brain: ``mind`` is "scripted" or an OpenAI-compatible base URL.
     ``model_only`` (a diagnostic) runs it with nothing from instinct: the full prompt whatever ``style`` says, no
     instinct plans and no body reflexes; the report counts what the reflexes would have done (``reflex_would``).
@@ -349,4 +351,4 @@ def run_world(seed: int, days: int, size: int = 128, chits: int = 18, culture: s
     if mind != "scripted" and not re.match(r"^https?://", mind):
         raise ValueError(f"--mind takes 'scripted' or a server URL such as http://127.0.0.1:18191/v1, not {mind!r}")
     return asyncio.run(_run(seed, days, size, chits, culture, mind, style, bad_rate, bad_kinds, choice_ticks,
-                            plan_ticks, slots, loop_after, tick_seconds, model_only, model_led))
+                            plan_ticks, slots, loop_after, tick_seconds, model_only, rules, model_led))

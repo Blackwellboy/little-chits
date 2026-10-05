@@ -1,7 +1,8 @@
 """Run one instinct world and print what it came to, for comparing two trees (tests/test_village_identity.py).
 
 Self-contained on purpose: it runs unchanged against this tree and against an older one (``git archive``), from that
-tree's ``server`` directory. It hashes the saved world each day without the uuid labels and the ``build`` field, and
+tree's ``server`` directory. It hashes the saved world each day without the uuid labels, the ``build`` field and a
+legacy world-rules record (an older tree saves none), and
 with the civic keys that F32 renamed (``projects``/``skips``) put back in their old shape (``project``/``skip``), so
 a world that stays one village must come out the same on both.
 
@@ -17,6 +18,13 @@ def normal(d):
     d = dict(d)
     for k in ("uuid", "epoch", "epochs", "build"):
         d.pop(k, None)
+    try:  # world rules (sim/rules.py): a world made with the legacy set saves them, an older tree saves none
+        from chits.sim.rules import LEGACY
+
+        if d.get("rules") == LEGACY.to_dict():
+            d.pop("rules")
+    except ImportError:
+        pass
     civ = dict(d.get("civic") or {})
     if "projects" in civ:  # the per-village shape, for a world with one project at most: back to the old keys
         live = [p for p in civ.pop("projects").values() if p]
