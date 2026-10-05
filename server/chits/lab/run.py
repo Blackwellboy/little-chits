@@ -414,7 +414,9 @@ def opportunities(w, chit_ticks: int, requests: int, wait_s: float = 0.0) -> Dic
     """How much thinking a world's chits got, per chit-day (a chit alive for one day = 1 chit-day): requests to its
     model; the share of model-brained chit time spent waiting for an answer (near 0 in lockstep, where the world
     waits instead); the wall seconds the world stood waiting for its model's answers (the lockstep wait: a cost, not
-    a world fact); and the share of finished steps that came from the model's plans (the rest are reflexes).
+    a world fact); and who drove the world (provenance.py): the share of finished steps from the model's plans (the
+    rest are reflexes, upkeep and the like), of those from plans it wrote itself rather than chose from instinct's
+    menu, of body reflexes and of heuristic instinct; and of strategic plans, those the model decided and wrote.
     Reported, never equalised: an equal budget would change behaviour and needs its own pre-registered design
     (research item 43)."""
     from .. import diag
@@ -426,7 +428,21 @@ def opportunities(w, chit_ticks: int, requests: int, wait_s: float = 0.0) -> Dic
     return {"requests_per_chit_day": round(requests / chit_days, 3) if chit_days else 0.0,
             "waiting_share": round(d.waiting_ticks / d.model_ticks, 3) if d.model_ticks else 0.0,
             "wait_seconds_per_chit_day": round(wait_s / chit_days, 4) if chit_days else 0.0,
-            "model_step_share": round(model_steps / steps, 3) if steps else 0.0}
+            "model_step_share": round(model_steps / steps, 3) if steps else 0.0,
+            **_driver_shares(d)}
+
+
+def _driver_shares(d) -> Dict[str, Any]:
+    """provenance.drivers as fractions, for result.json (a world where nothing was decided reports none)."""
+    from .. import provenance as PV
+
+    dr = PV.drivers(d.authorship, d.step_sources, d.waiting_ticks, d.model_ticks, d.redirects)
+    frac = lambda p: round(p / 100, 3) if p is not None else None
+    return {"model_authored_step_share": frac(dr["model_authored_steps_pct"]),
+            "reflex_step_share": frac(dr["reflex_steps_pct"]), "routine_step_share": frac(dr["routine_steps_pct"]),
+            "instinct_step_share": frac(dr["instinct_steps_pct"]),
+            "model_strategic_share": frac(dr["model_strategic_pct"]),
+            "model_authored_strategic_share": frac(dr["model_authored_strategic_pct"]), "redirects": dr["redirects"]}
 
 
 

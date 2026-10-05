@@ -311,7 +311,8 @@ class Mind:
             a.plan = p["steps"] if self.model_only else tools_first(world, a, p["steps"])  # a pick before the ore
             origin = "model_selected" if rec and rec.get("parse") == "choice" else "model_generated"
             if rec and rec.get("style") == "repair":
-                origin = "model_repaired"
+                # a repaired choice is still a pick from instinct's menu: the model chose, it didn't write (Codex #139)
+                origin = "model_repaired_choice" if rec.get("parse") == "choice" else "model_repaired"
             for step in a.plan:
                 step["_origin"] = origin
                 step["_decision_id"] = rec.get("request_id") if rec else None

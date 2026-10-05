@@ -74,7 +74,7 @@ def test_a_repaired_choice_is_adopted_as_such_and_gets_no_second_repair(on):
     a.plan = []
     a.pending_plan = {"goal": "g", "thought": "t", "steps": [{"do": "craft", "what": "no_such_thing"}]}
     m.hook(w, a)
-    assert a.plan and a.plan[0]["_origin"] == "model_repaired" and rec["outcome"] == "adopted"
+    assert a.plan and a.plan[0]["_origin"] == "model_repaired_choice" and rec["outcome"] == "adopted"  # (a pick, not a plan it wrote: provenance.py)
     for _ in range(50):
         actions.run(w, a)
         w.tick += 1

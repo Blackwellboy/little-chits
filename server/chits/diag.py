@@ -11,6 +11,8 @@ import weakref
 from collections import Counter, deque
 from typing import Any, Dict, List, Optional, Tuple
 
+from . import provenance as PV
+
 _NUM = re.compile(r"\d+(\.\d+)?")
 _REPLY_WINDOW = 360  # ticks an addressed chit has to answer (a plan cycle can take 100+)
 
@@ -23,6 +25,7 @@ class WorldDiag:
         self.plans: Counter = Counter()          # model | instinct | fallback | filler -> n
         self.authorship: Counter = Counter()
         self.step_sources: Counter = Counter()
+        self.redirects = 0                       # steps the executor turned into another (build -> feed the fire)
         self.origin_outcomes: Counter = Counter()  # (step origin, "ok"|"fail") -> finished steps
         self.repairs_asked = 0                     # requests that carried the simulator's reason for a failed step
         self.repaired_first: Counter = Counter()   # "ok"|"fail" -> the corrective first step of each repaired plan
@@ -333,17 +336,22 @@ def reflex_would_summary(world) -> Dict[str, Any]:
 def action_finished(world, a, step, result: str) -> None:
     state = step.get("_s", {})
     origin = "reflex" if step.get("_reflex") else ("filler" if step.get("_filler") else step.get("_origin", a.plan_source or "unknown"))
+    redirect = (state.get("redirect") or {}).get("do")  # (deterministic execution: the step it was carried out as)
     record = {"world": world.id, "world_uuid": world.uuid, "epoch": world.epoch, "tick": world.tick,
               "agent": a.id, "plan_id": None if step.get("_reflex") else a.plan_id, "decision_id": step.get("_decision_id"),
               "step_id": step.get("_step_id"), "tick_started": step.get("_tick_started"),
-              "source": origin, "verb": step.get("do"), "outcome": "executed" if result == "done" else "failed",
+              "source": origin, "provenance": PV.of_step(step, a.plan_source), "verb": step.get("do"),
+              **({"executed_as": redirect} if redirect else {}),
+              "outcome": "executed" if result == "done" else "failed",
               "result": state.get("note", "") if result == "done" else result,
               "step": {k: v for k, v in step.items() if not k.startswith("_")}}
     d = of(world)
     d.step_sources[origin] += 1
+    if redirect:
+        d.redirects += 1
     d.origin_outcomes[(origin, "ok" if result == "done" else "fail")] += 1
-    if origin == "model_repaired":  # (only a repaired plan's first finished step answers whether the repair worked:
-        did = step.get("_decision_id")  # the later steps of a plan whose first worked would inflate it, Codex #142)
+    if origin in ("model_repaired", "model_repaired_choice"):  # (only a repaired plan's first finished step answers
+        did = step.get("_decision_id")  # whether the repair worked: its later steps would inflate it, Codex #142)
         if did is not None and did not in d._repair_decisions:
             d._repair_decisions.add(did)
             d.repaired_first["ok" if result == "done" else "fail"] += 1
@@ -455,6 +463,8 @@ def report(rt) -> Dict[str, Any]:
             "plans": plans,
             "plan_authorship": dict(d.authorship),
             "step_sources": dict(d.step_sources),
+            # who drove it, by provenance category (provenance.py): never a model credited with a reflex or routine
+            "drivers": PV.drivers(d.authorship, d.step_sources, d.waiting_ticks, d.model_ticks, d.redirects),
             "recent_steps": list(d.recent_steps),
             "model_share_pct": _pct(plans.get("model", 0), decided),
             "routine_pct": _pct(plans.get("routine", 0), total_plans),
@@ -718,6 +728,7 @@ def scorecard(rt) -> Dict[str, Any]:
             "escalation_pct": _pct(sum(1 for c in choices if c.get("escalated")), len(choices)) if choices else None,
             "latency_p50_ms": br.get("latency_p50_ms"), "latency_p95_ms": br.get("latency_p95_ms"),
             "tok_s": br.get("tok_s"), "projects_done": len(civ.get("done", [])), "deaths": len(w.dead),
+            "drivers": wd["drivers"],  # who drove it (provenance.py): the model, the body, upkeep or instinct
         })
     lead = {}
     for k, better in SCORE_METRICS:
