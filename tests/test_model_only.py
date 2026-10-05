@@ -368,3 +368,48 @@ def test_one_uninterrupted_need_is_one_onset_even_when_its_first_verb_changes():
     assert rw["onsets_by_kind"] == {"food": 2, "sleep": 1}
     assert rw["onsets"] == {"eat": 1, "gather": 1, "sleep": 1}  # by the verb each need began with
     assert rw["ticks"] == {"eat": 3, "explore": 1, "gather": 2, "sleep": 1}
+
+
+def test_a_chit_back_from_instinct_is_cleaned_again_under_the_same_model():
+    """Codex on #118 (issue #120): cleaned under model m, put on instinct, it plans on instinct; assigned m again, the
+    mark still said m, so its instinct plan ran under the model. Back on instinct, the mark goes."""
+    w, a = _chit()
+    mind = Mind(None)
+    mind.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1"})
+    mind.model_only = True
+    mind.assign(w, "m", [a.id])
+    assert a.__dict__.get("_model_only_brain") == "m"
+    mind.assign(w, "instinct", [a.id])
+    assert "_model_only_brain" not in a.__dict__
+    a.plan = [{"do": "gather", "what": "wood", "_origin": "instinct"}]  # its own mind's, on instinct
+    mind.assign(w, "m", [a.id])
+    assert a.plan == []
+    # the same through a direct brain change and the tick hook (a voyager taking its new home's brain)
+    a.brain = "instinct"
+    mind.hook(w, a)
+    a.plan = [{"do": "gather", "what": "stone", "_origin": "instinct"}]
+    a.brain = "m"
+    mind.hook(w, a)
+    assert not any(s.get("_origin") == "instinct" for s in a.plan)
+
+
+def test_a_request_queued_before_model_only_goes_out_in_full():
+    """Codex on #118 (issue #120): a compact request queued before the switch went out compact when a slot opened,
+    and at_send's fresh rev let it pass the stale check. It is rebuilt in the full style model-only requires."""
+    import asyncio
+
+    w, a = _chit()
+    mind = Mind(None)
+    mind.upsert({"id": "m", "base_url": "http://127.0.0.1:9/v1", "prompt_style": "compact"})
+    mind.assign(w, "m", [a.id])
+    asked = []
+    mind._spawn = lambda coro: coro.close()
+    mind._think = lambda world, agent, brain, at_send, rec, sent: asked.append(at_send) or asyncio.sleep(0)
+    a.thinking = False
+    mind._ask(w, a, mind.brains["m"])
+    at_send = asked[-1]
+    compact = at_send()[-1]["content"]
+    mind.model_only = True  # switched on while the request waits for a slot
+    full = at_send()[-1]["content"]
+    from chits.brain import prompt as P
+    assert full == P.messages(w, a, style="full")[-1]["content"] and full != compact

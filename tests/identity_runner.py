@@ -63,6 +63,9 @@ def main(argv):
         actions.HUNGER_MARGIN = False
     if hasattr(actions, "RIPE_TARGET"):  # (a named farm harvested only when ripe)
         actions.RIPE_TARGET = False
+    from chits.brain import mind as mind_rules
+    if hasattr(mind_rules, "CHOICE_REPAIR"):  # (a choosing model told why its last choice failed)
+        mind_rules.CHOICE_REPAIR = False
     if hasattr(actions, "PLENTY"):  # the readings of the village's stock (F33) change a one-village world too: off
         actions.PLENTY = bool(make_first)  # with MAKE_FIRST, for the comparison with the tree before either
     from chits.sim import buildings

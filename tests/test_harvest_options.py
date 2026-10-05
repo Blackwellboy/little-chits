@@ -111,3 +111,20 @@ def test_a_harvest_naming_its_farm_by_kind_takes_the_farm_the_step_would_find():
     w, a, b, farm = _farm_world()
     b.plan = [{"do": "harvest", "target": "farm"}, {"do": "store", "what": "grain"}]
     assert not _can_run(w, a, HARVEST_AND_STORE)
+
+
+def test_an_option_that_names_its_farm_needs_that_farm_free():
+    # (Codex on #113, issue #128) the communal harvest names its farm: with that farm taken and another free, it was
+    # still offered, and two chits went to one farm while the other stood ripe
+    w, a, b, farm = _farm_world()
+    pos = w.find_site("farm", a.x, a.y + 4, 10)
+    other = w.place_site("farm", pos[0], pos[1], a)
+    w.complete_structure(other, a)
+    other.planted, other.growth = True, 1.0
+    named = {"goal": "harvest", "steps": [{"do": "harvest", "target": farm.id}, {"do": "store", "what": "grain"}]}
+    assert _can_run(w, a, named)
+    b.plan = [{"do": "harvest", "target": farm.id}, {"do": "store", "what": "grain"}]
+    assert not _can_run(w, a, named)  # the farm it names is taken...
+    assert _can_run(w, a, HARVEST_AND_STORE)  # (...while a harvest with no farm named still finds the free one)
+    other_named = {"goal": "harvest", "steps": [{"do": "harvest", "target": other.id}, {"do": "store", "what": "grain"}]}
+    assert _can_run(w, a, other_named)

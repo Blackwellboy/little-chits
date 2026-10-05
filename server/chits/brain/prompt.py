@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import random
 import zlib
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim import buildings as BLD
 from ..sim import terrain as T
@@ -601,10 +601,11 @@ CHOICE_SYSTEM = ("You are the mind of a small creature called a chit, in a wild 
                  "Answer with one letter only.")
 
 
-def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bool = False) -> List[Dict[str, str]]:
+def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bool = False,
+                    repair: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
     """Choose mode (JEV-style): the model reads the scene and picks one of a few drafted plans by letter. One output
     token instead of ~90: on the RTX 3090 a decision took 6 s instead of 25 s. The system prompt is the same for
-    every chit, so servers can reuse it from their prompt cache."""
+    every chit, so servers can reuse it from their prompt cache. `repair`: its last choice failed (repair_line)."""
     from ..sim.actions import describe_step
 
     rows = [f"{LETTERS[i]}) {o['goal']}: " + "; ".join(describe_step(s) for s in o["steps"][:6]) for i, o in enumerate(options)]
@@ -612,7 +613,8 @@ def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bo
         rows.append(f"{LETTERS[len(options)]}) {OWN_IDEA}")
     head = f"You are {a.name}. Your nature: {a.personality()}.\n"
     return [{"role": "system", "content": CHOICE_SYSTEM},
-            {"role": "user", "content": head + choice_scene(world, a) + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
+            {"role": "user", "content": head + choice_scene(world, a) + (repair_line(repair) if repair else "")
+             + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
              + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
 
 
@@ -663,6 +665,12 @@ def with_repair(msgs: List[Dict[str, str]], rep: Dict[str, Any]) -> List[Dict[st
     out = [dict(m) for m in msgs]
     out[-1]["content"] = out[-1]["content"] + note
     return out
+
+
+def repair_line(rep: Dict[str, Any]) -> str:
+    """The same exact reason for a choosing model (issue #112): one line in its scene, no second request. Only the
+    reason: it answers with a letter, so it isn't asked for a plan."""
+    return f'\n\nYOUR LAST PLAN FAILED: "{rep["failed"]}" could not be done: {rep["reason"]}.'
 
 
 def _does(inv) -> str:
