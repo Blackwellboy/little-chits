@@ -349,3 +349,17 @@ def test_a_build_that_sows_the_empty_farm_beside_it_takes_two_seeds():
     seeds = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds"]}]}
     wood = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["wood"]}]}
     assert "experiment" not in _menu(w, a, seeds) and "experiment" in _menu(w, a, wood)
+
+
+def test_a_build_that_sows_with_seeds_from_the_store_leaves_the_rest_in_hand():
+    # (Codex on #130) short of two seeds, _do_plant fetches up to four from a stockpile and sows two: two stay in hand
+    w, a = _world()
+    a.learn("design:farm", "taught", w.tick)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    farm.planted = False
+    _stockpile(w, a, seeds=4)
+    a.plan = [{"do": "build", "what": "farm"}]
+    assert build_course(w, a, a.plan[0])[0] == "reuse"
+    seeds = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds", "seeds"]}]}
+    assert "experiment" in _menu(w, a, seeds)

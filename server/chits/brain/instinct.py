@@ -517,8 +517,16 @@ class _Hands:
                     fuel = next((x for x in (FUEL_VALUE if IT.ITEM_USES else ("wood",)) if self.held.get(x, 0) > 0), None)
                     if fuel is not None:
                         self._use(fuel, min(max(1, int((100 - st.fuel) // FUEL_VALUE[fuel]) or 1), 3))
-                elif how == "plant":
-                    self._use("seeds", 2)  # (_do_plant)
+                elif how == "plant":  # (_do_plant: short of 2 seeds, it fetches up to 4 from a store, or else gathers 2)
+                    if self.held.get("seeds", 0) < 2:
+                        pile = _stockpile_with(w, a, ["seeds"], 30)
+                        if pile is not None:
+                            got = self._fits("seeds", min(4, pile.storage.get("seeds", 0) - self.drawn.get((pile.id, "seeds"), 0)))
+                            self.drawn[(pile.id, "seeds")] = self.drawn.get((pile.id, "seeds"), 0) + got
+                            self._add("seeds", got)
+                        elif w.nearest_resource(a.x, a.y, "seeds", 20):
+                            self._add("seeds", self._fits("seeds", 2))
+                    self._use("seeds", 2)
             elif kind in ("site", "join", "redirect", "new"):
                 key = site.design if site is not None else normalize_design(s.get("what"))
                 for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
