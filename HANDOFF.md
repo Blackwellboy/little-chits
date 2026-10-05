@@ -67,7 +67,7 @@ Continue from `origin/main`. (Until 2026-09-30 this said `claude/dazzling-dijkst
 
 Every change still clears the bar in "How to judge a change" below.
 
-## Work in flight (updated 2026-10-05)
+## Work in flight (updated 2026-10-06)
 
 This section lets anyone, person or agent, pick up the current queue from GitHub alone. Update it in the same PR as any change that moves the queue.
 
@@ -96,6 +96,15 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #104 | **Item uses (F35) on** (`items.ITEM_USES = True`) |
 | #105 | The hunger margin applies to a chit with no plan (issue #101) |
 | #106 | **Hoarding (F33) on** (`actions.PLENTY = True`), with the grain reserve at 4 days (`surplus.GRAIN_DAYS`) |
+| #108 | "Plan from here" above |
+| #111 | Model in the loop for the harness: `run.py --mind scripted` runs the real prompt, parse, repair and cascade path with no GPU |
+| #113 | Live model-path loops: the parser keeps invented names and rejects missing objects, a harvest reserves its farm (`actions.harvest_source`), naming clauses parse anywhere. Follow-up edge case: issue #128 |
+| #114, #115 | Prompts are the same text under any hash seed; a truncated or repeated reply is counted honestly |
+| #117 | **Random streams on** (`world.RNG_STREAMS`, `rng_scheme` 3): one stream per system, chit and tick |
+| #118 | Model-only diagnostic mode (`--model-only`, a play toggle, a Lab protocol field): no instinct menu, fallback, filler or reflex. Off by default; follow-ups in #120 |
+| #119 | A model's menu offers only plans that can start (#116). Follow-ups: issue #121 |
+| #122, #123 | Lab: a run that breaks a hard invariant ends alone and says why (`invalid.json`, blind; `invalid-sealed.json`); `resume --retry-invalid` reruns it. Follow-ups: issue #125 |
+| #124 | Ripe harvest target merged **off** (`actions.RIPE_TARGET`); a model's menu can store or put down a full load |
 
 #86 was closed because it made a test opt-in, which AGENTS.md forbids.
 
@@ -105,7 +114,10 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 |---|---|---|
 | Zones (`buildings.NEED_SITING`, `buildings.TOWN_GATE`, both off) | Its 24-seed A/B switched on, against main with the hunger margin: discoveries 69.7 > 69.3 / 71.2 > 65.3, era 7.92 > 7.75 / 8.0 > 7.58, one starvation (seed 12) | Find what costs discoveries before turning it on: compare `fired` counts and per-seed autopsies with the harness |
 | Ripe harvest target (`actions.RIPE_TARGET`, **off**; `dev/harvest-take`) | A physics bug, fixed but off until its A/B passes: a harvest step that names a farm took 6 grain from it unripe or empty, because `_find_structure` skips the ripeness check for an id. With the switch on, the named farm must be ripe or the step looks for a ripe one, keeps to the farm it chose, and a hunger reflex whose farm was harvested first chooses its food again. 18-seed A/B (60 days, random streams) against main: discoveries 76.7 > 73.4, era 8.6 > 8.1, population 58.8 > 58.3, starved 1 > 0, harvests 682 > 503, plantings 175 > 247, food 1285 > 1381. (Before random streams, 24 seeds: discoveries 74.1 > 76.9.) The same branch offers a model's menu a way to store or put down its load when options were left out for want of room (no instinct change) | A 24-seed A/B with the switch on; find what costs discoveries (fewer harvests, more sowing) before turning it on |
-| `dev/rng-streams2` (`world.RNG_STREAMS`, on) | A random stream per system, chit and tick, to cut A/B noise. Noise check, 12 seeds × 60 days, per-seed discovery change from one harmless extra draw: an unused draw in gathering, spread (sd) 12.9 off > 0.0 on; the builder rolling once more, 10.0 off > 0.55 on. 24-seed A/B against main: discoveries 74.25 > 77.6 / 73.9 > 75.3, era 8.92 > 8.5 / 8.33 > 8.58, population even, one starvation (seed 42, a store emptied while the chit walked to it) | Review and merge. Rebase every open A/B on it: their per-seed swings should shrink |
+| Ripe harvest target, merged (#124) | As above, now on main with the switch off | Unchanged |
+| JevK5 9B vs Gemma 4 12B, Lab study (`docs/protocols/jevk5-vs-gemma.json`) | Plan steps 2 and 3: the model choice re-run pre-registered, blinded and in lockstep: 6 seeds × 25 days, 12 chits. Running detached from a worktree at 67ac618 (`runs/jevk5-vs-gemma`), on two study model servers on the RTX 5090 (4 slots each) beside the live game. Run 42_B went invalid when the JevK5 server wedged (chat hung, GPU at 98%); the servers were restarted and it is being rerun with `resume --retry-invalid`, keeping the attempt on record. About a day and a half in all | When every run has `result.json`: `make lab ARGS="analyze runs/jevk5-vs-gemma"`, freeze the blind report, then unblind and publish it under `docs/research/` |
+| Choice repair (#126, `mind.CHOICE_REPAIR`, **off**) | Issue #112: choose and cascade brains never heard why a choice failed. The next choice scene gets the simulator's reason in one line, and an escalated cascade gets the full repair note. Scripted mind, 6 seeds: repairs asked 0 > 101-325, nothing worse | Review and merge. Whether it helps a real model: decbench or a Lab run, then decide the switch |
+| Model-only follow-ups (#127) | Issue #120: the mark clears when a chit goes back to instinct; a request queued before the switch goes out in full | Review and merge |
 
 **Switching the features on.** A feature turns on after a 24-seed harness A/B with its switch on, against the main of the day, clears the bar below. Results against main with the hunger margin (#100, #105):
 
@@ -158,7 +170,7 @@ python -m pytest tests plan/acceptance -q > /tmp/suite.txt 2>&1; s=$?; tail -1 /
 
 **Open decisions for the owner:**
 
-- Swap the RTX 5090 model to JevK5 9B (another service on the PC shares that server), and start a new game. The 2026-10-04 single-world game died out of old age at about day 161.
+- Done 2026-10-05: the RTX 5090 serves JevK5 9B, and a new single-world game started (20 founders). The 2026-10-04 game died out of old age at about day 161.
 - Dual-GPU strict comparison (issue #13).
 - Restoring the archived long-running worlds.
 - Live-UI checks still owed: skip ahead, save and load, pack picker, recording meter, Docker Desktop.
