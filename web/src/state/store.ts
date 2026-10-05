@@ -24,6 +24,7 @@ type UI = {
   focus: { world: string; x: number; y: number; t: number } | null;
   director: boolean; // 🎬 the camera cuts to the drama by itself
   godOpen: boolean;
+  godOrderOpen: boolean; // 🪄 god-mode Order overlay (SOK-284)
   savesOpen: boolean; // 💾 saves in the main UI
   recordingsOpen: boolean;
   recording: boolean; // 🎞 auto-record is filming
@@ -52,6 +53,7 @@ export const useUI = create<UI>((set) => ({
   focus: null,
   director: localStorageGet("director") === "1",
   godOpen: false,
+  godOrderOpen: false,
   savesOpen: false,
   recordingsOpen: false,
   recording: false,

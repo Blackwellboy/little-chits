@@ -4,6 +4,7 @@ import { useUI, worlds } from "./state/store";
 import { parseMomentParams, parseRecordParams, stageSize, type MomentParams } from "./ui/recordLayout";
 import { BrainsModal } from "./ui/BrainsModal";
 import { GodBanner, GodModal } from "./ui/GodModal";
+import { GodOrderOverlay } from "./ui/GodOrderOverlay";
 import { RecordingsModal } from "./ui/RecordingsModal";
 import { SavesModal } from "./ui/SavesModal";
 import { Welcome } from "./ui/Welcome";
@@ -127,6 +128,7 @@ export default function App() {
       <NewWorldModal />
       <GodModal />
       <GodBanner />
+      <GodOrderOverlay />
       <SavesModal />
       <RecordingsModal />
       <Welcome />

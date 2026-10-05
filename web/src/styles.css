@@ -400,6 +400,29 @@ button.danger { color: var(--bad); }
 .save-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
 .save-row .grow { flex: 1; }
 .god-msg { margin-top: 10px; color: #ffcf99; }
+.god-orders-btn { margin: 6px 0 2px; border-color: #ffd24a; color: #ffe08a; background: rgba(255,210,74,0.08); border-radius: 8px; padding: 5px 12px; font-size: 13px; border: 1px solid #ffd24a; }
+.god-orders-btn:hover { background: rgba(255,210,74,0.16); }
+/* 🪄 God-mode Order overlay (SOK-284): compact floating panel, map visible underneath */
+.god-order { position: fixed; top: 66px; right: 12px; width: min(300px, calc(100vw - 24px)); z-index: 19; padding: 12px 14px;
+  background: var(--glass-2); border: 1px solid var(--line); border-radius: 14px; backdrop-filter: blur(14px);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.45); animation: slide .2s ease-out; }
+.god-order h3 { margin: 0 0 4px; font-size: 15px; }
+.god-order p { margin: 4px 0; }
+.god-order .verb-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.god-order .verb-btns button { font-size: 11px; padding: 4px 8px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); color: var(--text); }
+.god-order .verb-btns button:hover { border-color: var(--accent); }
+.god-order .verb-btns button.on { border-color: var(--accent); color: var(--accent); background: rgba(255,184,107,0.12); }
+.god-order .god-target, .god-order .god-nl, .god-order .god-who select { width: 100%; margin-top: 6px; }
+.god-order .hint { font-size: 11px; color: var(--muted); margin: 3px 0 6px; }
+.god-order .god-send { width: 100%; margin-top: 2px; }
+.god-order .god-send:disabled { opacity: 0.5; }
+.god-order-msg { margin-top: 8px; font-size: 12px; color: #ffcf99; }
+.god-order-msg.err { color: #ff9d9d; }
+@media (max-width: 720px) {
+  .god-order { top: auto; bottom: 72px; right: 8px; left: 8px; width: auto; max-height: 55vh; overflow: auto; }
+  .god-order .verb-btns button { font-size: 10px; padding: 3px 6px; }
+}
+
 .modal.saves-modal { width: min(640px, 100%); }
 .save-row .save-what { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .saves-modal .save-row button { background: rgba(255,255,255,0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; font-size: 12px; }

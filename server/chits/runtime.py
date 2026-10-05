@@ -17,7 +17,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from . import theme, views
-from .brain.mind import INSTINCT, Mind
+from .brain import orders
+from .brain.mind import INSTINCT, Mind, _AGE_GATE_JOBS, _feeds_road, _sole_keepers
 from .recorder import Recorder
 from .sim.agent import TICKS_PER_DAY
 from .sim.world import CULTURE_FLAGS, ERAS, POP_CAP_MIN, World
@@ -116,6 +117,8 @@ class Runtime:
         # one possessed chit per world (shared by all observers): the Mind sees it, so its AI-slot logic can too
         self.possessed: Dict[str, str] = {}
         self.mind.possessed = self.possessed
+        # God-mode orders (SOK-284): observer jobs queued per world, drained when a capable chit frees up
+        self.god_queues: Dict[str, List[Dict[str, Any]]] = {}
         preset = os.environ.get("CHITS_BRAINS_PRESET", "").strip()
         if preset and Path(preset).exists():
             self.mind.merge_preset(Path(preset))  # e.g. configs/dual-gpu.json: 5090 -> A, 3090 -> B
@@ -390,6 +393,7 @@ class Runtime:
         self.invalid_reason = ""
         self.loop_error = ""  # (the failed match is gone)
         self.possessed.clear()  # a new match: nobody is possessed
+        self.god_queues = {}  # a new match: no observer orders waiting
         self.paused = False
         self.skip = self.last_skip = None
         self.forks = {}  # a new match: the old one's what-ifs go with it
@@ -1031,6 +1035,7 @@ class Runtime:
 
     def step_worlds(self, n: int = 1) -> None:
         """Step every world, then land any boats that are due on the other island (T30)."""
+        self._drain_god_queues()
         for _ in range(n):
             left, until = self.fair()
             for w in list(self.worlds.values()):
@@ -1357,6 +1362,211 @@ class Runtime:
         orders.apply_order(w, a, act, plan, self.mind)
         steps = [{k: v for k, v in s.items() if not k.startswith("_")} for s in plan.get("steps") or []]
         return {"ok": True, "action": act, "goal": plan.get("goal") or "", "steps": steps}
+
+    # -------------------------------------------------------------- 🪄 god-mode orders (SOK-284)
+    def god_order(self, wid: str, action: Optional[str] = None, text: Optional[str] = None,
+                  target: Optional[str] = None, agent_id: Optional[str] = None) -> Dict[str, Any]:
+        """God mode: dispatch one job (verb chip or one line) to Auto or a picked chit. Reuses the possess order
+        planner (``orders``). A chit busy with critical/age-gate work is never overwritten: the job is queued instead
+        (or refused with a friendly reason when no chit can do it). Every attempt is logged to the decisions trail.
+        Raises KeyError (unknown world/chit), ValueError (bad/refused order) or PermissionError (experiment run)."""
+        from .sim import projects
+
+        w = self.worlds.get(wid)
+        if w is None:
+            raise KeyError(wid)
+        select = "pick" if agent_id is not None else "auto"
+        a = w.agents.get(agent_id) if agent_id is not None else None
+        if agent_id is not None and a is None:
+            raise KeyError(agent_id)
+        name = a.name if a is not None else None
+        act = (action or "").strip().lower()
+        parsed_target: Optional[str] = None
+        try:
+            if not act and text:
+                act, parsed_target = orders.parse_order(text)
+            if target is None:
+                target = parsed_target
+            if act not in orders.ORDERS:
+                raise ValueError(f"unknown order {act!r}; try one of {', '.join(orders.ORDERS)}")
+        except ValueError as e:
+            self._log_god_order(w, act or None, target, text, select, "refused", agent_id, name, None, str(e))
+            raise
+        self.mark_sandbox("god order")  # PermissionError in an experiment run
+
+        outcome: Optional[str] = None
+        goal: Optional[str] = None
+        message: Optional[str] = None
+        assigned_id: Optional[str] = None
+        queue_pos: Optional[int] = None
+
+        if act == "cancel":
+            if a is None:
+                a = next((x for x in w.agents.values() if any(s.get("do") not in orders._ROUTINE for s in x.plan)), None)
+            if a is not None:
+                plan = orders.order_plan(w, a, "cancel")
+                orders.apply_order(w, a, "cancel", plan, self.mind)
+                outcome, goal, name, assigned_id = "assigned", "", a.name, a.id
+                message = f"{a.name} dropped their side quest"
+            else:
+                outcome, message = "queued", "queued for a free chit"
+                self._enqueue_god(wid, "cancel", None, text, agent_id)
+                queue_pos = len(self.god_queues.get(wid, []))
+        elif a is not None:
+            # pick: assign when free and capable, queue when busy critical, refuse when incapable
+            try:
+                plan = orders.order_plan(w, a, act, target)
+            except ValueError as e:
+                self._log_god_order(w, act, target, text, select, "refused", agent_id, a.name, None, str(e))
+                raise ValueError(str(e))
+            if self._god_busy(w, a):
+                outcome, name, message = "queued", a.name, f"queued for {a.name}"
+                self._enqueue_god(wid, act, target, text, agent_id)
+                queue_pos = len(self.god_queues.get(wid, []))
+            else:
+                orders.apply_order(w, a, act, plan, self.mind)
+                outcome, goal, name, assigned_id = "assigned", plan.get("goal") or "", a.name, a.id
+        else:
+            # auto: prefer a free capable chit (age-gate jobs first); otherwise queue
+            a = self._god_pick_free(w, act, target)
+            if a is not None:
+                plan = orders.order_plan(w, a, act, target)
+                orders.apply_order(w, a, act, plan, self.mind)
+                outcome, goal, name, assigned_id = "assigned", plan.get("goal") or "", a.name, a.id
+            else:
+                outcome, message = "queued", self._god_queue_message(w, act, target)
+                self._enqueue_god(wid, act, target, text, None)
+                queue_pos = len(self.god_queues.get(wid, []))
+
+        self._log_god_order(w, act, target, text, select, outcome, assigned_id or agent_id, name, goal, message)
+        if outcome in ("assigned", "queued"):
+            ev = f"God ordered {name}: {goal}" if goal else message or "God ordered " + (name or "a chit")
+            w.emit("god-order", ev, 2, assigned_id or agent_id, action=act, select=select, target=target)
+        resp: Dict[str, Any] = {"ok": True, "outcome": outcome, "action": act}
+        if assigned_id is not None:
+            resp["agent_id"] = assigned_id
+        if name is not None:
+            resp["agent_name"] = name
+        if goal:
+            resp["goal"] = goal
+        if message:
+            resp["message"] = message
+        if queue_pos is not None:
+            resp["queue_pos"] = queue_pos
+        return resp
+
+    def _god_busy(self, w, a) -> bool:
+        """A chit an observer order must not overwrite: mid critical/age-gate work, a sole keeper of a critical
+        recipe/design with real steps on, or already holding a player/god order. Routine/survival-only plans (or none)
+        are free for a side quest."""
+        from .sim import projects
+
+        non_routine = [s for s in a.plan if s.get("do") not in orders._ROUTINE]
+        if a.plan_source in ("player", "god") and non_routine:
+            return True
+        if not non_routine:
+            return False
+        road = projects.road(w)
+        if road is not None:
+            road_keys = {f"{s['kind']}:{s['key']}" for s in road["steps"] if not s["done"]}
+            if road_keys and _feeds_road(a, road_keys):
+                return True
+            if a.id in _sole_keepers(list(w.agents.values()), road_keys):
+                return True
+        return False
+
+    def _god_pick_free(self, w, act, target):
+        """A free, capable living chit for an auto order, preferring the age-gate jobs; None if none is free now."""
+        capable = []
+        for a in w.agents.values():
+            if self._god_busy(w, a):
+                continue
+            try:
+                orders.order_plan(w, a, act, target)
+            except ValueError:
+                continue
+            capable.append(a)
+        if not capable:
+            return None
+        capable.sort(key=lambda a: 0 if a.job in _AGE_GATE_JOBS else 1)
+        return capable[0]
+
+    def _god_queue_message(self, w, act, target) -> str:
+        """A name for the UI's "queued for …": a capable chit (free or busy), else a generic label."""
+        for a in w.agents.values():
+            try:
+                orders.order_plan(w, a, act, target)
+            except ValueError:
+                continue
+            return f"queued for {a.name}"
+        return "queued for a free chit"
+
+    def _enqueue_god(self, wid: str, act: str, target: Optional[str], text: Optional[str],
+                     agent_id: Optional[str]) -> None:
+        entry = {"action": act, "target": target, "text": text, "preferred": agent_id,
+                 "created": time.time(), "tick": self.worlds[wid].tick}
+        self.god_queues.setdefault(wid, []).append(entry)
+
+    def _god_pick_for_queue(self, w, entry):
+        """The chit a queued order should go to now: the preferred one if it freed up, else any free capable chit
+        (for a cancel, any chit with a non-routine plan)."""
+        act, preferred = entry["action"], entry.get("preferred")
+        candidates = list(w.agents.values())
+        if preferred is not None:
+            candidates = sorted(candidates, key=lambda a: 0 if a.id == preferred else 1)
+        for a in candidates:
+            if act == "cancel":
+                if any(s.get("do") not in orders._ROUTINE for s in a.plan):
+                    return a
+            elif not self._god_busy(w, a):
+                try:
+                    orders.order_plan(w, a, act, entry.get("target"))
+                except ValueError:
+                    continue
+                return a
+        return None
+
+    def _drain_god_queues(self) -> None:
+        """Once a tick: hand a queued God order to a chit as soon as one frees up. Append-only; never steal critical
+        work (``_god_busy`` still guards each pick)."""
+        for wid, queue in list(self.god_queues.items()):
+            w = self.worlds.get(wid)
+            if w is None:
+                self.god_queues.pop(wid, None)
+                continue
+            kept = []
+            for entry in queue:
+                a = self._god_pick_for_queue(w, entry)
+                if a is None:
+                    kept.append(entry)
+                    continue
+                try:
+                    plan = orders.order_plan(w, a, entry["action"], entry["target"])
+                except ValueError:
+                    kept.append(entry)  # still impossible for every chit: keep waiting
+                    continue
+                orders.apply_order(w, a, entry["action"], plan, self.mind)
+                w.emit("god-order", f"God's queued order took effect: {a.name} {plan.get('goal') or 'dropped their side quest'}",
+                       2, a.id, action=entry["action"], queued=True)
+            if kept:
+                self.god_queues[wid] = kept
+            else:
+                self.god_queues.pop(wid, None)
+
+    def _log_god_order(self, w, act, target, text, select, outcome, agent, name, goal, message) -> None:
+        """One record per God-mode order, in the same decisions trail the models use (store.save_decision)."""
+        rec = {
+            "request_id": uuid.uuid4().hex, "world": w.id, "epoch": getattr(w, "epoch", ""),
+            "agent": agent, "agent_name": name, "brain": "god", "model": "god", "style": "god-order",
+            "tick_requested": w.tick, "outcome": outcome, "tick_resolved": w.tick,
+            "action": act, "text": text or None, "target": target, "select": select,
+            "goal": goal, "message": message, "match": getattr(self.mind, "match", None),
+        }
+        self.mind.decisions.append(rec)
+        try:
+            self.store.save_decision(rec)
+        except Exception as e:  # recording must never break an order
+            log.warning("god order decision record failed: %s", e)
 
     def save_point(self, name: str) -> Dict[str, Any]:
         name = (name or "").strip()[:60] or time.strftime("save %H:%M")

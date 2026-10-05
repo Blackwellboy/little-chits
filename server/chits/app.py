@@ -333,6 +333,28 @@ def order(wid: str, aid: str, body: OrderBody):
         raise HTTPException(400, str(e))
 
 
+class GodOrderBody(BaseModel):
+    action: Optional[str] = None
+    text: Optional[str] = None
+    target: Optional[str] = None
+    agent_id: Optional[str] = None  # None = Auto
+
+
+@app.post("/api/worlds/{wid}/god/order")
+def god_order(wid: str, body: GodOrderBody):
+    """🪄 God-mode order (SOK-284): one job to Auto or a picked chit; queues rather than overwriting critical work.
+    Logged to the decisions trail. Does not require possess."""
+    world(wid)
+    try:
+        return R().god_order(wid, body.action, body.text, body.target, body.agent_id)
+    except KeyError:
+        raise HTTPException(404, "no such chit")
+    except PermissionError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @app.get("/api/worlds/{wid}/possess")
 def possess_state(wid: str):
     world(wid)
