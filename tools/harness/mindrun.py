@@ -63,6 +63,7 @@ class ModelProbe:
         self.recs: Dict[str, Dict[str, Any]] = {}  # decision id -> what the autopsy needs about it
         self.model_steps: Counter = Counter()  # ok / failed / failed_at_once
         self.at_once_verb: Counter = Counter()
+        self.failed_by_origin: Counter = Counter()  # model_selected (a drafted option) / model_generated / model_repaired
         self.at_once_reason: Counter = Counter()
         self.model_fails: Counter = Counter()  # signature of a failed model step -> n, over the whole run
         self.repairs: Counter = Counter()  # first step of a repaired plan: ok / failed
@@ -129,11 +130,13 @@ class ModelProbe:
                 self.model_steps["ok"] += 1
                 return
             self.model_steps["failed"] += 1
+            self.failed_by_origin[origin] += 1
             sig = signature(step, result)
             self.model_fails[sig] += 1
             started = step.get("_tick_started", self.w.tick)
             if self.w.tick - started <= 1:  # it could not run at all
                 self.model_steps["failed_at_once"] += 1
+                self.failed_by_origin[origin + " at once"] += 1
                 self.at_once_verb[str(step.get("do"))] += 1
                 self.at_once_reason[f"{step.get('do')}: {_NUM.sub('#', str(result))[:70]}"] += 1
                 if len(self.examples) < EXAMPLES:
@@ -189,6 +192,7 @@ class ModelProbe:
             "repairs": {"asked": self.decisions.get("style:repair", 0), "first_step_ok": self.repairs["ok"],
                         "first_step_failed": self.repairs["failed"]},
             "model_steps": {k: self.model_steps[k] for k in ("ok", "failed", "failed_at_once")},
+            "failed_by_origin": dict(sorted(self.failed_by_origin.items())),
             "failed_at_once_by_verb": dict(self.at_once_verb.most_common()),
             "failed_at_once_by_reason": self.at_once_reason.most_common(10),
             "model_failures": self.model_fails.most_common(10),

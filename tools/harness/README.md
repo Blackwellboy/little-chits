@@ -88,7 +88,10 @@ The JSON line gains a `mind` section:
   for after a model step failed, and whether the repaired plan's first step worked. `reply_ticks`: ticks from asking
   a chit's mind to its answer.
 - `model_steps`: model steps done and failed, and `failed_at_once` (failed within a tick of starting: they could not
-  run at all), by verb and by reason. `model_failures`: the most common failed model steps over the run.
+  run at all), by verb and by reason. `failed_by_origin` splits them: `model_selected` is a plan instinct drafted
+  and the model picked by letter, `model_generated` one the model wrote, `model_repaired` one written after a
+  failure. At `--bad-rate 0` the scripted model's own written plans should barely fail; what fails there is the
+  world's (a deer that got away) or instinct's drafted options. `model_failures`: the most common failed model steps.
 - `loops`: the same step (verb and object as written, so a null `what` shows as `None`) failing for the same reason
   more than `--loop-after` (3) times in a row for one chit, by origin, with episodes, the longest run and how many
   chits. `diag_loops` is the game's own loop detector (`diag.LOOP_N`).

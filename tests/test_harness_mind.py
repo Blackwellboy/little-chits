@@ -54,6 +54,7 @@ def test_a_planted_what_none_step_is_counted_as_a_failure_loop():
     assert loops and loops[0]["longest"] > mindrun.LOOP_AFTER
     assert r["model_loops"] >= loops[0]["episodes"] >= 1
     assert r["failed_at_once_by_verb"].get("gather", 0) > 0
+    assert r["failed_by_origin"].get("model_generated at once", 0) > 0  # its own written plans, not a drafted option
     assert "gather None" in mp.autopsy_text()  # the autopsy shows the plan, its source, the step and the result
     assert "plan:" in mp.autopsy_text() and "source model_" in mp.autopsy_text()
 
@@ -179,10 +180,10 @@ def test_an_experiment_plan_fetches_every_input_it_lacks():
         {"do": "gather", "what": "wood", "qty": 1}]  # repeats kept, held ones counted, none dropped
     assert scripted.prepare(s, ["charcoal", "stone"]) is None  # nowhere to gather charcoal: not this combination
     assert scripted.prepare(s, ["copper ore", "stone"]) is None  # ore needs a pick it doesn't hold
-    assert scripted.prepare(dict(s, full=True), ["wood", "stone"]) is None  # no room for what it must gather
-    assert scripted.prepare(dict(s, full=True), ["stone"]) == []
+    assert scripted.prepare(dict(s, full=True, load=12, cap=12), ["wood", "stone"]) is None  # no room at all
+    assert scripted.prepare(dict(s, full=True, load=12, cap=12), ["stone"]) == []
     model = scripted.ScriptedModel(seed=1, bad_rate=0)
-    scene_ = {"hunger": 90, "carrying": {"stone": 1}, "full": False, "near": ["plant fiber", "stone"], "recipes": [],
+    scene_ = {"hunger": 90, "carrying": {"stone": 1}, "full": False, "load": 1, "cap": 12, "stored_food": [], "near": ["plant fiber", "stone"], "recipes": [],
               "inputs": {}, "designs": [], "no_home": False, "sites": [], "failed": "",
               "untried": ["charcoal + stone", "plant fiber + plant fiber + stone + stone"]}
     for i in range(40):  # every experiment it plans has its inputs in hand by then
@@ -191,6 +192,46 @@ def test_an_experiment_plan_fetches_every_input_it_lacks():
             assert plan[-1]["with"] == ["plant fiber", "plant fiber", "stone", "stone"]
             assert plan[:-1] == [{"do": "gather", "what": "plant fiber", "qty": 2},
                                  {"do": "gather", "what": "stone", "qty": 1}]
+
+
+def test_room_is_checked_for_the_whole_bag_not_only_full_hands():
+    s = {"carrying": {"stone": 1}, "full": False, "load": 10, "cap": 12, "near": ["wood", "plant fiber"]}
+    assert scripted.prepare(s, ["wood", "wood", "plant fiber", "stone"]) is None  # 3 to gather, room for 2
+    assert scripted.prepare(s, ["wood", "plant fiber", "stone"]) == [{"do": "gather", "what": "wood", "qty": 1},
+                                                                    {"do": "gather", "what": "plant fiber", "qty": 1}]
+
+
+def _plans(s, n=60):
+    model = scripted.ScriptedModel(seed=1, bad_rate=0)
+    return [model._good_plan(dict(s), random.Random(i))["plan"] for i in range(n)]
+
+
+def test_a_compact_scene_never_crafts_a_recipe_it_has_no_ingredients_for():
+    from chits.brain import prompt as P
+
+    w, a = _chit()
+    a.hunger, a.inventory = 90.0, {}
+    s = scripted.scene(P.compact_scene(w, a))
+    assert s["recipes"] and not s["inputs"]  # names only
+    assert not any(st["do"] == "craft" for p in _plans(s) for st in p)
+    full = scripted.scene(P.scene(w, a))
+    assert full["inputs"]  # (the full scene names them, and may craft)
+
+
+def test_a_hungry_chit_takes_food_only_from_a_store_the_scene_shows_with_food():
+    hungry = ("Hunger 12/100 (starving), energy 80 (ok), warmth 90 (warm), health 100.\n"
+              "Carrying (0/12): nothing.\n")
+    s = scripted.scene(hungry + "- Resources: wood 2 tiles E at (3,4)\n")
+    assert s["stored_food"] == []
+    for p in _plans(s, 10):
+        assert p[0]["do"] == "explore"  # no store with food in sight, no berries: look for food, don't take
+    s = scripted.scene(hungry + "- Resources: wood 2 tiles E at (3,4)\n"
+                       "- Stockpile s12 by Wumi, 1 tiles E at (42,88): holds 8 wood, 6 grain, its food slowly rots\n"
+                       "- Stockpile s18 by Rumi, 2 tiles SE at (43,90): holds 60 berries, 44 wood\n")
+    assert s["stored_food"] == ["berries", "grain"]
+    assert _plans(s, 1)[0] == [{"do": "take", "what": "berries", "qty": 3}, {"do": "eat"}]
+    s = scripted.scene(hungry + "- Resources: berries 3 tiles SW at (39,91)\n")
+    assert _plans(s, 1)[0][0] == {"do": "gather", "what": "berries", "qty": 4}  # berries in sight: forage
 
 
 def test_scripted_answers_are_seeded_by_the_request():

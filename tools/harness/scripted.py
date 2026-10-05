@@ -147,14 +147,17 @@ class ScriptedModel:
         if s["hunger"] < 40:
             if food_held:
                 return plan("eat", "My belly aches.", [{"do": "eat", "what": food_held[0]}])
-            if "berries" in near and "berries" not in failed:
+            if s.get("stored_food"):  # only a store the scene shows holding food
+                return plan("eat", "There is food in the stores.",
+                            [{"do": "take", "what": s["stored_food"][0], "qty": 3}, {"do": "eat"}])
+            if "berries" in near and "berries" not in failed and prepare(s, ["berries"] * 4) is not None:
                 return plan("eat", "Berries first.", [{"do": "gather", "what": "berries", "qty": 4}, {"do": "eat"}])
-            return plan("eat", "There is food in the stores.", [{"do": "take", "what": "berries", "qty": 3}, {"do": "eat"}])
+            return plan("find food", "There must be food somewhere.",
+                        [{"do": "explore", "dir": rng.choice(["N", "S", "E", "W"])}])
         r = rng.random()
-        if s["no_home"] and "hut" in s["designs"] and r < 0.5:
-            return plan("build a hut", "I need a roof.", [{"do": "gather", "what": "wood", "qty": 8},
-                                                          {"do": "gather", "what": "plant fiber", "qty": 4},
-                                                          {"do": "build", "what": "hut"}])
+        hut = prepare(s, ["wood"] * 8 + ["plant fiber"] * 4) if s["no_home"] and "hut" in s["designs"] else None
+        if hut is not None and r < 0.5:
+            return plan("build a hut", "I need a roof.", hut + [{"do": "build", "what": "hut"}])
         if s["sites"] and r < 0.25:
             return plan("help build", "Many hands.", [{"do": "help", "site": rng.choice(s["sites"])}])
         if s["untried"] and r < 0.45:
@@ -168,18 +171,22 @@ class ScriptedModel:
                 if " at the " in combo:
                     step["at"] = combo.split(" at the ")[1].strip()
                 return plan("try something new", "What if these went together?", pre + [step])
-        if s["recipes"] and r < 0.6:
-            what = rng.choice(s["recipes"])
-            bag = _bag(s["inputs"].get(what, ""))
-            pre =prepare(s, bag) if " at " not in s["inputs"].get(what, "") else None  # (a station's: work there)
+        # only a recipe whose ingredients the scene names (the compact scene gives names only) and needs no station
+        makeable = [k for k in s["recipes"] if s["inputs"].get(k) and " at " not in s["inputs"][k]]
+        if makeable and r < 0.6:
+            what = rng.choice(makeable)
+            pre = prepare(s, _bag(s["inputs"][what]))
             if pre is not None:
                 return plan(f"make {what}", "A useful thing to have.", pre + [{"do": "craft", "what": what, "qty": 1}])
         if r < 0.7:
             return plan("explore", "What lies beyond?", [{"do": "explore", "dir": rng.choice(["N", "S", "E", "W"])}])
-        pick = [x for x in ("wood", "stone", "plant fiber", "clay", "berries") if x in near] or ["wood"]
+        pick = [x for x in ("wood", "stone", "plant fiber", "clay", "berries") if x in near]
+        room = s.get("cap", 12) - s.get("load", 0)
+        if not pick or room <= 0:
+            return plan("explore", "Nothing to pick up here.", [{"do": "explore", "dir": rng.choice(["N", "S", "E", "W"])}])
         what = rng.choice(pick)
         return plan(f"collect {what}", f"We'll always need {what}.",
-                    [{"do": "gather", "what": what, "qty": 6}, {"do": "store", "what": "all"}])
+                    [{"do": "gather", "what": what, "qty": min(6, room)}, {"do": "store", "what": "all"}])
 
     # ------------------------------------------------------------------ reflection
     def _reflection(self, user: str, rng: random.Random) -> str:
@@ -208,7 +215,14 @@ def scene(user: str) -> Dict[str, Any]:
         m = re.match(r"(\d+) (.+?)(?: \(worn\))?$", x.strip())
         if m:
             carrying[m.group(2)] = carrying.get(m.group(2), 0) + int(m.group(1))
-    full = bool(held) and int(held.group(1)) >= int(held.group(2))
+    load, cap = (int(held.group(1)), int(held.group(2))) if held else (0, 12)
+    full = bool(held) and load >= cap
+    stored: Counter = Counter()  # food the scene shows in a store ("Stockpile s12 by X, ...: holds 106 berries, ...")
+    for line in re.findall(r"^- (?:Stockpile|Warehouse|Granary)\b.*?: holds (.*)$", user, re.M):
+        for x in line.split(", "):
+            m = re.match(r"(\d+) (.+)$", x.strip())
+            if m and any(f in m.group(2) for f in FOOD_WORDS):
+                stored[m.group(2)] += int(m.group(1))
     near = [re.sub(r" \d+ tiles? .*$", "", x).strip()
             for x in grab(r"^- Resources: (.*)", r"^Near: (.*)").split("; ") if x and x != "no resources"]
     made = grab(r"^YOU KNOW HOW TO MAKE: (.*)")
@@ -224,7 +238,8 @@ def scene(user: str) -> Dict[str, Any]:
     untried = [x.strip() for x in grab(r"you have never tried: (.*?)\.?$", r"^Never tried: (.*?)\.?$").split("; ")
                if x.strip()]
     sites = re.findall(r"CONSTRUCTION SITE (\S+):", user) or re.findall(r" site (s\d+) needs", user)
-    return {"hunger": int(hunger) if hunger else 60, "carrying": carrying, "full": full, "near": near,
+    return {"hunger": int(hunger) if hunger else 60, "carrying": carrying, "full": full, "load": load, "cap": cap,
+            "stored_food": [k for k, _ in stored.most_common()], "near": near,
             "recipes": recipes, "inputs": inputs, "designs": designs, "untried": untried,
             "no_home": "You have no home yet" in user, "sites": sites, "failed": grab(r'YOUR PLAN FAILED: "([^"]*)"')}
 
@@ -253,7 +268,7 @@ def _gatherable(s: Dict[str, Any], item: str) -> bool:
 def prepare(s: Dict[str, Any], bag: List[str]) -> Optional[List[Dict[str, Any]]]:
     """Gather steps that put every item of `bag` (repeats counted) in the chit's hands, or None if it can't: an item
     it neither holds nor can gather near here, or no room in its hands for what it would gather."""
-    steps = []
+    steps, weight = [], 0
     for item, n in Counter(bag).items():
         short = n - s["carrying"].get(item, 0)
         if short <= 0:
@@ -261,7 +276,8 @@ def prepare(s: Dict[str, Any], bag: List[str]) -> Optional[List[Dict[str, Any]]]
         if not _gatherable(s, item):
             return None
         steps.append({"do": "gather", "what": item, "qty": short})
-    if steps and s["full"]:
+        weight += short * (2 if "ore" in item.split() else 1)  # (ore weighs 2, everything gatherable else 1)
+    if weight > s.get("cap", 12) - s.get("load", 0):  # room for all of it, or a partial gather leaves one short
         return None
     return steps
 
