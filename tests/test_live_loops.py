@@ -48,9 +48,19 @@ def test_inputs_given_as_one_string_in_json_are_read_the_same_way():
 
 
 def test_the_models_own_station_stands_and_unknown_inputs_are_left_for_the_simulator():
-    st = parse_plan('{"plan":[{"do":"experiment","with":["clay","sand fire"],"at":"kiln"}]}')["steps"][0]
+    st = parse_plan('{"plan":[{"do":"experiment","with":"clay, sand fire","at":"kiln"}]}')["steps"][0]
     assert st["at"] == "kiln" and st["with"] == ["clay", "sand"]
     st = parse_plan('{"plan":[{"do":"experiment","with":"moonbeam dust, wood"}]}')["steps"][0]
     assert st["with"] == ["moonbeam dust", "wood"] and "at" not in st  # (the world says it isn't real)
     st = parse_plan('{"plan":[{"do":"invent","with":["Nura\'s Sack","wood"],"name":"Pack"}]}')["steps"][0]
     assert st["with"] == ["Nura's Sack", "wood"]  # an invention's name isn't split
+
+
+def test_a_listed_name_ending_in_a_station_is_one_name():
+    # (Codex on #113): an invention called "Stone Mill" is one name; the parser can't see this world's inventions
+    st = parse_plan('{"plan":[{"do":"invent","with":["Stone Mill","wood"],"name":"Gristwheel"}]}')["steps"][0]
+    assert st["with"] == ["Stone Mill", "wood"] and "at" not in st
+    st = parse_plan('{"plan":[{"do":"experiment","with":["Stone Mill","clay pot"]}]}')["steps"][0]
+    assert st["with"] == ["Stone Mill", "clay pot"] and "at" not in st
+    st = parse_plan('{"plan":[{"do":"experiment","with":["clay","at fire"]}]}')["steps"][0]
+    assert st["with"] == ["clay"] and st["at"] == "fire"  # (just a station: no invention takes a building's name)

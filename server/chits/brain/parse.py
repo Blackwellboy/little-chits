@@ -13,7 +13,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from ..sim.actions import VERB_ALIASES, VERBS, normalize_verb
-from ..sim.items import STATIONS, normalize_item
+from ..sim.items import STATIONS, normalize_design, normalize_item
 from ..textcut import clause_cut
 
 _THINK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
@@ -171,11 +171,15 @@ def _split_items(text: str) -> Optional[List[str]]:
     return out or None
 
 
-def _inputs(entries: List[Any], step: Dict[str, Any]) -> List[Any]:
+def _inputs(entries: List[Any], step: Dict[str, Any], listed: bool = False) -> List[Any]:
     """An experiment's or invention's inputs written as words, read one fixed way. A station named among them ("at
     fire", or last: "berries iron ore fire") becomes the step's "at", "name it"/"called X" its name, and a run of item
     names with no commas between them ("berries iron ore") its items. Anything else is left as written, for the
-    simulator to judge."""
+    simulator to judge.
+
+    `listed`: the model gave a JSON list, one name to an entry. The parser can't know this world's inventions ("Stone
+    Mill" is one name, not stone at the mill), so such an entry stays as written, and only one that is just a station
+    ("fire", "at fire") is read as "at". (No invention can take a building's name: sim.actions._do_invent.)"""
     out: List[Any] = []
     for raw in entries:
         if not isinstance(raw, str):
@@ -185,13 +189,21 @@ def _inputs(entries: List[Any], step: Dict[str, Any]) -> List[Any]:
         low = [w.lower() for w in words]
         if not words:
             continue
+        if listed:
+            if low[-1] in _STATION_WORDS and normalize_design(low[-1]) and (len(low) == 1 or low == ["at", low[-1]]):
+                step.setdefault("at", _STATION_WORDS[low[-1]])
+            else:
+                out.append(raw.strip())
+            continue
         if low[0] in _NAME_WORDS:
             name = " ".join(words[1:])
             if name.lower() not in _NO_NAME:
                 step.setdefault("name", name)
             continue
         station = None
-        if low[-1] in _STATION_WORDS and (len(low) == 1 or low[-2] == "at" or not normalize_item(" ".join(words))):
+        whole = " ".join(words)
+        if low[-1] in _STATION_WORDS and (len(low) == 1 or low[-2] == "at"
+                                          or not (normalize_item(whole) or normalize_design(whole))):
             station = _STATION_WORDS[low[-1]]
             words = words[:-2] if len(low) > 1 and low[-2] == "at" else words[:-1]
         text = " ".join(words)
@@ -354,9 +366,9 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
     if verb in ("experiment", "invent"):
         ingredients = step.get("with")
         if isinstance(ingredients, str):  # "berries iron ore fire", "glass, copper ore at furnace"
-            ingredients = [x for x in re.split(r",|\+|;|\band\b", ingredients, flags=re.I) if x.strip()]
-        if isinstance(ingredients, list):
-            ingredients = _inputs(ingredients, step)
+            ingredients = _inputs([x for x in re.split(r",|\+|;|\band\b", ingredients, flags=re.I) if x.strip()], step)
+        elif isinstance(ingredients, list):
+            ingredients = _inputs(ingredients, step, listed=True)
         if isinstance(ingredients, dict):
             ingredients = _ingredient_map(ingredients)
             if ingredients is None:
