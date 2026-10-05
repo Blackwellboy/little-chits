@@ -3,7 +3,7 @@
 It answers the game's own requests the way a small model does: a letter for a choice (with logprobs, so the cascade's
 confidence gate and escalation run), a JSON plan for a full request, lessons for a weekly reflection. It reads only the
 prompt, as a model does. At a set rate it answers badly, in the ways live models have: an invalid letter, an item that
-doesn't exist, ``"what": null``, a step that can't run here, a verb that doesn't exist, cut-off JSON and prose with no
+doesn't exist, ``"what": "None"``, a step that can't run here, a verb that doesn't exist, cut-off JSON and prose with no
 JSON at all.
 
 It plugs in below the game's model client (brain/llm.py ``LLMBrain.chat``), as an ``httpx.MockTransport``: the request
@@ -118,7 +118,9 @@ class ScriptedModel:
         plan = self._good_plan(scene(user), rng)
         steps = plan["plan"]
         if bad == "none_what":
-            steps.insert(0, {"do": "gather", "what": None, "qty": 3})
+            # (as the string "None": a JSON null the parser now rejects as a step with nothing to act on, #113,
+            # so it never reaches the world; the string does, as a Python-minded model writes it)
+            steps.insert(0, {"do": "gather", "what": "None", "qty": 3})
         elif bad == "unreal_item":
             thing = rng.choice(UNREAL)
             steps.insert(0, rng.choice([{"do": "experiment", "with": [thing, "stone"]},

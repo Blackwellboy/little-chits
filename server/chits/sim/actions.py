@@ -3417,26 +3417,37 @@ def _do_plant(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def harvest_source(world, a: Agent, target: Any = None):
+    """The farm a harvest step takes: the one named by id, or the nearest ripe one within 35 tiles (also for a target
+    that names no farm by id, such as "farm"). The harvest step, and the options' reservation in brain.instinct."""
+    return _find_structure(world, a, target, 35, lambda x: _ripe_farm(world, a, x))
+
+
+def _ripe_farm(world, a: Agent, x) -> bool:
+    """A farm with a crop to take, that this chit hasn't lately failed to reach."""
+    return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
+        and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+
+
 def _do_harvest(world, a: Agent, step, s) -> str:
     if s.get("redirect"):
         return _redirect(world, a, s)
     def ripe(x) -> bool:
-        return x.design == "farm" and x.functional and x.planted and x.growth >= 1.0 \
-            and a.reflex_rest.get("unreach:" + x.id, 0) <= world.tick
+        return _ripe_farm(world, a, x)
 
     held = world.structures.get(s.get("farm") or "") if RIPE_TARGET else None
     if held is not None and ripe(held):
         st = held  # the farm it set out for, while that stays ripe: chosen afresh each tick, a starving chit walked
         # between two farms for 500 ticks and never reached either (tools/harness, seed 42)
     else:
-        st = _find_structure(world, a, step.get("target"), 35, ripe)
+        st = harvest_source(world, a, step.get("target"))
         if st is not None and RIPE_TARGET and not ripe(st):  # a farm named by id was taken as it stood, ripe or not
             if step.get("_reflex"):
                 # the hunger reflex named it as the nearest food: let it choose the nearest food again. Sent on to
                 # some other ripe farm instead, chits starved 6-16 tiles from a store (tools/harness, 24 seeds)
                 s["note"] = f"Farm {st.id} had nothing ripe left"
                 return DONE
-            st = _find_structure(world, a, None, 35, ripe)
+            st = harvest_source(world, a)
         if st is not None and RIPE_TARGET:
             s["farm"] = st.id
     if not st:

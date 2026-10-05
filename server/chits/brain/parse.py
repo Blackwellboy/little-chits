@@ -12,7 +12,8 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from ..sim.actions import normalize_verb
+from ..sim.actions import VERB_ALIASES, VERBS, normalize_verb
+from ..sim.items import STATIONS, normalize_design, normalize_item
 from ..textcut import clause_cut
 
 _THINK = re.compile(r"<(think|thinking|reasoning)>.*?</\1>", re.S | re.I)
@@ -141,6 +142,99 @@ def extract_json_ex(text: str):
 
 _STEP_RE = re.compile(r"^\s*([a-zA-Z_ ]+?)\s*(?:\(|:)?\s*(.*?)\)?\s*$")
 
+# These steps do nothing without the thing they act on: the simulator fails each one at once ("None can't be
+# gathered from the land", 113 times in the 2026-10-05 live game) and throws the rest of the plan away with it
+NEEDS_WHAT = ("gather", "craft", "take")
+_STATION_WORDS = {"campfire": "fire", "bench": "workshop", "workbench": "workshop", **{s: s for s in STATIONS}}
+_NAME_WORDS = ("name", "named", "call", "called")
+_NO_NAME = ("", "it", "them", "this", "that")
+_INPUT_FILLER = ("some", "a", "an", "the", "of", "with", "for", "more")
+_NAMING = re.compile(r"(?:\s*,)?\s*(?:\band\s+)?\b(?:called|named|name\s+it|call\s+it)\b(.*)$", re.I | re.S)
+
+
+def _name_clause(text: str, step: Dict[str, Any]) -> str:
+    """Inputs written as words with a naming clause after them, comma or not ("wood and stone called Cart", "glass,
+    sand, name it"): the clause becomes the step's name (none for "it"), and the text before it the inputs."""
+    m = _NAMING.search(text)
+    if not m:
+        return text
+    name = m.group(1).strip().strip(".,;:\"'").strip()
+    if name.lower() not in _NO_NAME:
+        step.setdefault("name", name)
+    return text[:m.start()]
+
+
+def _verb_tail(raw: Any, verb: str) -> str:
+    """The object written into the verb itself: "gather wood" or "gather_berries" -> "wood" / "berries"."""
+    s = str(raw or "").strip().lower().replace("-", " ").replace("_", " ")
+    if s.replace(" ", "_") in VERBS or s.replace(" ", "_") in VERB_ALIASES:
+        return ""  # a verb of two words ("warm up", "pick up")
+    words = s.split()
+    return " ".join(words[1:]) if len(words) > 1 and normalize_verb(words[0]) == verb else ""
+
+
+def _split_items(text: str) -> Optional[List[str]]:
+    """'berries iron ore' -> ['berries', 'iron ore'], when every word belongs to a known item (longest names first)."""
+    words = text.split()
+    out: List[str] = []
+    i = 0
+    while i < len(words):
+        for j in range(len(words), i, -1):
+            if normalize_item(" ".join(words[i:j])):
+                out.append(" ".join(words[i:j]))
+                i = j
+                break
+        else:
+            return None
+    return out or None
+
+
+def _inputs(entries: List[Any], step: Dict[str, Any], listed: bool = False) -> List[Any]:
+    """An experiment's or invention's inputs written as words, read one fixed way. A station named among them ("at
+    fire", or last: "berries iron ore fire") becomes the step's "at", "name it"/"called X" its name, and a run of item
+    names with no commas between them ("berries iron ore") its items. Anything else is left as written, for the
+    simulator to judge.
+
+    `listed`: the model gave a JSON list, one name to an entry. The parser can't know this world's inventions ("Stone
+    Mill" is one name, not stone at the mill), so such an entry stays as written, and only one that is just a station
+    ("fire", "at fire") is read as "at". (No invention can take a building's name: sim.actions._do_invent.)"""
+    out: List[Any] = []
+    for raw in entries:
+        if not isinstance(raw, str):
+            out.append(raw)
+            continue
+        words = raw.split()
+        low = [w.lower() for w in words]
+        if not words:
+            continue
+        if listed:
+            if low[-1] in _STATION_WORDS and normalize_design(low[-1]) and (len(low) == 1 or low == ["at", low[-1]]):
+                step.setdefault("at", _STATION_WORDS[low[-1]])
+            else:
+                out.append(raw.strip())
+            continue
+        if low[0] in _NAME_WORDS:
+            name = " ".join(words[1:])
+            if name.lower() not in _NO_NAME:
+                step.setdefault("name", name)
+            continue
+        station = None
+        whole = " ".join(words)
+        if low[-1] in _STATION_WORDS and (len(low) == 1 or low[-2] == "at"
+                                          or not (normalize_item(whole) or normalize_design(whole))):
+            station = _STATION_WORDS[low[-1]]
+            words = words[:-2] if len(low) > 1 and low[-2] == "at" else words[:-1]
+        text = " ".join(words)
+        parts = [text] if normalize_item(text) else _split_items(text)
+        if station and (parts or not words):
+            step.setdefault("at", station)
+            out.extend(parts or [])
+        elif parts:
+            out.extend(parts)
+        else:
+            out.append(raw.strip())
+    return out
+
 
 def _step_from_string(s: str) -> Optional[Dict[str, Any]]:
     s = s.strip().strip(".")
@@ -163,7 +257,11 @@ def _step_from_string(s: str) -> Optional[Dict[str, Any]]:
         elif w.lower() not in ("some", "a", "an", "the", "of", "to", "at", "with", "for", "more", "and"):
             clean.append(w)
     if verb in ("experiment", "invent"):
-        step["with"] = [w for w in " ".join(clean).replace("+", ",").split(",") if w.strip()] or clean
+        # (the words "at" and "and" matter here: "berries, iron ore at fire")
+        body = _name_clause(" ".join(w for w in rest if not re.match(r"^x?(\d+)x?$", w.lower())), step)
+        segs = [" ".join(w for w in seg.split() if w.lower() not in _INPUT_FILLER)
+                for seg in re.split(r",|\+|;|\band\b", body, flags=re.I)]
+        step["with"] = _inputs([sg for sg in segs if sg], step) or clean
     elif verb in ("say",):
         step["text"] = " ".join(rest)
     elif verb in ("give", "teach") and clean:
@@ -176,6 +274,16 @@ def _step_from_string(s: str) -> Optional[Dict[str, Any]]:
         step["what"] = " ".join(clean)
     if qty:
         step["qty"] = qty
+    return _complete(step)
+
+
+def _complete(step: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The step, or None (rejected, as unreadable steps are) when it lacks the thing it must act on."""
+    if step["do"] in NEEDS_WHAT:
+        what = step.get("what")
+        if not any(v is not None and not isinstance(v, bool) and str(v).strip()
+                   for v in (what if isinstance(what, list) else [what])):
+            return None
     return step
 
 
@@ -247,6 +355,10 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
             step[k2] = v
     if verb in ("experiment", "invent") and "with" not in step and "what" in step:
         step["with"] = step.pop("what")
+    if verb in NEEDS_WHAT and step.get("what") in (None, ""):
+        tail = _verb_tail(verb_raw, verb)  # {"do": "gather wood"}
+        if tail:
+            step["what"] = tail
     if verb == "say" and "text" not in step and "what" in step:
         step["text"] = step.pop("what")
     if verb in ("go",) and "to" not in step:
@@ -271,6 +383,11 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
             step.pop("qty")
     if verb in ("experiment", "invent"):
         ingredients = step.get("with")
+        if isinstance(ingredients, str):  # "berries iron ore fire", "glass, copper ore at furnace"
+            ingredients = _name_clause(ingredients, step)
+            ingredients = _inputs([x for x in re.split(r",|\+|;|\band\b", ingredients, flags=re.I) if x.strip()], step)
+        elif isinstance(ingredients, list):
+            ingredients = _inputs(ingredients, step, listed=True)
         if isinstance(ingredients, dict):
             ingredients = _ingredient_map(ingredients)
             if ingredients is None:
@@ -333,7 +450,7 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
                     if name:
                         flat += [name] * max(1, min(3, n))
             step[k] = flat[:6]
-    return step
+    return _complete(step)
 
 
 def parse_plan(text: str, max_steps: int = 6) -> Dict[str, Any]:

@@ -48,6 +48,52 @@ STATION_CUES = (("It needed far more heat than a campfire gives", "kiln"), ("Onl
 # chose a store the step had found a long way round, every tick; tests/identity_runner.py turns it off)
 HUNGER_REACH = True
 
+HARVEST_REACH = 35  # how far a harvest step looks for a ripe farm (sim.actions._do_harvest)
+
+
+def _harvest_open(world, a: Agent) -> bool:
+    """Whether a harvest whose grain goes to the stores can bring any home: a ripe farm the harvest step would find
+    that the chits already set on a harvest don't account for. The 2026-10-05 live game offered it to every chit near
+    a ripe farm: in its last week 14 of 20 such plans found the farm harvested by others first and sowed instead, and
+    "store grain" failed ("I'm not carrying any grain", 159 times by day 107). (Room in hand for the grain is
+    _drafted_runs's: _Hands projects the harvest's yield into the room there is.)"""
+    ripe = _ripe_farms(world, a)
+    if not ripe:
+        return False
+    # (this chit too: asked ahead, it may still have a harvest of its own to run before the option starts)
+    taken = {_farm_taken_by(world, o) for o in world.agents.values()}
+    return any(st.id not in taken for st in ripe)
+
+
+def _ripe_farms(world, a: Agent) -> List[Any]:
+    """The ripe farms a harvest step with no target looks through, nearest first (sim.actions._do_harvest)."""
+    return [st for st in world.structures_near(a.x, a.y, HARVEST_REACH, "farm") if st.functional and st.planted
+            and st.growth >= 1.0 and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick]
+
+
+def _farm_taken_by(world, o: Agent) -> Optional[str]:
+    """The farm a chit set on a harvest (its plan's next steps, or the plan it is about to adopt) will take, found as
+    the step finds it (sim.actions.harvest_source): the one it names by id, or the nearest ripe one to it."""
+    from ..sim.actions import harvest_source
+
+    steps = list(o.plan[:2]) + list(((o.pending_plan or {}).get("steps") or [])[:2])
+    step = next((s for s in steps if s.get("do") == "harvest"), None)
+    if step is None:
+        return None
+    st = harvest_source(world, o, step.get("target"))
+    return st.id if st is not None else None
+
+
+def _can_run(world, a: Agent, p: Dict[str, Any]) -> bool:
+    """Whether an option drafted for a model to choose can do what it says (Instinct.options)."""
+    steps = p.get("steps") or []
+    for i, s in enumerate(steps):
+        if s.get("do") == "harvest" and any(t.get("do") == "store" and world.norm_item(t.get("what")) == "grain"
+                                            for t in steps[i + 1:]):
+            return _harvest_open(world, a)
+    return True
+
+
 def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     """How much of an item the stockpiles around this chit hold."""
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
@@ -583,7 +629,7 @@ class Instinct:
             """True when added; False when it can't run from here (the next of its kind may); None otherwise."""
             if p and p.get("steps") and p["goal"] not in seen and len(out) < k:
                 p["steps"] = [dict(s) for s in p["steps"] if s][:6]
-                if check and not _drafted_runs(world, a, p):
+                if check and not (_drafted_runs(world, a, p) and _can_run(world, a, p)):
                     left_out.append(p)
                     return False  # (it would fail at once: an option the model can't run is no choice)
                 seen.add(p["goal"])
