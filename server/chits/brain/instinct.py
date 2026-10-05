@@ -45,6 +45,35 @@ STATION_CUES = (("It needed far more heat than a campfire gives", "kiln"), ("Onl
 # chose a store the step had found a long way round, every tick; tests/identity_runner.py turns it off)
 HUNGER_REACH = True
 
+FETCHES = ("gather", "take", "pickup")
+
+
+def _fits_in_hand(world, a: Agent, steps: List[Dict[str, Any]]) -> bool:
+    """Whether the fetches a plan opens with fit in this chit's hands, by weight (Instinct.options). A fetch fails when
+    not one of its items fits ("my hands are full"): a model chose such options 95 times by day 107 of the 2026-10-05
+    live game, most of them iron ore or copper ore (2 each) or charcoal for a chit with no room."""
+    room = a.free_space()
+    for s in steps:
+        d = s.get("do")
+        if d == "go":
+            continue
+        if d not in FETCHES:
+            return True  # (what comes after making, storing or eating isn't judged here)
+        k = world.norm_item(s.get("what"))
+        it = world.item(k) if k else None
+        if it is None or it.carry_bonus or (d == "gather" and k in FOODS and a.hunger < 40):
+            return True  # (a carrier adds room; a hungry gatherer of food drops things for it)
+        w = max(1, it.weight)
+        if room < w:
+            return False
+        try:
+            want = max(1, int(s.get("qty") or (5 if d == "gather" else 3)))
+        except (TypeError, ValueError):
+            want = 1
+        room -= min(want, room // w) * w
+    return True
+
+
 def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     """How much of an item the stockpiles around this chit hold."""
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
@@ -437,11 +466,16 @@ class Instinct:
         self._world = world
         seen: set = set()
         out: List[Dict[str, Any]] = []
+        crowded: List[Dict[str, Any]] = []  # options left out: their fetches don't fit in this chit's hands
 
         def add(p):
             if p and p.get("steps") and p["goal"] not in seen and len(out) < k:
+                steps = [dict(s) for s in p["steps"] if s][:6]
+                if not _fits_in_hand(world, a, steps):
+                    crowded.append(p)
+                    return
                 seen.add(p["goal"])
-                p["steps"] = [dict(s) for s in p["steps"] if s][:6]
+                p["steps"] = steps
                 out.append(p)
 
         needy = a.hunger < 40 or a.energy < 25 or a.warmth < 40
@@ -472,6 +506,10 @@ class Instinct:
         chores = pool.get("chore", [])
         if chores and not any(self._kind(o.get("goal", "")) == "chore" for o in out):
             add(chores[0])  # one chore, if nothing else is one
+        if crowded:  # make room first: store the load, or put some down
+            add(self._declutter(world, a, random.Random(seed + 5)))
+        if not out and best and best.get("steps"):  # (a model must have something to choose)
+            out.append(dict(best, steps=[dict(s) for s in best["steps"] if s][:6]))
         return out
 
     @staticmethod
