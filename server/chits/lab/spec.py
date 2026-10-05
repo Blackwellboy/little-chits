@@ -183,6 +183,10 @@ class ExperimentSpec:
             if esc in self.brains and esc != m:
                 pc, mc = BrainConfig(**self.brains[esc]), BrainConfig(**self.brains[m])
                 diff = sorted(f for f in same if getattr(pc, f) != getattr(mc, f))
+                if self.sampling == "native":  # (as between arms: only sampler keys of extra_body may differ, #152)
+                    rest = lambda c: {k: v for k, v in (c.extra_body or {}).items() if k not in SAMPLER_KEYS}
+                    if rest(pc) != rest(mc):
+                        diff.append("extra_body beyond samplers")
                 if diff:
                     raise SpecError(f"planner {esc!r} must match brain {m!r} in {', '.join(diff)} (Codex on #144)")
         if len(model_ids) > 1:

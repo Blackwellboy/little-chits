@@ -137,3 +137,21 @@ def test_reflection_samples_at_the_brains_own_temperature_under_native_sampling(
     b.chat = chat
     asyncio.run(m._reflect(w, a, b))
     assert seen["temperature"] == (0.05 if native else 0.6)
+
+
+def test_a_native_planner_varies_samplers_only_too():
+    """Codex on #151 (issue #152): a planner's extra_body was exempt whole under native sampling."""
+    from chits.lab.spec import ExperimentSpec, SpecError
+
+    url = "http://127.0.0.1:9/v1"
+    jev = {"id": "jev", "base_url": url, "model": "j", "prompt_style": "cascade", "escalate_to": "plan",
+           "max_tokens": 120, "extra_body": {"top_k": 20}}
+    plan = {"id": "plan", "base_url": url, "model": "p", "max_tokens": 120, "temperature": 1.0,
+            "extra_body": {"top_k": 64, "top_p": 0.95}}
+    proto = {"name": "n", "allow_models": True, "seeds": [1], "days": 1, "size": 64, "population": 3,
+             "sampling": "native", "arms": [{"name": "x", "brain": "jev"}, {"name": "base"}],
+             "brains": {"jev": jev, "plan": plan}}
+    ExperimentSpec.from_dict(proto)
+    bad = dict(proto, brains={"jev": jev, "plan": dict(plan, extra_body={"top_k": 64, "seed": 9})})
+    with pytest.raises(SpecError, match="beyond samplers"):
+        ExperimentSpec.from_dict(bad)
