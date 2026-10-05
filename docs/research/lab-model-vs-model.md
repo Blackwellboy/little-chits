@@ -137,7 +137,7 @@ requests in a row (`brain_unavailable`). That run alone stops, and the rest of t
 - **Resuming.** A resume **keeps** an invalid run; it does not rerun it. Rerunning only the runs that broke, until
   they don't, would keep the lucky draws: a model whose server falls over on hard seeds would end up measured on the
   easy ones. When the cause was outside the experiment, such as a server that went down, use
-  `make lab ARGS="resume DIR --retry-invalid"`. That declares the retry. Each earlier attempt is kept as
+  `CHITS_LAB_ALLOW_MODELS=1 make lab ARGS="resume DIR --retry-invalid"` (a model study refuses to resume without the variable). That declares the retry. Each earlier attempt is kept as
   `invalid-attempt-N.json`, `invalid-sealed-attempt-N.json` and `tape-attempt-N.jsonl`, the new `result.json` carries `invalid_attempts`, and the
   report says how many runs were retried.
 
