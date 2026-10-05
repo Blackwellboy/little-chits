@@ -363,3 +363,18 @@ def test_a_build_that_sows_with_seeds_from_the_store_leaves_the_rest_in_hand():
     assert build_course(w, a, a.plan[0])[0] == "reuse"
     seeds = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds", "seeds"]}]}
     assert "experiment" in _menu(w, a, seeds)
+
+
+def test_a_sowing_that_cannot_start_keeps_its_one_seed():
+    # (Codex on #130) one seed and no room in hand for a second: _do_plant fails before it uses anything
+    w, a = _world()
+    a.learn("design:farm", "taught", w.tick)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    farm.planted = False
+    a.inventory.update({"seeds": 1})
+    while a.free_space() > 0:
+        a.add("stone", 1)
+    a.plan = [{"do": "build", "what": "farm"}]
+    one = {"goal": "experiment", "thought": "", "steps": [{"do": "experiment", "with": ["seeds"]}]}
+    assert "experiment" in _menu(w, a, one)
