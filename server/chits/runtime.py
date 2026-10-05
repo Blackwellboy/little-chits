@@ -437,7 +437,7 @@ class Runtime:
 
     def manifest(self, chits: Optional[int] = None) -> Dict[str, Any]:
         from .brain import prompt as P
-        from .sim.world import RNG_SCHEME
+        from .sim.world import scheme_now
 
         worlds = {}
         first = next(iter(self.worlds.values()), None)
@@ -459,7 +459,7 @@ class Runtime:
                 "mode": self.mode, "seed": first.seed if first else None, "size": first.w if first else None,
                 "chits": chits if chits is not None else (len(first.agents) if first else None),
                 "pop_cap": getattr(first, "cap", None) if first else None,
-                "worlds": worlds, "prompt_version": P.PROMPT_VERSION, "rng_scheme": RNG_SCHEME,
+                "worlds": worlds, "prompt_version": P.PROMPT_VERSION, "rng_scheme": first.rng_scheme if first else scheme_now(),
                 "source_commit": source_commit(),
                 "code_stretches": json.loads(self.store.get_meta("code_stretches") or "[]"),
                 "pacing": self.pace_to_brain, "contact": self.contact,

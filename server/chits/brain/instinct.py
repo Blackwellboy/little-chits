@@ -378,7 +378,7 @@ class Instinct:
             for attempt in range(3):  # a plan that needs something there's none of nearby is drawn again (World B tried
                 # (streams on: each purpose, and each attempt at it, has its own stream, so the builder drawing one
                 # more number leaves the experiment, the chores and the final pick as they were)
-                r = world.stream(f"instinct:{fn.__name__}:{attempt}", a.id) if W.RNG_STREAMS else rng
+                r = world.stream(f"instinct:{fn.__name__}:{attempt}", a.id) if world.rng_scheme == W.RNG_STREAMED else rng
                 out = fn(world, a, r)  # "gather clay" 51 times a day with no clay in reach)
                 if not (out and any(s and s.get("do") == "gather" and not s.get("_far") and a.reflex_rest.get(
                         f"scarce:{world.norm_item(s.get('what'))}", 0) > world.tick for s in out.get("steps", []))):

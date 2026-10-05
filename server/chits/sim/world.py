@@ -33,11 +33,22 @@ from . import buildings as BLD
 SEASONS = ("spring", "summer", "autumn", "winter")
 DAYS_PER_SEASON = 3
 SNAPSHOT_SCHEMA = 2  # bump when the saved shape changes, and add a step to migrate_snapshot
-RNG_SCHEME = 2  # named domains; the legacy .rng property is weather-damage only (F18)
+# Random-number schemes, saved with every world (rng_scheme): 1 shared one stream; 2 has running streams per named
+# domain, the legacy .rng property being weather damage only (F18); 3 has a stream per system, thing and tick (below).
+RNG_RUNNING, RNG_STREAMED = 2, 3
+RNG_SCHEME = RNG_STREAMED  # what a new world uses while RNG_STREAMS is on (scheme_now() is what it uses now)
 # Streams per system, per chit and per tick (World.rng_for): a change to one system leaves every other system's
 # draws as they were, so an A/B of one change is not drowned by reshuffled luck everywhere else. Off brings back
 # the running per-domain streams exactly (tests/identity_runner.py turns it off to compare with older trees).
+# A world keeps the scheme it was made with: a save says which, and a loaded world goes on with that one whatever
+# this switch says, so a checkpoint carries on as the world it was taken from. Builds from before scheme 3 refuse
+# its saves ("unsupported RNG scheme") instead of resuming them on the wrong streams.
 RNG_STREAMS = True
+
+
+def scheme_now() -> int:
+    """The scheme a world made now gets."""
+    return RNG_STREAMED if RNG_STREAMS else RNG_RUNNING
 
 
 def _stream_seed(text: str) -> int:
@@ -273,6 +284,7 @@ class World:
         self.w = self.h = size
         self.tick = 0
         self._rngs: Dict[str, random.Random] = {}
+        self.rng_scheme = scheme_now()
         self.terrain_version = T.TERRAIN_VERSION
         self.tiles, self.res_kind, self.res_amt = T.generate(seed, size, size, self.terrain_version)
         self.traffic = [0.0] * (size * size)
@@ -352,10 +364,10 @@ class World:
         """Independent deterministic streams, so an extra roll in one system (a fight, an experiment) never
         shifts another (the weather, regrowth, births). "misc" keeps the original seeding for old code.
 
-        With RNG_STREAMS on, a stream lives for one tick and is drawn fresh from (seed, name, key, tick); `key`
+        Under scheme 3 (made with RNG_STREAMS on), a stream lives for one tick and is drawn fresh from (seed, name, key, tick); `key`
         (a chit's id) gives each chit its own. An extra roll then moves nothing outside its own system, chit and
         tick, where a running stream carried it into every later draw. Off, `key` is ignored: the old draws."""
-        if RNG_STREAMS:
+        if self.rng_scheme == RNG_STREAMED:
             stamp = (self.seed, self.tick)
             if getattr(self, "_tick_stamp", None) != stamp:
                 self._tick_stamp, self._tick_rngs = stamp, {}
@@ -379,7 +391,7 @@ class World:
 
     def _tick_streams_dict(self) -> Optional[Dict[str, Any]]:
         """This tick's streams, for a save made between ticks: most need only their place (see _pack_stream)."""
-        if not RNG_STREAMS or getattr(self, "_tick_stamp", None) != (self.seed, self.tick) or not self._tick_rngs:
+        if self.rng_scheme != RNG_STREAMED or getattr(self, "_tick_stamp", None) != (self.seed, self.tick) or not self._tick_rngs:
             return None
         return {"tick": self.tick, "streams": [[n, k, _pack_stream(r)] for (n, k), r in self._tick_rngs.items()]}
 
@@ -2105,7 +2117,7 @@ class World:
         return {
             "id": self.id, "name": self.name, "label": self.label, "seed": self.seed, "culture": self.culture,
             "terrain_version": self.terrain_version,
-            "size": self.w, "tick": self.tick, "rng_scheme": RNG_SCHEME,
+            "size": self.w, "tick": self.tick, "rng_scheme": self.rng_scheme,
             "rng_state": {k: [r.getstate()[0], list(r.getstate()[1]), r.getstate()[2]] for k, r in self._rngs.items()},
             **({"rng_tick": tick_rngs} if (tick_rngs := self._tick_streams_dict()) else {}),
             "res_amt": self.res_amt, "traffic": list(self.traffic), "roads": sorted(self.roads),
@@ -2211,8 +2223,8 @@ class World:
         w.w = w.h = d["size"]
         w.tick = d["tick"]
         scheme = int(d.get("rng_scheme", 1))
-        if scheme not in (1, RNG_SCHEME):
-            raise ValueError(f"unsupported RNG scheme {scheme}; this build understands 1 and {RNG_SCHEME}")
+        if scheme not in (1, RNG_RUNNING, RNG_STREAMED):
+            raise ValueError(f"unsupported RNG scheme {scheme}; this build understands 1 to {RNG_STREAMED}")
         w._rngs = {}
         for k, st in (d.get("rng_state") or {}).items():
             r = random.Random()
@@ -2229,7 +2241,7 @@ class World:
             r = random.Random()
             r.setstate(w._rngs["misc"].getstate())
             w._rngs["weather_damage"] = r
-        w.rng_scheme = RNG_SCHEME
+        w.rng_scheme = scheme if scheme == RNG_STREAMED else RNG_RUNNING  # (1 was carried into 2 above)
         w._load_tick_streams(d.get("rng_tick"))  # (saves from before streams have none: fresh ones)
         w.terrain_version = d.get("terrain_version", 1)  # saves from before versioning used version 1
         w.tiles, w.res_kind, _ = T.generate(w.seed, w.w, w.h, w.terrain_version)

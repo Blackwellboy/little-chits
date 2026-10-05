@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from ..sim.agent import TICKS_PER_DAY
+from ..sim.world import scheme_now
 from . import assign, extract
 from .spec import Arm, ExperimentSpec, SpecError
 
@@ -31,6 +32,9 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "")
         old = json.loads(man.read_text())
         if old["fingerprint"] != spec.fingerprint():
             raise SpecError("this directory holds a different protocol: resume it with its own, or use a new --out")
+        if old.get("rng_scheme", 2) != scheme_now():  # (manifests from before scheme 3 have none: they ran on 2)
+            raise SpecError(f"this directory's runs used random-number scheme {old.get('rng_scheme', 2)} and this build "
+                            f"makes worlds with {scheme_now()}: its remaining runs would not be comparable")
         if pending(spec, out):
             check_servers(spec)  # (a resumed batch checks its servers again)
         return out
@@ -43,7 +47,7 @@ def start(spec: ExperimentSpec, out, commit: str = "unknown", started: str = "")
     from ..tools.experiment import SAMPLING
 
     _write_json(man, {"protocol": spec.to_dict(), "fingerprint": spec.fingerprint(), "commit": commit, "started": started,
-                      "prompt_version": P.PROMPT_VERSION,
+                      "prompt_version": P.PROMPT_VERSION, "rng_scheme": scheme_now(),
                       "treatments": {pid: T.coverage(p) for pid, p in spec.treatments.items()},
                       "python": platform.python_version(), "assignment_sha256": digest, "blind": spec.blind,
                       # model arms: every call of a tick answered before the next, each request seeded from the run's

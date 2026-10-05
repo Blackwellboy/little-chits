@@ -180,3 +180,62 @@ def test_each_animal_moves_by_its_own_luck(streams):
     assert len(moved(True, False)) >= 4
     assert moved(True, False) == moved(True, True)
     assert moved(False, False) != moved(False, True)  # (the test can tell)
+
+
+# ---------------------------------------------------------------- the scheme a save carries (rng_scheme)
+
+def _carry_on(w, ticks=240):
+    for _ in range(ticks):
+        w.step()
+    return json.dumps(w.to_dict(), sort_keys=True, default=str)
+
+
+def test_a_save_says_which_scheme_made_it(streams):
+    streams(True)
+    on = World("A", "A", 11, "direct", 64, 3)
+    assert on.to_dict()["rng_scheme"] == 3 == W.RNG_STREAMED
+    streams(False)
+    off = World("A", "A", 11, "direct", 64, 3)
+    snap = off.to_dict()
+    assert snap["rng_scheme"] == 2 and "rng_tick" not in snap  # (streams off: the save is the old one exactly)
+
+
+@pytest.mark.parametrize("made_on,loaded_on", [(False, True), (True, False)])
+def test_a_loaded_world_goes_on_with_the_scheme_it_was_saved_with(streams, made_on, loaded_on):
+    """A scheme-2 save loaded with streams on keeps its running streams, and a scheme-3 save loaded with them off
+    keeps its streams per tick: either way it carries on exactly as the world it was taken from. (Refusing a
+    scheme-3 save while streams are off would only stop tools such as the identity runner opening it; switching it
+    to the other scheme is the silent change of history this guards against.)"""
+    streams(made_on)
+    w = World("A", "A", 11, "direct", 64, 6)
+    for _ in range(300):
+        w.step()
+    snap = json.loads(json.dumps(w.to_dict()))
+    streams(loaded_on)
+    back = World.from_dict(snap)
+    assert back.rng_scheme == (3 if made_on else 2) and back.to_dict()["rng_scheme"] == snap["rng_scheme"]
+    assert _carry_on(back) == _carry_on(w)
+
+
+def test_saves_from_older_schemes_still_load_and_unknown_ones_are_refused(streams):
+    streams(True)
+    snap = json.loads(json.dumps(World("A", "A", 11, "direct", 64, 3).to_dict()))
+    for old in (1, 2):
+        assert World.from_dict({**snap, "rng_scheme": old}).rng_scheme == 2
+    with pytest.raises(ValueError, match="unsupported RNG scheme"):
+        World.from_dict({**snap, "rng_scheme": 4})
+
+
+def test_a_lab_directory_is_not_resumed_under_another_scheme(streams, tmp_path):
+    from chits.lab import run
+    from chits.lab.spec import ExperimentSpec, SpecError
+
+    spec = ExperimentSpec.from_dict({"name": "scheme", "arms": [{"name": "a"}, {"name": "b", "culture": "stigmergy"}],
+                                     "seeds": [1], "days": 1, "size": 64, "population": 4})
+    streams(True)
+    run.start(spec, tmp_path, "abc")
+    assert json.loads((tmp_path / "manifest.json").read_text())["rng_scheme"] == 3
+    run.start(spec, tmp_path, "abc")  # (the same scheme resumes)
+    streams(False)
+    with pytest.raises(SpecError, match="random-number scheme 3"):
+        run.start(spec, tmp_path, "abc")
