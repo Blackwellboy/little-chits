@@ -68,7 +68,9 @@ def on_death(world, a: Agent) -> None:
 
 
 def scene_line(world, a: Agent) -> Optional[str]:
-    """The last keeper's own reminder, in the words its culture allows."""
+    """The last keeper's own reminder, in the words its culture allows (none where the rules leave lore alone)."""
+    if not world.rules.lore_rescue:
+        return None
     keys = last_of(world, a)
     if not keys:
         return None

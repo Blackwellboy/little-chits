@@ -70,7 +70,7 @@ def test_a_rule_set_is_never_guessed(bad):
 def test_a_world_saves_and_loads_its_rules_and_an_old_save_gets_the_legacy_set():
     w, _ = world(OFF)
     d = json.loads(json.dumps(w.to_dict()))
-    assert d["rules"] == {"version": RULES_VERSION, "religion": False}
+    assert d["rules"] == {**WorldRules().to_dict(), "religion": False} and d["rules"]["version"] == RULES_VERSION
     assert World.from_dict(d).rules == OFF
     old = dict(d)
     old.pop("rules")  # a save from before world rules

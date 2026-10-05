@@ -132,6 +132,8 @@ def give_hint(world, a: Optional[Agent]) -> Optional[Dict[str, Any]]:
 
 
 def add_insight(world, a: Optional[Agent], pts: float) -> Optional[Dict[str, Any]]:
+    if not world.rules.library_hints:  # (no hints in this world, and no insight piling up towards one: sim/rules.py)
+        return None
     world.civic["insight"] = world.civic.get("insight", 0.0) + pts
     need = threshold(world)
     active = [h for h in world.civic.get("hints", []) if not h.get("found")]

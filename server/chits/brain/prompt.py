@@ -112,6 +112,7 @@ def verb_guide(world) -> str:
     from ..sim.agent import JOBS
 
     lines.append(f'Your reply may also include "job":"<one of {", ".join(JOBS)}>" to take up (or change) a trade.')
+    lines = [l for l in lines if not l.startswith('{"do":"invent"') or world.rules.invention]  # (sim/rules.py)
     return "\n".join("- " + l for l in lines)
 
 

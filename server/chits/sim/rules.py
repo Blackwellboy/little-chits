@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-RULES_VERSION = 1
+RULES_VERSION = 2  # 2: invention, library_hints, lore_rescue, storyteller, wanderers
 
 # name -> (default: the behaviour before the rule existed, label, what switching it off means)
 RULES: Dict[str, Dict[str, Any]] = {
@@ -26,16 +26,60 @@ RULES: Dict[str, Dict[str, Any]] = {
                "can't be imagined, taught or built, and prompts say nothing of belief. (Switching it on does not "
                "make the belief system research-ready: see docs/RESEARCH_READINESS.md, gates C and D.)",
     },
+    "invention": {
+        "default": True,
+        "label": "Chits can invent new things",
+        "off": "No named inventions: the invent verb is refused and never offered. Discovering the world's own "
+               "recipes by experimenting stays: that is nature, not invention.",
+    },
+    "library_hints": {
+        "default": True,
+        "label": "Libraries may hint at undiscovered technology",
+        "off": "Studying at a library still trains scholars, but the village's scholars never get an idea of a "
+               "recipe nobody knows. Every discovery is the chits' own.",
+    },
+    "lore_rescue": {
+        "default": True,
+        "label": "Protect endangered knowledge",
+        "off": "No nudge for the last old chit who knows how to make something: no reminder in its prompt and no "
+               "instinct plan to teach or write it down. Knowledge can die out on its own (and is still recorded "
+               "when it does). A printing press the chits built still prints what it prints: that is their own "
+               "technology, not a rescue.",
+    },
+    "storyteller": {
+        "default": True,
+        "label": "The storyteller may stir things up",
+        "off": "No play-mode storyteller events: hard winters, droughts, sickness, fires, a wolf pack, a "
+               "meteorite, a stranger, a bumper harvest. Experiments never have them anyway.",
+    },
+    "wanderers": {
+        "default": True,
+        "label": "Wanderers may join a village",
+        "off": "No newcomers wander in to a shrinking village: a village that dies out stays dead. Experiments "
+               "never have them anyway.",
+    },
 }
 
 # knowledge that only means something where religion exists (World.learned refuses it when religion is off)
 RELIGIOUS_KNOWLEDGE = frozenset({"design:shrine"})
-RELIGIOUS_VERBS = frozenset({"pray", "preach"})
+VERB_RULE = {"pray": "religion", "preach": "religion", "invent": "invention"}  # verbs that exist only under a rule
+_REFUSAL = {"religion": "there is no religion in this world, so nobody can {verb}",
+            "invention": "nobody in this world invents new things (they can still experiment)"}
+
+
+def refusal(verb: str) -> str:
+    """The simulator's exact reason when a verb its world's rules rule out is tried."""
+    return _REFUSAL[VERB_RULE[verb]].format(verb=verb)
 
 
 @dataclass(frozen=True)
 class WorldRules:
     religion: bool = True
+    invention: bool = True
+    library_hints: bool = True
+    lore_rescue: bool = True
+    storyteller: bool = True
+    wanderers: bool = True
     version: int = RULES_VERSION
 
     def to_dict(self) -> Dict[str, Any]:
@@ -73,12 +117,36 @@ class WorldRules:
         return self.religion or knowledge not in RELIGIOUS_KNOWLEDGE
 
     def allows_verb(self, verb: str) -> bool:
-        return self.religion or verb not in RELIGIOUS_VERBS
+        rule = VERB_RULE.get(verb)
+        return rule is None or getattr(self, rule)
 
 
 LEGACY = WorldRules()
 
 
+# Presets for the New Game screen: rules, and whether to play model-led (docs/MODEL_LED.md). Research Clean takes out
+# the shared mechanics that blur a causal claim (docs/WORLD_RULES.md says what each removes); the Lab stays the
+# authority for published studies.
+PRESETS: Dict[str, Dict[str, Any]] = {
+    "standard": {"label": "Standard", "rules": {}, "model_led": False,
+                 "about": "Little Chits as intended: every system on; instinct helps a model's chits when it is slow."},
+    "model_led": {"label": "Model-led", "rules": {}, "model_led": True,
+                  "about": "The model supplies the intelligence; the chit keeps its body (reflexes) and nothing "
+                           "hidden stands in for the model."},
+    "research_clean": {"label": "Research Clean",
+                       "rules": {"religion": False, "library_hints": False, "lore_rescue": False,
+                                 "storyteller": False, "wanderers": False},
+                       "model_led": True,
+                       "about": "Fewer hidden mechanics: no religion, no library hints, no rescue of dying knowledge, "
+                                "no storyteller and no wanderers; model-led. Closer to a clean test, but play is "
+                                "still not a controlled experiment: use the Lab for that."},
+    "sandbox": {"label": "Sandbox", "rules": {}, "model_led": False,
+                "about": "Everything on, for fun rather than for claims. (Contact between islands is chosen with the "
+                         "game mode.)"},
+}
+
+
 def describe() -> Dict[str, Any]:
-    """Every rule with its default, label and meaning, for the API and the New Game screen."""
-    return {"version": RULES_VERSION, "rules": {k: dict(v) for k, v in RULES.items()}}
+    """Every rule with its default, label and meaning, and the presets, for the API and the New Game screen."""
+    return {"version": RULES_VERSION, "rules": {k: dict(v) for k, v in RULES.items()},
+            "presets": {k: dict(v) for k, v in PRESETS.items()}}

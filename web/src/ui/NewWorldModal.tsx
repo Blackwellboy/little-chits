@@ -4,6 +4,7 @@ import { api, errorText } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import { packForReset, packLabel, readPackText, type PackInfo } from "./packFile";
 import { Advice, adviceLine, clampChits, followAdvice } from "./sizing";
+import { RulesPicker, fullRules, useRules } from "./Rules";
 
 /** Start a brand-new pair of worlds: new island (seed), population and map size. */
 export function NewWorldModal() {
@@ -19,6 +20,15 @@ export function NewWorldModal() {
   const [strict, setStrict] = useState(false);
   const [contact, setContact] = useState(false);
   const [scanning, setScanning] = useState(false);
+  // 📜 world rules for the new game (docs/WORLD_RULES.md), and model-led play (docs/MODEL_LED.md)
+  const rulesInfo = useRules(newWorldOpen);
+  const [rules, setRules] = useState<Record<string, boolean>>({});
+  const [modelLed, setModelLed] = useState(false);
+  useEffect(() => {
+    if (!rulesInfo) return;
+    setRules(Object.fromEntries(Object.entries(rulesInfo.current).filter(([k]) => k !== "version")) as Record<string, boolean>);
+    api("/api/brains").then((s: any) => setModelLed(!!s.model_led)).catch(() => {});
+  }, [rulesInfo]);
   // 📦 content pack: null keeps the running game's, "none" plays without, an object is a pack the server has checked
   const [packNow, setPackNow] = useState<PackInfo | null>(null);
   const [packChoice, setPackChoice] = useState<Record<string, unknown> | "none" | null>(null);
@@ -106,7 +116,8 @@ export function NewWorldModal() {
     setBusy(true); setErr("");
     try {
       await api("/api/reset", { seed: seed.trim() ? parseInt(seed, 10) : Math.floor(Math.random() * 1e6), chits, size, mode, contract: strict ? "experiment" : "play", contact: mode !== "single" && !strict && contact,
-        brains: mode === "single" ? { A: pick.A } : { A: pick.A, B: pick.B }, pack: packForReset(packChoice, strict) });
+        brains: mode === "single" ? { A: pick.A } : { A: pick.A, B: pick.B }, pack: packForReset(packChoice, strict),
+        ...(rulesInfo ? { rules: fullRules(rulesInfo, rules) } : {}), model_led: !strict && modelLed });
       set({ newWorldOpen: false, selected: null, follow: false });
     } catch (e: any) {
       setErr(String(e.message || e));
@@ -161,6 +172,7 @@ export function NewWorldModal() {
             </select>
           </label>
         </div>
+        {rulesInfo && <RulesPicker info={rulesInfo} rules={rules} setRules={setRules} modelLed={modelLed} setModelLed={setModelLed} strict={strict} />}
         <div className="nw-pack">
           <b>📦 Content pack</b> <span className="muted">optional: a JSON file that adds items and recipes to this game
             (see docs/modding.md). Every world gets the same pack.</span>

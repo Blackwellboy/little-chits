@@ -1056,9 +1056,10 @@ class Runtime:
                 if self.contract != "experiment":  # an experiment measures the world as it is, dying out included
                     from .sim import storyteller
                     for w in list(self.worlds.values()) + [fk["world"] for fk in self.forks.values()]:
-                        if w.day % w.WANDER_EVERY_DAYS == 0:
+                        if w.day % w.WANDER_EVERY_DAYS == 0 and w.rules.wanderers:  # (sim/rules.py)
                             w.welcome_wanderer()
-                        storyteller.daily(w)  # (a what-if gets the same days as the world it came from)
+                        if w.rules.storyteller:
+                            storyteller.daily(w)  # (a what-if gets the same days as the world it came from)
                 self._fair_news()
             if len(self.worlds) >= 2 and (self.contact or left > 0 or any(w.outbox for w in self.worlds.values())):
                 self._deliver_boats()  # (boats still at sea when a fair ends still land)
