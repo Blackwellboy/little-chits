@@ -25,7 +25,7 @@ OPPORTUNITY_ROWS = [("requests per chit-day", "requests_per_chit_day"), ("waitin
                     ("heuristic instinct share of steps", "instinct_step_share"),
                     ("strategic plans the model decided", "model_strategic_share"),
                     ("... and wrote itself", "model_authored_strategic_share"),
-                    ("steps carried out as another (redirects)", "redirects")]
+                    ("steps carried out as another (redirects; a total per run, not per chit-day)", "redirects")]
 
 
 def by_label(a: Dict[str, Any], label: str) -> List[Dict[str, Any]]:
@@ -143,7 +143,8 @@ def markdown(a: Dict[str, Any]) -> str:
               "asks more often. Waiting is the share of a model-minded chit's time spent waiting for its answer "
               "(near 0 in lockstep, where the world waits instead); seconds waited is that lockstep wait in wall time, a cost "
               "of the card and the model, not a world fact; model steps are the finished steps that came from the "
-              "model's plans (the rest are reflexes).",
+              "model's plans; the rest are body reflexes, routine upkeep and heuristic instinct (docs/PROVENANCE.md). "
+              "Shares are of finished steps or strategic plans, not per chit-day; redirects are a total per run.",
               "", "| | " + " | ".join(show[l] for l in a["labels"]) + " |", "|---|" + "---|" * len(a["labels"])]
         for name, key in OPPORTUNITY_ROWS:
             cells = []
