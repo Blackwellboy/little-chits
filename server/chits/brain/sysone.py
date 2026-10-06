@@ -55,6 +55,10 @@ async def vote(brain, state: str, criteria: Dict[str, str], question: str = "pic
     model = brain.cfg.model or brain.stats.resolved_model
     if not model:
         model = await brain.resolve_model()
+    if len(criteria) < 2:
+        # the API needs 2–26 candidates: a single option is no contest, not a vote (the caller runs it unopposed
+        # or falls back to the chat vote)
+        raise SystemOneBadKey(f"only {len(criteria)} candidate(s): no contest to decide")
     body = {"model": model, "state": state,
             "questions": {question: {"type": "choice",
                                      "instructions": "Which plan should be followed?",

@@ -244,3 +244,32 @@ def test_chief_project_decided(monkeypatch):
     rec = m.decisions[-1]
     assert rec["parse"] == "choice" and rec["outcome"] == "adopted"
     assert rec["choice"]["requested"] == "A" and rec["choice"]["confidence"] == 0.8
+
+
+def test_vote_rejects_a_single_candidate_without_calling():
+    async def run():
+        b = LLMBrain(BrainConfig(id="t", base_url="http://127.0.0.1:9/v1", model="tev1-8k"))
+        try:
+            await SYS.vote(b, "state", {"A": "only"})
+        finally:
+            await b.close()
+    with pytest.raises(SYS.SystemOneBadKey):
+        asyncio.run(run())
+
+
+def test_chief_single_candidate_runs_unopposed(monkeypatch):
+    import chits.sim.projects as PJ
+
+    w, a, m, b = _setup()
+
+    async def no_vote(*args, **kwargs):
+        raise AssertionError("no contest: the model must not be asked")
+
+    monkeypatch.setattr(SYS, "vote", no_vote)
+    monkeypatch.setattr(PJ, "option_words", lambda o: o["key"])
+    monkeypatch.setattr(PJ, "answer", lambda world, leader, i: {"chosen_by": "chief"})
+    ask = {"options": [{"kind": "k", "key": "well", "why": "water", "extra": {}}],
+           "leader": a.id, "tick": w.tick}
+    m._ask_chief(w, a, b, ask)  # synchronous: no contest needs no request
+    rec = m.decisions[-1]
+    assert rec["parse"] == "uncontested" and rec["outcome"] == "adopted"

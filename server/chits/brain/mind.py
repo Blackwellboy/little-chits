@@ -650,6 +650,14 @@ class Mind:
                "tokens_out": None, "response_hash": None, "parse": None, "rejected_steps": 0, "outcome": "pending",
                "tick_resolved": None, "plan_id": None, "match": self.match}
         self.decisions.append(rec)
+        if self.style_of(brain) == "decide" and len(options) < 2:
+            # no contest: nothing to vote on; the single candidate runs unopposed (the world still checks it)
+            p = PJ.answer(world, a.id, 0) if options else None
+            adopted = p is not None and p.get("chosen_by") == "chief"
+            rec.update(parse="uncontested")
+            self._resolve(rec, "adopted" if adopted else "stale", world.tick)
+            diag.chief(world, "adopted" if adopted else "stale on arrival", ask, end=True)
+            return
 
         async def run() -> None:
             try:
