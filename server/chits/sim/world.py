@@ -346,7 +346,7 @@ class World:
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
         self.era_by_deeds = ERA_BY_DEEDS  # (fixed at the world's making: see ERA_BY_DEEDS)
-        self.built_designs: set = set()  # every design a structure of which has been completed here
+        self.built_designs: Dict[str, Dict[str, Any]] = {}  # design -> who first completed one here, and when
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
         self.currency = ""  # whatever everyone ends up trading through; never declared
         self.leader = ""  # an authored institution (T26): an elected chief (A) or a recognised elder (B)
@@ -828,10 +828,18 @@ class World:
         best = 0
         deeds = getattr(self, "era_by_deeds", False)
         for i, (_, key) in enumerate(ERAS):
-            if key is None or (key in self.first and not (
-                    deeds and key.startswith("design:") and key[7:] not in self.built_designs)):
+            if key is None or self.age_record(key) is not None:
                 best = i
         return best, ERAS[best][0]
+
+    def age_record(self, key: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Who reached the age whose key thing this is, and when ({tick, by, name}), or None if it isn't reached. By
+        deeds (ERA_BY_DEEDS) a building's age is the first one's builder's, not whoever first imagined it."""
+        if not key:
+            return None
+        if getattr(self, "era_by_deeds", False) and key.startswith("design:"):
+            return self.built_designs.get(key[7:])
+        return self.first.get(key)
 
     def update_era(self) -> None:
         i, name = self.era()
@@ -1512,7 +1520,8 @@ class World:
         if s.design == "launch_pad":
             self._launch(s)
         new_build = s.design not in self.built_designs
-        self.built_designs.add(s.design)
+        if new_build:
+            self.built_designs[s.design] = {"tick": self.tick, "by": by.id, "name": by.name}
         if first or (new_build and getattr(self, "era_by_deeds", False)):  # (the first one built: its age, by deeds)
             self.update_era()
         for aid in s.builders:
@@ -2165,7 +2174,7 @@ class World:
             "deliveries": list(self.deliveries)[-500:], "culture_names": self.culture_names, "signs": self.signs,
             "weather": self.weather, "weather_until": self.weather_until, "settlements": self.settlements,
             "inventions": self.inventions, "beliefs": self.beliefs, "era_index": self.era_index,
-            **({"era_by_deeds": True, "built_designs": sorted(self.built_designs)} if self.era_by_deeds else {}),
+            **({"era_by_deeds": True, "built_designs": dict(sorted(self.built_designs.items()))} if self.era_by_deeds else {}),
             "trades": self.trades[-200:], "currency": self.currency,
             "leader": self.leader, "leader_since": self.leader_since, "laws": self.laws, "militia_n": self.militia_n,
             "challenge": self.challenge, "cold_until": self.cold_until,
@@ -2224,7 +2233,7 @@ class World:
         w.beliefs = dict(d.get("beliefs") or {})
         w.era_index = int(d.get("era_index", 0))
         w.era_by_deeds = bool(d.get("era_by_deeds", False))  # (a world saved before keeps the ages it reached)
-        w.built_designs = set(d.get("built_designs") or ())
+        w.built_designs = {k: dict(v) for k, v in (d.get("built_designs") or {}).items()}
         w.trades = list(d.get("trades") or [])
         w.currency = d.get("currency", "") or ""
         w.leader = d.get("leader", "") or ""
@@ -2295,8 +2304,10 @@ class World:
         for a in w.dead.values():
             a.obituary()  # (older saves kept every dead chit's whole record)
         w.structures = {s["id"]: Structure.from_dict(s) for s in d["structures"]}
-        if not w.built_designs:  # (a save from before: what stands now is what was built)
-            w.built_designs = {s.design for s in w.structures.values() if s.complete}
+        if not w.built_designs:  # (a save from before: what stands now is what was built; when, its first record)
+            for s in w.structures.values():
+                if s.complete and s.design not in w.built_designs:
+                    w.built_designs[s.design] = dict((d.get("first") or {}).get(f"design:{s.design}") or {"tick": w.tick, "by": "", "name": ""})
         for s_d in d["structures"]:
             st = w.structures[s_d["id"]]
             if "last_work" not in s_d and not st.complete:

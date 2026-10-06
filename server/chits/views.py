@@ -360,7 +360,7 @@ def progress(w: World, events: List[Dict[str, Any]]) -> Dict[str, Any]:
     now, _ = w.era()
     ladder = []
     for name, key in ERAS:
-        first = w.first.get(key) if key else None
+        first = w.age_record(key)  # (by deeds, a building's age is its first builder's: World.age_record)
         ladder.append({"name": name, "needs": item_name(key.split(":", 1)[1]) if key else "",
                        # an age counts once its key thing exists, even if an earlier one was skipped
                        "reached": key is None or first is not None, "by": (first or {}).get("name", ""),
@@ -485,7 +485,7 @@ def eras(w: World) -> Dict[str, Any]:
     i, name = w.era()
     heroes = []
     for era, key in ERAS[1:i + 1]:
-        f = w.first.get(key or "")
+        f = w.age_record(key)
         if f:
             heroes.append({"era": era, "who": f.get("name") or "someone", "day": f.get("tick", 0) // TICKS_PER_DAY + 1})
     return {"index": i, "name": name, "heroes": heroes}

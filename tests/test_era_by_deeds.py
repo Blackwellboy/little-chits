@@ -30,8 +30,18 @@ def test_imagining_a_building_reaches_its_age_only_without_deeds(deeds, monkeypa
     if deeds:
         assert w.era_index == before
         farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
-        w.complete_structure(farm, a)  # one stands: now it is the Farmers' age
+        w.tick += 240 * 5
+        builder = list(w.agents.values())[-1]
+        w.complete_structure(farm, builder)  # one stands: now it is the Farmers' age
         assert w.era_index == FARMERS and "farm" in w.built_designs
+        # and the age is the builder's, on the day it stood: not the thinker's, on the day of the idea
+        from chits.story.recap import _age_days
+        from chits.views import eras, progress
+        hero = eras(w)["heroes"][-1]
+        assert hero["who"] == builder.name and hero["day"] == w.tick // 240 + 1
+        rung = next(r for r in progress(w, [])["ladder"] if r["needs"] and r["reached"] and r["name"] == ERAS[FARMERS][0])
+        assert rung["by"] == builder.name and rung["day"] == hero["day"]
+        assert _age_days(w)[ERAS[FARMERS][0]] == hero["day"]
 
 
 def test_a_world_keeps_its_rule_and_what_it_built_across_a_save(monkeypatch):
@@ -53,3 +63,13 @@ def test_a_world_saved_before_keeps_the_ages_it_reached(monkeypatch):
     monkeypatch.setattr(W, "ERA_BY_DEEDS", True)
     back = World.from_dict(d)
     assert back.era_by_deeds is False and back.era_index == FARMERS and back.era()[0] == FARMERS
+
+
+def test_a_save_without_a_build_record_takes_it_from_what_stands(monkeypatch):
+    w, a = _world(False, monkeypatch)
+    farm = w.place_site("farm", *w.find_site("farm", a.x + 2, a.y, 8), a)
+    w.complete_structure(farm, a)
+    d = json.loads(json.dumps(w.to_dict()))
+    assert "built_designs" not in d
+    back = World.from_dict(d)
+    assert back.built_designs["farm"] == d["first"]["design:farm"]  # (who built the first, and when, from its record)
