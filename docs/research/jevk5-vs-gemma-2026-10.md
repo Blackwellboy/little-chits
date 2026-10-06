@@ -16,7 +16,7 @@ The first pre-registered model-vs-model study. Protocol: [`docs/protocols/jevk5-
 | `report-blind.md` | `38ae93c66e4c9ab8e5374dab6f952e54e82048399044a82e4ad16cf4323d27f4` |
 | `runs-blind.csv` | `d35c953b2c29ec4af773fc0d05d1f565e69b190332781f9bbef25a049b187033` |
 
-Both reports are in [`jevk5-vs-gemma/`](jevk5-vs-gemma/). After unblinding, **A = Gemma 4 12B** and **B = JevK5 9B**.
+Both reports and the per-seed table (`runs-blind.csv`, every recorded column for each run) are in [`jevk5-vs-gemma/`](jevk5-vs-gemma/). After unblinding, **A = Gemma 4 12B** and **B = JevK5 9B**.
 
 ## Result
 
@@ -32,7 +32,7 @@ Both reports are in [`jevk5-vs-gemma/`](jevk5-vs-gemma/). After unblinding, **A 
 Here is what the study shows:
 - **Population:** under these conditions Gemma 4 12B's villages grew larger than JevK5's on every seed.
 - **Discoveries:** Gemma led on 4 of 6 seeds. The interval reaches 0, so this is a lean, not a finding.
-- **Ages:** neither model reached a later age.
+- **Ages:** a tie on average. Each model reached a later age on 2 seeds, and 2 seeds tied.
 - **Request rate:** JevK5 asked about three times as often per chit-day. Its plans are shorter, so they run out sooner.
 
 The p-values are not corrected for the six metrics. Read them as a guide.
@@ -64,7 +64,10 @@ JevK5's villages built many farms but almost no stockpiles. They kept little foo
 
 ## Reproduce
 
+Run it from the study's own code. Later revisions changed the simulator, prompts and Lab, so they would run a different study:
+
 ```bash
+git worktree add ../lc-jevk5-study d3882f3 && cd ../lc-jevk5-study
 CHITS_LAB_ALLOW_MODELS=1 make lab ARGS="run docs/protocols/jevk5-vs-gemma.json --out runs/jevk5-vs-gemma --jobs 2"
 make lab ARGS="analyze runs/jevk5-vs-gemma"            # blind
 make lab ARGS="analyze runs/jevk5-vs-gemma --unblind"  # after freezing the blind report
