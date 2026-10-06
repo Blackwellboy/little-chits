@@ -19,7 +19,7 @@ def _num(n: int) -> str:
 def _age_days(w: World) -> Dict[str, int]:
     out = {}
     for name, key in ERAS[1:w.era()[0] + 1]:
-        f = w.first.get(key or "")
+        f = w.age_record(key)
         if f:
             out[name] = f.get("tick", 0) // TICKS_PER_DAY + 1
     return out
