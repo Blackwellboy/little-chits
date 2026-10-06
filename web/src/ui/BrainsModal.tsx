@@ -281,10 +281,13 @@ export function BrainsModal() {
                 <option value="compact">Compact (small models or short context)</option>
                 <option value="choose">Choose (fastest: the model picks one of a few drafted plans · slow GPUs)</option>
                 <option value="cascade">Cascade (chooses by letter; writes its own plan when unsure or it has its own idea)</option>
-                <option value="decide">Decide (like choose, but a decision model picks via the SystemOne API · needs e.g. tev1-8k on Ollama 0.35+)</option>
+                <option value="decide">Decide (a decision model picks via the SystemOne API, and a planner writes a full plan when unsure · needs e.g. tev1-8k on Ollama 0.35+)</option>
               </select>
             </label>
-            {form.prompt_style === "cascade" && (
+            {form.prompt_style === "decide" && (
+              <small className="muted">Unsure votes (below the confidence gate) escalate to a full written plan — set the planner below.</small>
+            )}
+            {(form.prompt_style === "cascade" || form.prompt_style === "decide") && (
               <label title="A two-level mind (docs/TWO_LEVEL.md): this brain answers the one-letter choices, and the plans it escalates are written by another model. If that model is down, the choice runs; no other model stands in.">Plans written by
                 <select value={form.escalate_to ?? ""} onChange={(e) => setForm({ ...form, escalate_to: e.target.value })}>
                   <option value="">This model itself</option>
