@@ -37,7 +37,7 @@ Each comes after the one before, on the RTX 5090. Later rounds are designed afte
 
 | # | Study | Protocol | Question |
 |---|---|---|---|
-| 1 | JevK5 9B vs Gemma 4 12B (full prompt) | `docs/protocols/jevk5-vs-gemma.json` | **Done (2026-10-06): [results](jevk5-vs-gemma-2026-10.md).** Gemma 4 12B: larger villages on all 6 seeds (25.3 vs 20.5); discoveries lean its way (21.5 vs 16.7, not significant). JevK5 was run as a JSON planner, not in its letter interface: studies 2-3 test that. |
+| 1 | JevK5 9B vs Gemma 4 12B (full prompt) | `docs/protocols/jevk5-vs-gemma.json` | **Done (2026-10-06), partial report card (its code predates it): [results](jevk5-vs-gemma-2026-10.md).** Gemma 4 12B: larger villages on all 6 seeds (25.3 vs 20.5, paired p 0.031); discoveries lean its way (21.5 vs 16.7, p 0.16). JevK5 was run as a JSON planner, not in its letter interface: studies 2-3 test that. |
 | 2 | Choice repair off vs on (JevK5 cascade) | `docs/protocols/choice-repair-jevk5.json` | Does telling a choosing model why it failed help, or just change the failures? Decides `CHOICE_REPAIR`. |
 | 3 | Two-level mind | `docs/protocols/two-level-jev-gemma.json` | Planner only vs Jev + Gemma vs cascades vs menu-only. |
 | 4 | JevK5 9B vs Qwen3.5-9B, its own base | to write after 1-3 | Does the fine-tune help? Same prompt architecture (cascade, JevK5's letter interface), same quantization (Q8_0), same sampling: only the fine-tune differs. Whatever wins studies 1-3 is a separate benchmark arm, not this comparison |

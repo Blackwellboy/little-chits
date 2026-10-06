@@ -20,14 +20,14 @@ Both reports and the per-seed table (`runs-blind.csv`, every recorded column for
 
 ## Result
 
-| metric | Gemma 4 12B | JevK5 9B | JevK5 − Gemma per seed [95% CI] | seeds JevK5 higher / lower / tied | p (Mann-Whitney) |
+| metric | Gemma 4 12B | JevK5 9B | JevK5 − Gemma per seed [95% CI] | seeds JevK5 higher / lower / tied | p (paired, exact Wilcoxon) |
 |---|---|---|---|---|---|
-| discoveries | 21.50 | 16.67 | −4.83 [−9.17, 0.00] | 2 / 4 / 0 | 0.11 |
-| era | 4.50 | 4.50 | 0.00 [−0.67, 0.67] | 2 / 2 / 2 | 0.78 |
-| population | 25.33 | 20.50 | −4.83 [−7.83, −2.33] | 0 / 6 / 0 | 0.03 |
+| discoveries | 21.50 | 16.67 | −4.83 [−9.17, 0.00] | 2 / 4 / 0 | 0.16 |
+| era | 4.50 | 4.50 | 0.00 [−0.67, 0.67] | 2 / 2 / 2 | 1.00 |
+| population | 25.33 | 20.50 | −4.83 [−7.83, −2.33] | 0 / 6 / 0 | 0.031 |
 | starved | 0 | 0 | 0 | 0 / 0 / 6 | 1.00 |
-| model step share | 0.58 | 0.70 | +0.12 [0.09, 0.15] | 6 / 0 / 0 | <0.01 |
-| requests per chit-day | 3.45 | 10.52 | +7.07 [6.69, 7.50] | 6 / 0 / 0 | <0.01 |
+| model step share | 0.58 | 0.70 | +0.12 [0.09, 0.15] | 6 / 0 / 0 | 0.031 |
+| requests per chit-day | 3.45 | 10.52 | +7.07 [6.69, 7.50] | 6 / 0 / 0 | 0.031 |
 
 Here is what the study shows:
 - **Population:** under these conditions Gemma 4 12B's villages grew larger than JevK5's on every seed.
@@ -35,7 +35,7 @@ Here is what the study shows:
 - **Ages:** a tie on average. Each model reached a later age on 2 seeds, and 2 seeds tied.
 - **Request rate:** JevK5 asked about three times as often per chit-day. Its plans are shorter, so they run out sooner.
 
-The p-values are not corrected for the six metrics. Read them as a guide.
+The seeds are paired (both arms played the same island), so the p-values here are an exact Wilcoxon signed-rank test on the six per-seed differences, computed from `runs-blind.csv`. With six pairs, 0.031 is the smallest p any result can have: every seed going the same way. The frozen Lab reports show a Mann-Whitney p instead, which treats the arms as independent and so doesn't fit this design (it gave 0.11, 0.78 and 0.03 for discoveries, era and population). None of the p-values are corrected for the six metrics, so read them as a guide.
 
 This does not support the earlier informal 3-seed comparison, in which JevK5 led on discoveries. That comparison was not pre-registered and is superseded by this study.
 
@@ -53,6 +53,24 @@ These columns come from the same runs. They were not named in the protocol, so t
 | structures | 26.5 | 37.8 |
 
 JevK5's villages built many farms but almost no stockpiles. They kept little food in store and left more goods on the ground, and fewer chits were born. One reading is that a model fine-tuned to pick one letter from a short list repeats a building choice it rates well when it is asked for a whole JSON plan. That is a hypothesis for the cascade studies below, not a conclusion.
+
+## Report card coverage
+
+The study's code (`d3882f3`) predates the programme's two report cards, so it records only part of them:
+
+- **Recorded:**
+  - discoveries, era, population, starvation and food;
+  - homes, useful buildings and all structures;
+  - knowledge forgotten;
+  - requests per chit-day, seconds waited per chit-day, wall time, and the model's share of steps.
+- **Not recorded:**
+  - preventable deaths;
+  - invention success, failed steps and loops;
+  - request failures;
+  - tokens per discovery and VRAM;
+  - the provenance breakdown (strategic, reflex, routine and instinct shares).
+
+Later studies, run on the current Lab, report all of these.
 
 ## Limitations
 
