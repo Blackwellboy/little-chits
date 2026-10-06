@@ -86,6 +86,7 @@ Run it from the study's own code. Later revisions changed the simulator, prompts
 
 ```bash
 git worktree add ../lc-jevk5-study d3882f3 && cd ../lc-jevk5-study
+make install  # (a fresh worktree has no .venv)
 CHITS_LAB_ALLOW_MODELS=1 make lab ARGS="run docs/protocols/jevk5-vs-gemma.json --out runs/jevk5-vs-gemma --jobs 2"
 make lab ARGS="analyze runs/jevk5-vs-gemma"            # blind
 make lab ARGS="analyze runs/jevk5-vs-gemma --unblind"  # after freezing the blind report
