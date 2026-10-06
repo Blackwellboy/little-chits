@@ -273,3 +273,66 @@ def test_chief_single_candidate_runs_unopposed(monkeypatch):
     m._ask_chief(w, a, b, ask)  # synchronous: no contest needs no request
     rec = m.decisions[-1]
     assert rec["parse"] == "uncontested" and rec["outcome"] == "adopted"
+
+
+def _decide_escalation_setup(monkeypatch, conf, **cfg):
+    import json as _json
+
+    w, a, m, b = _setup()
+    m.upsert({"id": "test", **cfg})
+    b = m.brains["test"]
+    monkeypatch.setattr(SYS, "vote", _letter_vote("B", {"A": 1.0 - conf, "B": conf}))
+    calls = []
+
+    async def fake_chat(messages, **kw):
+        msgs = messages() if callable(messages) else messages
+        calls.append(kw)
+        plan = {"thought": "t", "goal": "written plan",
+                "plan": [{"do": "gather", "what": "stone", "qty": 2}]}
+        return {"text": _json.dumps(plan), "latency_ms": 50.0, "tokens_in": 2000,
+                "tokens_out": 60, "queue_ms": 0, "top_logprobs": {}}
+
+    monkeypatch.setattr(b, "chat", fake_chat)
+    return w, a, m, b, calls
+
+
+def _run_ask(m, w, a, b):
+    async def run():
+        m._ask(w, a, b)
+        while m._tasks:
+            await asyncio.gather(*list(m._tasks))
+        await m.close()
+    asyncio.run(run())
+
+
+def test_decide_sure_vote_stays_one_token(monkeypatch):
+    w, a, m, b, calls = _decide_escalation_setup(monkeypatch, 0.9)
+    _run_ask(m, w, a, b)
+    assert calls == [] and not a.last_choice["escalated"]
+    assert a.pending_plan is not None
+
+
+def test_decide_unsure_vote_escalates_to_a_written_plan(monkeypatch):
+    w, a, m, b, calls = _decide_escalation_setup(monkeypatch, 0.2)
+    _run_ask(m, w, a, b)
+    assert len(calls) == 1 and calls[0].get("max_tokens") != 1  # the full write
+    assert a.last_choice["escalated"] and a.last_choice["why"] == "unsure (0.2)"
+    assert a.pending_plan["goal"] == "written plan"
+    assert m.decisions[-1]["style"] == "decide-full"
+
+
+def test_decide_keeps_to_its_escalation_budget(monkeypatch):
+    from collections import deque
+
+    w, a, m, b, calls = _decide_escalation_setup(monkeypatch, 0.2)
+    b.recent_escalations = deque([True] * 10 + [False] * 10, maxlen=40)  # over budget
+    _run_ask(m, w, a, b)
+    assert calls == [] and not a.last_choice["escalated"]
+    assert a.pending_plan is not None  # the choice runs instead
+
+
+def test_decide_without_a_planner_runs_the_choice(monkeypatch):
+    w, a, m, b, calls = _decide_escalation_setup(monkeypatch, 0.2, escalate_to="gone")
+    _run_ask(m, w, a, b)
+    assert calls == [] and not a.last_choice["escalated"]
+    assert m.decisions[-1]["choice"]["denial"] == "planner unavailable"

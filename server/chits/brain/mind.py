@@ -785,7 +785,8 @@ class Mind:
         try:
             letter, res, scores = "", {}, {}
             opts = []
-            if sent.get("decide"):
+            decide = bool(sent.get("decide"))
+            if decide:
                 # the decision model picks first; a missing endpoint or a stray answer falls back to the chat vote
                 at_send()  # draft now (deterministic: a fallback re-runs it and drafts the same options)
                 opts = sent.get("options") or []
@@ -822,7 +823,7 @@ class Mind:
                              "latency_ms": round(res["latency_ms"]), "queue_ms": res.get("queue_ms"),
                              "tokens_in": res.get("tokens_in"), "tokens_out": res.get("tokens_out")}
             own = cascade and letter == valid[-1]
-            unsure = cascade and conf is not None and conf < float(getattr(brain.cfg, "escalate_below", 0.5) or 0)
+            unsure = (cascade or decide) and conf is not None and conf < float(getattr(brain.cfg, "escalate_below", 0.5) or 0)
             a.last_choice = {"tick": world.tick, "chose": letter, "confidence": conf, "escalated": False,
                              "options": [{"letter": valid[i], "goal": o.get("goal", ""), "p": round(probs.get(valid[i], 0.0), 3)}
                                          for i, o in enumerate(opts)]
@@ -864,7 +865,7 @@ class Mind:
                     rec["prompt_hash"] = hashlib.sha256(json.dumps(fresh, sort_keys=True).encode()).hexdigest()[:16]
                     rec["max_tokens"] = planner.cfg.max_tokens
                     rec["tick_requested"], rec["rev_requested"] = world.tick, a.rev
-                    rec["style"] = "repair" if sent.get("repair") else "cascade-full"
+                    rec["style"] = "repair" if sent.get("repair") else ("decide-full" if decide else "cascade-full")
                     if planner is not brain:  # (which model wrote the plan, beside which one chose to escalate)
                         rec["planner"], rec["planner_model"] = planner.id, planner.cfg.model or planner.stats.resolved_model
                     sent_full["msgs"] = fresh
@@ -886,7 +887,7 @@ class Mind:
                 rec["planner_error"] = rec.pop("error", None) or "an unreadable reply"
                 rec["planner_parse"] = rec.pop("parse", None)
                 rec["outcome"] = "pending"
-                rec["style"] = "repair" if sent.get("repair") else "choose"
+                rec["style"] = "repair" if sent.get("repair") else ("decide" if decide else "choose")
                 rec["choice"].update(escalated=False, denial="planner unavailable")
                 a.last_choice["escalated"] = False
                 a.last_choice["why"] = "the planner didn't answer"
