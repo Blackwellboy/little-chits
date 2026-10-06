@@ -26,6 +26,7 @@ from .. import diag
 from ..sim import rules as RL
 from ..sim.agent import TICKS_PER_DAY, Agent
 from . import prompt as P
+from . import sysone as SYS
 from .instinct import Instinct, tools_first
 from .llm import BrainConfig, LLMBrain
 from .pioneers import plan as pioneer_plan
@@ -555,8 +556,8 @@ class Mind:
     def _ask(self, world, a: Agent, brain: LLMBrain) -> None:
         # the brain's own prompt_style, or full in a model-only run (no instinct menu): the same rule as style_of
         style = "full" if self.model_only else (getattr(brain.cfg, "prompt_style", "full") or "full")
-        if style in ("choose", "cascade"):
-            return self._ask_choice(world, a, brain, cascade=style == "cascade")
+        if style in ("choose", "cascade", "decide"):
+            return self._ask_choice(world, a, brain, cascade=style == "cascade", decide=style == "decide")
         rep = self._repair_note(world, a)
         msgs = P.messages(world, a, style=style)
         if rep:
@@ -595,13 +596,15 @@ class Mind:
         sent: Dict[str, Any] = {"msgs": msgs}
         self._spawn_plan(brain, self._think(world, a, brain, at_send, rec, sent))
 
-    def _ask_choice(self, world, a: Agent, brain: LLMBrain, cascade: bool = False) -> None:
+    def _ask_choice(self, world, a: Agent, brain: LLMBrain, cascade: bool = False, decide: bool = False) -> None:
         """Choose mode: instinct drafts a few plans, the model picks one by letter (one output token, scored by
-        logprobs). The chit still follows its model's choice; the model just doesn't write the plan."""
+        logprobs). `decide`: the same draft, but the pick goes to the SystemOne decision API (brain/sysone.py),
+        falling back to the one-token vote. The chit still follows its model's choice; the model just doesn't
+        write the plan."""
         a.thinking = True
         a.think_started = world.tick
         rec = {"request_id": uuid.uuid4().hex, "world": world.id, "epoch": getattr(world, "epoch", ""),
-               "agent": a.id, "agent_name": a.name, "brain": brain.id, "style": "choose",
+               "agent": a.id, "agent_name": a.name, "brain": brain.id, "style": "decide" if decide else "choose",
                "model": brain.cfg.model or brain.stats.resolved_model, "base_url": brain.cfg.base_url,
                "tick_requested": world.tick, "rev_requested": a.rev, "prompt_version": P.PROMPT_VERSION,
                "prompt_hash": "", "temperature": brain.cfg.temperature, "max_tokens": 1,
@@ -615,7 +618,7 @@ class Mind:
                        repair_reason=rep["reason"])
         self.decisions.append(rec)
         a._decision = rec
-        sent: Dict[str, Any] = {"repair": rep}
+        sent: Dict[str, Any] = {"repair": rep, "decide": decide}
 
         def at_send():
             if rec.get("match") != self.match:
@@ -650,7 +653,16 @@ class Mind:
 
         async def run() -> None:
             try:
-                res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
+                if self.style_of(brain) == "decide":
+                    # the decision model picks the project too (labels as the chief hears them); else the chat vote
+                    state = "\n\n".join(m.get("content", "") for m in msgs)
+                    try:
+                        res = await SYS.decide_letters(brain, state, [PJ.option_words(o) for o in options])
+                    except (SYS.SystemOneMissing, SYS.SystemOneBadKey):
+                        res = await brain.chat(msgs, max_tokens=1, json_reply=False,
+                                               extra={"logprobs": True, "top_logprobs": 10})
+                else:
+                    res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
                 if rec.get("match") != self.match:
                     return
                 diag.chief(world, "answered", ask, queue_ms=round(res.get("queue_ms") or 0),
@@ -668,7 +680,7 @@ class Mind:
                     diag.chief(world, "invalid choice", ask, end=True)
                     return
                 rec["parse"] = "choice"
-                rec["choice"] = {"requested": letter, "confidence": round(math.exp(scores[letter]), 2) if letter in scores else None,
+                rec["choice"] = {"requested": letter, "confidence": SYS.confidence(res, scores, letter),
                                  "options": [PJ.option_words(o) for o in options]}
                 p = PJ.answer(world, a.id, valid.index(letter))
                 adopted = p is not None and p.get("chosen_by") == "chief"
@@ -725,7 +737,16 @@ class Mind:
 
         async def run() -> None:
             try:
-                res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
+                if self.style_of(brain) == "decide" and (info.get("options") or []):
+                    # elections and trade answers go to the decision model too (labels name each letter)
+                    state = "\n\n".join(m.get("content", "") for m in msgs)
+                    try:
+                        res = await SYS.decide_letters(brain, state, [str(o) for o in info["options"]][:n])
+                    except (SYS.SystemOneMissing, SYS.SystemOneBadKey):
+                        res = await brain.chat(msgs, max_tokens=1, json_reply=False,
+                                               extra={"logprobs": True, "top_logprobs": 10})
+                else:
+                    res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
                 if rec.get("match") != self.match:
                     return
                 valid = P.LETTERS[:n]
@@ -741,8 +762,7 @@ class Mind:
                     self._resolve(rec, "failed", world.tick)
                     return
                 rec["parse"] = "choice"
-                rec["choice"] = {"requested": letter, "confidence": round(math.exp(scores[letter]), 2) if letter in scores
-                                 else None, **info}
+                rec["choice"] = {"requested": letter, "confidence": SYS.confidence(res, scores, letter), **info}
                 self._resolve(rec, "adopted" if on_choice(valid.index(letter)) else "stale", world.tick)
             except Exception as e:  # no answer: the simulator's rule decides
                 rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}"
@@ -755,15 +775,34 @@ class Mind:
         m0 = time.monotonic()
         entry: Dict[str, Any] = {"t": time.time(), "world": world.id, "agent": a.name, "brain": brain.label, "tick": world.tick}
         try:
-            res = await brain.chat(at_send, max_tokens=1, json_reply=False,
-                                   extra={"logprobs": True, "top_logprobs": 10})
-            opts = sent.get("options") or []
-            if not opts:
-                raise ValueError("no options")
+            letter, res, scores = "", {}, {}
+            opts = []
+            if sent.get("decide"):
+                # the decision model picks first; a missing endpoint or a stray answer falls back to the chat vote
+                at_send()  # draft now (deterministic: a fallback re-runs it and drafts the same options)
+                opts = sent.get("options") or []
+                if not opts:
+                    raise ValueError("no options")
+                state, criteria = P.decide_question(world, a, opts, sent.get("repair"))
+                try:
+                    v = await SYS.vote(brain, state, criteria)
+                except (SYS.SystemOneMissing, SYS.SystemOneBadKey):
+                    v = None
+                if v is not None and v["choice"] in P.LETTERS[:len(opts)]:
+                    res, letter = v, v["choice"]
+                    scores = {k: math.log(max(float(p), 1e-9)) for k, p in v["probabilities"].items()
+                              if k in P.LETTERS[:len(opts)]}
+            if not letter:
+                res = await brain.chat(at_send, max_tokens=1, json_reply=False,
+                                       extra={"logprobs": True, "top_logprobs": 10})
+                opts = sent.get("options") or []
+                if not opts:
+                    raise ValueError("no options")
+                valid = P.LETTERS[:len(opts) + (1 if cascade else 0)]
+                scores = {t.strip().upper(): lp for t, lp in (res.get("top_logprobs") or {}).items()
+                          if t.strip().upper() in valid and len(t.strip()) == 1}
+                letter = max(scores, key=scores.get) if scores else res["text"].strip().upper()
             valid = P.LETTERS[:len(opts) + (1 if cascade else 0)]
-            scores = {t.strip().upper(): lp for t, lp in (res.get("top_logprobs") or {}).items()
-                      if t.strip().upper() in valid and len(t.strip()) == 1}
-            letter = max(scores, key=scores.get) if scores else res["text"].strip().upper()
             if letter not in valid or len(letter) != 1:
                 brain.stats.parse_failed += 1
                 rec["parse"] = "invalid_choice"

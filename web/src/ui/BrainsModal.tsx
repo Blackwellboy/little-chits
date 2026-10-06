@@ -281,6 +281,7 @@ export function BrainsModal() {
                 <option value="compact">Compact (small models or short context)</option>
                 <option value="choose">Choose (fastest: the model picks one of a few drafted plans · slow GPUs)</option>
                 <option value="cascade">Cascade (chooses by letter; writes its own plan when unsure or it has its own idea)</option>
+                <option value="decide">Decide (like choose, but a decision model picks via the SystemOne API · needs e.g. tev1-8k on Ollama 0.35+)</option>
               </select>
             </label>
             {form.prompt_style === "cascade" && (

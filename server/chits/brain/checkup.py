@@ -22,7 +22,7 @@ from .llm import BrainConfig, LLMBrain, ModelServerError
 from .parse import ParseError, parse_plan
 
 REPLY_CHARS = 200  # of the model's reply, shown as it came
-CHOOSERS = ("choose", "cascade")  # prompt styles that pick by one token
+CHOOSERS = ("choose", "cascade", "decide")  # prompt styles that pick by one token (decide: by decision model)
 
 
 def _failure(e: Exception) -> Dict[str, str]:
@@ -48,6 +48,24 @@ async def _ask(brain: LLMBrain, msgs, kw: Dict[str, Any]) -> Dict[str, Any]:
             "thinking": bool(res.get("reasoned")) or "<think>" in text.lower()}
 
 
+async def _ask_decide(brain: LLMBrain, world, a) -> Dict[str, Any]:
+    """The Test's one-token choice for a decide brain: a real SystemOne vote on a drafted menu."""
+    from .instinct import Instinct
+    from .sysone import vote
+
+    t0 = time.monotonic()
+    try:
+        opts = Instinct().options(world, a)
+        state, criteria = P.decide_question(world, a, opts, None)
+        v = await vote(brain, state, criteria)
+    except Exception as e:
+        return {"error": _failure(e), "latency_ms": (time.monotonic() - t0) * 1000}
+    valid = P.LETTERS[:len(opts)]
+    return {"text": v["choice"], "latency_ms": v["latency_ms"], "finish_reason": "stop",
+            "answered": True, "top_logprobs": {}, "thinking": False,
+            "logprobs": True, "letter": v["choice"] if v["choice"] in valid else ""}
+
+
 async def observe(cfg: BrainConfig, client: Optional[httpx.AsyncClient] = None, seed: int = 1234) -> Dict[str, Any]:
     """Ask a server what the game would ask, and note what came back (the facts `classify` reads)."""
     from ..sim.world import World
@@ -67,6 +85,11 @@ async def observe(cfg: BrainConfig, client: Optional[httpx.AsyncClient] = None, 
             return obs
         world = World("A", "Checkup", seed, "direct", 64, 2)
         a = next(iter(world.agents.values()))
+        if cfg.prompt_style == "decide":
+            # a decision model never writes plans: the Test asks only what the game asks it (the vote)
+            c = obs["choice"] = await _ask_decide(brain, world, a)
+            obs["model"] = brain.stats.resolved_model
+            return obs
         msgs, kw, _ = decision_request(world, a, "compact" if cfg.prompt_style == "compact" else "full")
         p = obs["plan"] = await _ask(brain, msgs, kw)
         p["json_refused"] = bool(cfg.json_mode and not brain._json_ok)
