@@ -124,7 +124,10 @@ POP_CAP = 60  # chits on a small island (the plan's invariants hold it to 60)
 # An age whose key is a building (Firekeepers, Farmers, Space Age) is reached when one stands, not when a chit
 # imagines it: a live world entered the Space Age on day 369 because one chit came up with the idea of a launch pad,
 # and none was ever built, nor any rocket fuel made. On for the worlds made while it is on (World.era_by_deeds, saved
-# with them); a world saved before keeps the ages it reached. tests/identity_runner.py turns it off
+# with them); a world saved before keeps the ages it reached. tests/identity_runner.py turns it off.
+# Off pending the owner: A/B 2026-10-06 (tools/harness/ab.py, 24 seeds x 60 days) was about neutral, not a win.
+# Usual seeds: discoveries 77.6 > 72.1, age reached 8.5 > 8.1. Fresh seeds 21-32: 78.4 vs 75.3, age 8.6 both.
+# No change in starvations. Its case is honesty (the age shown is one the world has built), not play.
 ERA_BY_DEEDS = False
 POP_CAP_MIN = 6  # the fewest a game may hold a world to (World.cap): enough for families to go on
 # A world held far below what it holds today (90 chits, held at 20) must not simply stop having children: only adults
