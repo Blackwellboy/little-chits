@@ -2,6 +2,7 @@
 
 How to run a model-vs-model study with `chits.lab`, and what each run records. The first study is
 `docs/protocols/jevk5-vs-gemma.json`: JevK5 9B against Gemma 4 12B, on the same island and culture.
+Its results: [jevk5-vs-gemma-2026-10.md](jevk5-vs-gemma-2026-10.md).
 
 ## What a model arm does
 
