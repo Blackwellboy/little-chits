@@ -55,3 +55,37 @@ export function plazaSpots(cx: number, cy: number, n: number, free: (x: number, 
   }
   return out;
 }
+
+/** Roads as the ages go on: cobbles until the machines come, then crushed-stone macadam, then asphalt with a painted
+ *  line once there is electricity. 0 cobble, 1 macadam, 2 asphalt. */
+export function roadStyle(era: number): 0 | 1 | 2 {
+  return era >= 9 ? 2 : era >= 8 ? 1 : 0;
+}
+
+export const POWER_RADIUS = 20;  // server/chits/sim/buildings.py POWER_RADIUS: what a power station reaches
+
+type Box = { id: string; x: number; y: number; w: number; h: number };
+
+/** Which buildings each power station's wires run to: the nearest within its reach (it really speeds the stations
+ *  there, and lights the homes), at most `max` each. Pure, for the renderer's wire layer. */
+export function wireTargets(stations: Box[], buildings: Box[], radius = POWER_RADIUS, max = 10): [Box, Box][] {
+  const out: [Box, Box][] = [];
+  const c = (b: Box) => [b.x + b.w / 2, b.y + b.h / 2];
+  for (const s of stations) {
+    const [sx, sy] = c(s);
+    const near = buildings.filter((b) => b.id !== s.id)
+      .map((b) => { const [bx, by] = c(b); return { b, d: Math.hypot(bx - sx, by - sy) }; })
+      .filter((o) => o.d <= radius).sort((p, q) => p.d - q.d || (p.b.id < q.b.id ? -1 : 1)).slice(0, max);
+    for (const o of near) out.push([s, o.b]);
+  }
+  return out;
+}
+
+/** Is a building lit by electricity: within reach of a working power station. */
+export function electrified(b: Box, stations: Box[], radius = POWER_RADIUS): boolean {
+  const bx = b.x + b.w / 2, by = b.y + b.h / 2;
+  return stations.some((s) => Math.hypot(s.x + s.w / 2 - bx, s.y + s.h / 2 - by) <= radius);
+}
+
+/** The best carrier a chit has, which it is drawn pulling: a wagon, else a cart, else a sled. */
+export const VEHICLES = ["wagon", "cart", "sled"] as const;

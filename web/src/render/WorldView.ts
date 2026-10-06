@@ -4,7 +4,7 @@ import {
 } from "pixi.js";
 import * as A from "./art";
 import { flameFrames, GREAT_WORKS } from "./buildings";
-import { eraIndex, isLampTile, lampStyle, plazaSpots, statueTint, type Hero } from "./eras";
+import { electrified, eraIndex, isLampTile, lampStyle, plazaSpots, roadStyle, statueTint, wireTargets, type Hero } from "./eras";
 import { signGlyph, villageLabelVisible, weatherProfile, type WeatherProfile } from "./fx";
 import type { AgentState, WorldData } from "../state/world";
 import type { StructureView, WorldEvent } from "../types";
@@ -25,7 +25,7 @@ class Tex {
 
 type ChitView = {
   root: Container; body: Sprite; outline: Sprite; eyes: Sprite; feet: [Sprite, Sprite]; shadow: Sprite;
-  carry: Sprite; tool: Sprite; basket: Sprite; phase: number; blinkAt: number; lastAct: string;
+  carry: Sprite; tool: Sprite; basket: Sprite; vehicle: Sprite; phase: number; blinkAt: number; lastAct: string;
 };
 
 type Chunk = { cx: number; cy: number; terrain?: Sprite; autumn?: Sprite; snow?: Sprite;
@@ -91,6 +91,8 @@ export class WorldView {
   private bakeQueue: { key: number; layer: "terrain" | "autumn" | "snow" }[] = [];
   private water = new Container();
   private objects = new Container();
+  private wires = new Graphics();  // power lines, from each power station to what it reaches (visible ages)
+  private wiresKey = "";
   private fx = new Container();
   private glow = new Container();
   private lightScene = new Container();
@@ -167,7 +169,7 @@ export class WorldView {
     // trees, plants, sparkles and fish are culled by cullDetail; structures and chits are few
     this.objects.cullableChildren = false;
     this.water.cullableChildren = false;
-    this.root.addChild(this.preview, this.terrain, this.autumn, this.snow, this.pathLayer, this.water, this.objects, this.fx, this.lightSprite, this.glow);
+    this.root.addChild(this.preview, this.terrain, this.autumn, this.snow, this.pathLayer, this.water, this.wires, this.objects, this.fx, this.lightSprite, this.glow);
     this.app.stage.addChild(this.root, this.tintG, this.weather, this.screen, this.overlay, this.flashG);
     this.tintG.eventMode = "none"; this.flashG.eventMode = "none";
     this.lightSprite.eventMode = "none";
@@ -208,7 +210,13 @@ export class WorldView {
     if (opts.villages === false) return;
     const poll = () => {
       fetch(`/api/worlds/${data.id}/settlements`).then((r) => (r.ok ? r.json() : [])).then((v) => { this.villages = v || []; this.placeStatues(); }).catch(() => {});
-      fetch(`/api/worlds/${data.id}/eras`).then((r) => (r.ok ? r.json() : null)).then((e) => { if (e) { this.eraInfo = e; this.placeStatues(); } }).catch(() => {});
+      fetch(`/api/worlds/${data.id}/eras`).then((r) => (r.ok ? r.json() : null)).then((e) => {
+        if (!e) return;
+        const repave = roadStyle(e.index) !== roadStyle(this.eraInfo.index);
+        this.eraInfo = e;
+        this.placeStatues();
+        if (repave) this.repaveRoads();  // (a new age paves its roads anew: eras.roadStyle)
+      }).catch(() => {});
     };
     poll();
     this.villagePoll = setInterval(poll, 10000);
@@ -495,8 +503,43 @@ export class WorldView {
       const reg = this.chunkRegion(c);
       [c.pathCanvas, c.pathCtx] = A.canvas(reg.w * TS, reg.h * TS);
     }
-    A.drawPath(c.pathCtx!, x, y, d.paths[y * d.size + x], d.paths, d.size, c.cx * CH, c.cy * CH);
+    A.drawPath(c.pathCtx!, x, y, d.paths[y * d.size + x], d.paths, d.size, c.cx * CH, c.cy * CH, roadStyle(this.eraInfo.index));
     this.dirtyPaths.add(c);
+  }
+
+  /** The power stations that stand: finished and not in ruins. */
+  private poweredStations(d: WorldData) {
+    const out: StructureView[] = [];
+    for (const s of d.structures.values()) if (s.design === "power_station" && s.complete && !s.ruined) out.push(s);
+    return out;
+  }
+
+  /** A line on poles from each power station to the buildings it reaches. Redrawn only when they change. */
+  private drawWires(d: WorldData, stations: StructureView[]) {
+    const near = stations.length ? wireTargets(stations, [...d.structures.values()].filter((s) => s.complete && !s.ruined && s.design !== "power_station")) : [];
+    const key = near.map(([a, b]) => a.id + ">" + b.id).join(",");
+    if (key === this.wiresKey) return;
+    this.wiresKey = key;
+    const g = this.wires;
+    g.clear();
+    for (const [s, b] of near) {
+      const x1 = (s.x + s.w / 2) * TS, y1 = (s.y + s.h / 2) * TS - 10, x2 = (b.x + b.w / 2) * TS, y2 = (b.y + b.h / 2) * TS - 8;
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 + 5;  // (a wire sags)
+      g.moveTo(x1, y1).quadraticCurveTo(mx, my, x2, y2).stroke({ width: 1, color: 0x2a2a2a, alpha: 0.7 });
+      const n = Math.max(1, Math.floor(Math.hypot(x2 - x1, y2 - y1) / (TS * 4)));
+      for (let i = 1; i < n; i++) {  // its poles
+        const t = i / n, px = x1 + (x2 - x1) * t, py = (1 - t) * (1 - t) * y1 + 2 * (1 - t) * t * my + t * t * y2;
+        g.rect(px - 0.5, py, 1.5, 9).fill(0x5a4030);
+      }
+    }
+  }
+
+  /** Every road tile drawn again, in the age's paving. */
+  private repaveRoads() {
+    const d = this.data;
+    if (!d) return;
+    for (let i = 0; i < d.paths.length; i++) if (d.paths[i] === 2) this.drawPathTile(i % d.size, Math.floor(i / d.size));
+    this.flushPaths();
   }
 
   private flushPaths() {
@@ -654,9 +697,10 @@ export class WorldView {
     const basket = new Sprite(this.tex.get("i:basket", () => A.iconCanvas("basket"))); basket.anchor.set(0.5, 1); basket.visible = false;
     const carry = new Sprite(); carry.anchor.set(0.5, 1); carry.visible = false;
     const tool = new Sprite(); tool.anchor.set(0.2, 0.9); tool.visible = false;
-    root.addChild(shadow, basket, f1, f2, outline, body, eyes, carry, tool);
+    const vehicle = new Sprite(); vehicle.anchor.set(1, 1); vehicle.visible = false;  // pulled behind (visible ages)
+    root.addChild(vehicle, shadow, basket, f1, f2, outline, body, eyes, carry, tool);
     this.objects.addChild(root);
-    return { root, body, outline, eyes, feet: [f1, f2], shadow, carry, tool, basket, phase: Math.random() * 10, blinkAt: 0, lastAct: "" };
+    return { root, body, outline, eyes, feet: [f1, f2], shadow, carry, tool, basket, vehicle, phase: Math.random() * 10, blinkAt: 0, lastAct: "" };
   }
 
   private removeChit(id: string) {
@@ -1043,6 +1087,8 @@ export class WorldView {
         if (d.paths[y * size + x] === 2 && isLampTile(x, y, lamp.every)) { addLight(x + 0.5, y + 0.5, lamp.radius, lamp.tint, lamp.intensity); n++; }
       }
     }
+    const powered = this.poweredStations(d);
+    this.drawWires(d, powered);
     for (const [id, v] of this.structs) {
       const s = d.structures.get(id);
       if (!s) continue;
@@ -1068,7 +1114,10 @@ export class WorldView {
         addLight(s.x + 0.5, s.y + (s.design === "smithy" ? 1.4 : 0.6), s.design === "kiln" ? 3 : 4, 0xff7a30, 0.9);
         if (now > v.smokeAt) { v.smokeAt = now + 500 + Math.random() * 500; this.puff(s.x + 0.5, s.y - (s.design === "furnace" ? 1.1 : s.design === "smithy" ? 1.5 : 0.6), 0x7a7a7a, 1, -0.35); }
       } else if (s.complete && !s.ruined && HOMELIT.has(s.design) && dark > 0.25) {
-        addLight(s.x + s.w / 2, s.y + s.h * 0.6, s.design === "two_storey_house" || s.design === "longhouse" ? 3 : 2.4, 0xffd080, 0.8);
+        // a home a power station reaches is lit by electricity: whiter and brighter than a hearth (eras.electrified)
+        const lit = powered.length > 0 && electrified(s, powered);
+        addLight(s.x + s.w / 2, s.y + s.h * 0.6, (s.design === "two_storey_house" || s.design === "longhouse" || s.design === "apartment" ? 3 : 2.4) * (lit ? 1.25 : 1),
+          lit ? 0xeaf2ff : 0xffd080, lit ? 1 : 0.8);
         const chimney = CHIMNEY[s.design];
         if (chimney && now > v.smokeAt) { v.smokeAt = now + 900 + Math.random() * 800; this.puff(s.x + chimney[0], s.y - chimney[1], 0x8a8a8a, 1, -0.3); }
       }
@@ -1109,6 +1158,11 @@ export class WorldView {
       c.eyes.texture = this.tex.get(`eyes:${eyeKind}`, () => theme().chit.eyes(eyeKind));
       // carried stuff
       c.basket.visible = a.basket; c.basket.position.set(-5, -bob - 3);
+      // the sled, cart or wagon it carries, pulled behind it (it is real: the chit holds one)
+      if (a.vehicle && !sleeping) {
+        c.vehicle.texture = this.tex.get(`v:${a.vehicle}`, () => A.vehicleCanvas(a.vehicle!));
+        c.vehicle.visible = true; c.vehicle.position.set(-4, 1);
+      } else c.vehicle.visible = false;
       if (a.carry) {
         c.carry.texture = this.tex.get(`i:${a.carry}`, () => A.iconCanvas(a.carry!));
         c.carry.visible = !sleeping; c.carry.position.set(0, -bob - 13);
