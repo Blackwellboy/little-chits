@@ -55,3 +55,42 @@ export function plazaSpots(cx: number, cy: number, n: number, free: (x: number, 
   }
   return out;
 }
+
+/** Roads as the ages go on: cobbles until the machines come, then crushed-stone macadam, then asphalt with a painted
+ *  line once there is electricity. 0 cobble, 1 macadam, 2 asphalt. */
+export function roadStyle(era: number): 0 | 1 | 2 {
+  return era >= 9 ? 2 : era >= 8 ? 1 : 0;
+}
+
+export const POWER_RADIUS = 20;  // server/chits/sim/buildings.py POWER_RADIUS: what a power station reaches
+
+type Box = { id: string; x: number; y: number; w: number; h: number };
+
+/** How far apart two footprints are, the simulator's way (world.Structure.dist, buildings.powered): tiles in the
+ *  larger of the two axes, between their nearest edges. A building is in a station's reach if any tile of it is. */
+export function reach(a: Box, b: Box): number {
+  const dx = Math.max(a.x - (b.x + b.w - 1), 0, b.x - (a.x + a.w - 1));
+  const dy = Math.max(a.y - (b.y + b.h - 1), 0, b.y - (a.y + a.h - 1));
+  return Math.max(dx, dy);
+}
+
+/** Which buildings each power station's wires run to: the nearest within its reach (it really speeds the stations
+ *  there, and lights the homes), at most `max` each. Pure, for the renderer's wire layer. */
+export function wireTargets(stations: Box[], buildings: Box[], radius = POWER_RADIUS, max = 10): [Box, Box][] {
+  const out: [Box, Box][] = [];
+  for (const s of stations) {
+    const near = buildings.filter((b) => b.id !== s.id)
+      .map((b) => ({ b, d: reach(s, b) }))
+      .filter((o) => o.d <= radius).sort((p, q) => p.d - q.d || (p.b.id < q.b.id ? -1 : 1)).slice(0, max);
+    for (const o of near) out.push([s, o.b]);
+  }
+  return out;
+}
+
+/** Is a building lit by electricity: within reach of a working power station. */
+export function electrified(b: Box, stations: Box[], radius = POWER_RADIUS): boolean {
+  return stations.some((s) => reach(s, b) <= radius);
+}
+
+/** The best carrier a chit has, which it is drawn pulling: a wagon, else a cart, else a sled. */
+export const VEHICLES = ["wagon", "cart", "sled"] as const;

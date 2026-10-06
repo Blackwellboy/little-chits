@@ -29,7 +29,8 @@ def agent_brief(w: World, a: Agent) -> Dict[str, Any]:
     return {
         "id": a.id, "name": a.name, "x": a.x, "y": a.y, "hue": a.hue, "act": a.activity, "emote": a.emote,
         "say": a.say, "think": a.thinking, "carry": carry, "tool": tool, "child": a.is_child(w.tick),
-        "basket": a.has("basket"), "light": a.best_tool("light") is not None, "hp": round(a.health), "hunger": round(a.hunger), "brain": a.brain,
+        "basket": a.has("basket"), "vehicle": next((v for v in ("wagon", "cart", "sled") if a.has(v)), None),  # drawn pulled behind
+        "light": a.best_tool("light") is not None, "hp": round(a.health), "hunger": round(a.hunger), "brain": a.brain,
         "src": "model" if a.plan_source.startswith("model") else "instinct",
     }
 

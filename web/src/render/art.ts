@@ -253,7 +253,8 @@ export function bakeAutumn(tiles: Uint8Array, size: number, seed: number, reg: R
 }
 
 /** Paths: worn trails and paved roads. Drawn per tile onto an overlay canvas. */
-export function drawPath(ctx: CanvasRenderingContext2D, x: number, y: number, level: number, paths: Uint8Array, size: number, ox = 0, oy = 0) {
+export function drawPath(ctx: CanvasRenderingContext2D, x: number, y: number, level: number, paths: Uint8Array, size: number, ox = 0, oy = 0,
+  style: 0 | 1 | 2 = 0) {
   const X = (x - ox) * TS, Y = (y - oy) * TS;
   ctx.clearRect(X, Y, TS, TS);
   if (!level) return;
@@ -271,6 +272,26 @@ export function drawPath(ctx: CanvasRenderingContext2D, x: number, y: number, le
     if (n(0, 1)) ctx.fillRect(X + 5, Y + 11, 6, 5);
     ctx.fillStyle = "rgba(120,92,60,0.5)";
     for (let i = 0; i < 4; i++) ctx.fillRect(X + 4 + Math.floor(r() * 8), Y + 4 + Math.floor(r() * 8), 1, 1);
+  } else if (style === 2) {  // asphalt, with a dashed line along the road's run (eras.roadStyle)
+    ctx.fillStyle = "#3d3f44";
+    ctx.fillRect(X, Y, TS, TS);
+    ctx.fillStyle = "rgba(255,255,255,0.05)";
+    for (let i = 0; i < 6; i++) ctx.fillRect(X + Math.floor(r() * 15), Y + Math.floor(r() * 15), 1, 1);
+    const ew = n(-1, 0) || n(1, 0), ns = n(0, -1) || n(0, 1);
+    ctx.fillStyle = "#e8d870";
+    if (ew && !ns && (x % 2 === 0)) ctx.fillRect(X + 3, Y + 7, 8, 2);
+    if (ns && !ew && (y % 2 === 0)) ctx.fillRect(X + 7, Y + 3, 2, 8);
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    if (!n(0, 1)) ctx.fillRect(X, Y + TS - 1, TS, 1);
+  } else if (style === 1) {  // macadam: packed crushed stone
+    ctx.fillStyle = "#7a7770";
+    ctx.fillRect(X, Y, TS, TS);
+    for (let i = 0; i < 26; i++) {
+      ctx.fillStyle = ["#8e8a80", "#6c6962", "#9a968b"][Math.floor(r() * 3)];
+      ctx.fillRect(X + Math.floor(r() * 16), Y + Math.floor(r() * 16), 1, 1);
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    if (!n(0, 1)) ctx.fillRect(X, Y + TS - 1, TS, 1);
   } else {
     ctx.fillStyle = "#8d8a82";
     ctx.fillRect(X, Y, TS, TS);
@@ -535,6 +556,33 @@ const ICONS: Record<string, (ctx: CanvasRenderingContext2D) => void> = {
   basket: (x) => { x.fillStyle = "#c79a52"; x.fillRect(1, 3, 6, 4); x.fillStyle = "#8a6a3a"; x.fillRect(1, 5, 6, 1); x.fillRect(2, 1, 4, 1); },
   lantern: (x) => { x.fillStyle = "#e0883a"; x.fillRect(2, 1, 4, 1); x.fillRect(2, 6, 4, 1); x.fillStyle = "#ffe08a"; x.fillRect(2, 2, 4, 4); },
 };
+
+/** What a chit pulls behind it when it carries one (views: agent.vehicle): a sled, a cart or a covered wagon. */
+export function vehicleCanvas(kind: string): HTMLCanvasElement {
+  const [c, ctx] = canvas(18, 12);
+  const wood = "#8a5a32", dark = "#5a3a1e", iron = "#3c3c40";
+  if (kind === "sled") {
+    ctx.fillStyle = wood; ctx.fillRect(2, 5, 13, 3);
+    ctx.fillStyle = dark; ctx.fillRect(1, 9, 15, 1); ctx.fillRect(1, 8, 1, 1); ctx.fillRect(15, 8, 2, 1);
+    ctx.fillRect(4, 8, 1, 1); ctx.fillRect(12, 8, 1, 1);
+    ctx.fillStyle = "#b08050"; ctx.fillRect(3, 3, 10, 2);  // the load
+  } else {
+    const wagon = kind === "wagon";
+    ctx.fillStyle = wood; ctx.fillRect(1, 5, wagon ? 15 : 12, 4);
+    ctx.fillStyle = dark; ctx.fillRect(1, 8, wagon ? 15 : 12, 1);
+    if (wagon) {  // the canvas cover
+      ctx.fillStyle = "#e8e0c8"; ctx.fillRect(2, 1, 13, 4);
+      ctx.fillStyle = "#cfc6ac"; ctx.fillRect(5, 1, 1, 4); ctx.fillRect(10, 1, 1, 4);
+    }
+    const wheel = (wx: number) => {
+      ctx.fillStyle = iron; ctx.fillRect(wx, 8, 4, 4);
+      ctx.fillStyle = "#9a9080"; ctx.fillRect(wx + 1, 9, 2, 2);
+    };
+    wheel(2); wheel(wagon ? 11 : 8);
+    ctx.fillStyle = dark; ctx.fillRect(wagon ? 16 : 13, 6, 2, 1);  // the shaft
+  }
+  return c;
+}
 
 export function iconCanvas(key: string): HTMLCanvasElement {
   const [c, ctx] = canvas(8, 8);
