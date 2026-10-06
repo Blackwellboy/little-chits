@@ -71,6 +71,8 @@ def main(argv):
         actions.HUNGER_MARGIN = False
     if hasattr(actions, "RIPE_TARGET"):  # (a named farm harvested only when ripe)
         actions.RIPE_TARGET = False
+    if hasattr(actions, "ROOM_KEEPS_PLAN"):  # (the arms-full reflex keeps what the plan needs)
+        actions.ROOM_KEEPS_PLAN = False
     from chits.brain import mind as mind_rules
     if hasattr(mind_rules, "CHOICE_REPAIR"):  # (a choosing model told why its last choice failed)
         mind_rules.CHOICE_REPAIR = False

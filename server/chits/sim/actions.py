@@ -266,6 +266,11 @@ PASSING_STORE = 3  # an eat step on its way to one store takes food from another
 # off, so a chit acts only on its model's plans and may die of neglect. Off for every world with REFLEXES = False, or
 # for one world with ``world.model_only = True``. Never for a comparison: the reflexes are the body, equal in every arm.
 REFLEXES = True
+# the arms-full reflex keeps what the rest of the chit's plan needs (a build's materials, a craft's inputs, an
+# experiment's things) and stores the rest. Off: it stored everything, and a pioneer who had just fetched wood for the
+# new village's hut put it back in the stockpile, again and again (issue #98: with buildings.NEED_SITING on, daughter
+# villages 1.8 > 0.8). tests/identity_runner.py turns it off
+ROOM_KEEPS_PLAN = False
 # what a reflex's first step says about its kind, for the "would have fired" counts (diag.reflex_would)
 REFLEX_GROUP = {"eat": "food", "gather": "food", "harvest": "food", "pickup": "food", "take": "food",
                 "explore": "food", "sleep": "sleep", "shelter": "shelter", "warm_up": "warm_up", "store": "room",
@@ -376,9 +381,18 @@ def _reflexes(world, a: Agent) -> None:
         return
     if hv in ("gather", "pickup", "take") and a.free_space() <= 0 and a.reflex_rest.get("room", 0) <= world.tick:
         # arms full: put the load down before gathering more (a body reflex, whoever is thinking)
+        if ROOM_KEEPS_PLAN:
+            k = world.norm_item(head.get("what")) if isinstance(head.get("what"), str) else None
+            if k and a.inventory.get(k, 0) >= plan_needs(world, a.plan[1:]).get(k, 0) > 0:
+                # it already holds what the rest of the plan needs of this: the fetch is surplus, not the load
+                a.plan.pop(0)
+                a.path = []
+                return
         pile = _stockpile_with_room(world, a)
         if pile:
-            a.plan.insert(0, {"do": "store", "what": "all", "target": pile.id, "_reflex": True})
+            keep = plan_needs(world, a.plan[1:]) if ROOM_KEEPS_PLAN else {}
+            a.plan.insert(0, {"do": "store", "what": "all", "target": pile.id, "_reflex": True,
+                              **({"keep": keep} if keep else {})})
         else:
             junk = max((k for k in a.inventory if a.inventory[k] > 0 and not hand_tool(world.item(k))
                         and not world.item(k).carry_bonus and k not in FOODS
@@ -1662,6 +1676,31 @@ def _do_work(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def plan_needs(world, steps) -> Dict[str, int]:
+    """What a plan's later steps will take from the chit's hands: a build's materials (or what its site still needs),
+    a craft's inputs, an experiment's or invention's things. For the arms-full reflex (ROOM_KEEPS_PLAN)."""
+    need: Dict[str, int] = {}
+
+    def add(k, n):
+        if k and n > 0:
+            need[k] = need.get(k, 0) + int(n)
+
+    for s in steps:
+        do = s.get("do")
+        if do in ("build", "help"):
+            site = world.structures.get(str(s.get("site") or s.get("target") or ""))
+            key = site.design if site is not None else normalize_design(s.get("what"))
+            for k, n in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                add(k, n)
+        elif do == "craft" and (k := world.norm_item(s.get("what"))) and (r := world.recipe(k)) is not None:
+            for i, m in r.inputs:
+                add(i, m * _qty(s, 1, 1, 10))
+        elif do in ("experiment", "invent"):
+            for k in _experiment_bag(s, world):
+                add(k, 1)
+    return need
+
+
 def _experiment_bag(step, world=None) -> List[str]:
     raw = step.get("with") or step.get("items") or step.get("what") or []
     if isinstance(raw, str):
@@ -2740,6 +2779,7 @@ def _do_store(world, a: Agent, step, s) -> str:
                 continue  # (tools stay in hand: the plough too, which only works carried at harvest; and a thing this
                 # world's catalogue doesn't know is kept, not stored where nothing can read it)
             keep = kept_in_hand(world, k)  # (a bite stays in hand, and one of an invention that works while carried)
+            keep = max(keep, int((step.get("keep") or {}).get(k, 0)))  # (and what the rest of the plan needs)
             if n > keep:
                 items[k] = n - keep
     else:
