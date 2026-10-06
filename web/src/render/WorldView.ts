@@ -39,7 +39,7 @@ const MAP_ZOOM = 0.3;
 /** A moving thing's draw order, rounded so it only changes when it passes a static item's key (trees and
  *  signs sort at multiples of TS, building bottoms at one less): the layer is re-sorted whenever a key changes. */
 // buildings whose windows glow at night, and where their chimney smoke rises (tiles from the footprint's corner)
-const HOMELIT = new Set(["hut", "brick_house", "library", "longhouse", "two_storey_house", "school"]);
+const HOMELIT = new Set(["hut", "brick_house", "library", "longhouse", "two_storey_house", "school", "apartment"]);
 const CHIMNEY: Record<string, [number, number]> = { brick_house: [1.5, 1.4], two_storey_house: [1.55, 2.6], longhouse: [1.5, 1.1] };
 
 function sortKey(u: number): number {

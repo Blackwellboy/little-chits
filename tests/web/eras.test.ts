@@ -41,7 +41,7 @@ describe("visible eras", () => {
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { electrified, POWER_RADIUS, roadStyle, wireTargets } from "../../web/src/render/eras";
+import { electrified, POWER_RADIUS, reach, roadStyle, wireTargets } from "../../web/src/render/eras";
 
 describe("roads, wires and lights by what a world has", () => {
   it("paves roads by the age", () => {
@@ -63,8 +63,11 @@ describe("roads, wires and lights by what a world has", () => {
     expect(electrified({ id: "h", x: 60, y: 50, w: 2, h: 2 }, [st])).toBe(true);
     expect(electrified({ id: "h", x: 80, y: 50, w: 2, h: 2 }, [st])).toBe(false);
     expect(electrified({ id: "h", x: 60, y: 50, w: 2, h: 2 }, [])).toBe(false);
-    expect(electrified({ id: "h", x: 50 + POWER_RADIUS, y: 50, w: 2, h: 2 }, [st])).toBe(true);  // (the edge of its reach counts)
-    expect(electrified({ id: "h", x: 51 + POWER_RADIUS, y: 50, w: 2, h: 2 }, [st])).toBe(false);
+    expect(electrified({ id: "h", x: 51 + POWER_RADIUS, y: 50, w: 2, h: 2 }, [st])).toBe(true);  // (the edge of its reach counts)
+    expect(electrified({ id: "h", x: 52 + POWER_RADIUS, y: 50, w: 2, h: 2 }, [st])).toBe(false);
+    // the simulator's distance is the larger axis, edge to edge: a building off on the diagonal is still in reach
+    expect(electrified({ id: "d", x: 51 + POWER_RADIUS, y: 51 + POWER_RADIUS, w: 1, h: 1 }, [st])).toBe(true);
+    expect(reach(st, { id: "in", x: 50, y: 51, w: 1, h: 1 })).toBe(0);
   });
   it("reaches as far as the server says a power station does", () => {
     const src = readFileSync(resolve(__dirname, "../../server/chits/sim/buildings.py"), "utf8");

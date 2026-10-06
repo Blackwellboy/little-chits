@@ -66,15 +66,21 @@ export const POWER_RADIUS = 20;  // server/chits/sim/buildings.py POWER_RADIUS: 
 
 type Box = { id: string; x: number; y: number; w: number; h: number };
 
+/** How far apart two footprints are, the simulator's way (world.Structure.dist, buildings.powered): tiles in the
+ *  larger of the two axes, between their nearest edges. A building is in a station's reach if any tile of it is. */
+export function reach(a: Box, b: Box): number {
+  const dx = Math.max(a.x - (b.x + b.w - 1), 0, b.x - (a.x + a.w - 1));
+  const dy = Math.max(a.y - (b.y + b.h - 1), 0, b.y - (a.y + a.h - 1));
+  return Math.max(dx, dy);
+}
+
 /** Which buildings each power station's wires run to: the nearest within its reach (it really speeds the stations
  *  there, and lights the homes), at most `max` each. Pure, for the renderer's wire layer. */
 export function wireTargets(stations: Box[], buildings: Box[], radius = POWER_RADIUS, max = 10): [Box, Box][] {
   const out: [Box, Box][] = [];
-  const c = (b: Box) => [b.x + b.w / 2, b.y + b.h / 2];
   for (const s of stations) {
-    const [sx, sy] = c(s);
     const near = buildings.filter((b) => b.id !== s.id)
-      .map((b) => { const [bx, by] = c(b); return { b, d: Math.hypot(bx - sx, by - sy) }; })
+      .map((b) => ({ b, d: reach(s, b) }))
       .filter((o) => o.d <= radius).sort((p, q) => p.d - q.d || (p.b.id < q.b.id ? -1 : 1)).slice(0, max);
     for (const o of near) out.push([s, o.b]);
   }
@@ -83,8 +89,7 @@ export function wireTargets(stations: Box[], buildings: Box[], radius = POWER_RA
 
 /** Is a building lit by electricity: within reach of a working power station. */
 export function electrified(b: Box, stations: Box[], radius = POWER_RADIUS): boolean {
-  const bx = b.x + b.w / 2, by = b.y + b.h / 2;
-  return stations.some((s) => Math.hypot(s.x + s.w / 2 - bx, s.y + s.h / 2 - by) <= radius);
+  return stations.some((s) => reach(s, b) <= radius);
 }
 
 /** The best carrier a chit has, which it is drawn pulling: a wagon, else a cart, else a sled. */
