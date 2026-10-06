@@ -269,7 +269,10 @@ REFLEXES = True
 # the arms-full reflex keeps what the rest of the chit's plan needs (a build's materials, a craft's inputs, an
 # experiment's things) and stores the rest. Off: it stored everything, and a pioneer who had just fetched wood for the
 # new village's hut put it back in the stockpile, again and again (issue #98: with buildings.NEED_SITING on, daughter
-# villages 1.8 > 0.8). tests/identity_runner.py turns it off
+# villages 1.8 > 0.8). tests/identity_runner.py turns it off. **Off: its A/B is strongly negative.** On against main
+# (60 days): discoveries 77.6 > 65.8 / 75.3 > 69.4, era 8.5 > 7.8 / 8.6 > 8.1, loose goods 37 > 346 / 42 > 245, iron
+# 37 > 15, seed 11 five preventable starvations. Likely: hands still full of what the plan keeps, the next fetch
+# fails, and the body drops other things on the ground. Investigate before turning it on (issue #98)
 ROOM_KEEPS_PLAN = False
 # what a reflex's first step says about its kind, for the "would have fired" counts (diag.reflex_would)
 REFLEX_GROUP = {"eat": "food", "gather": "food", "harvest": "food", "pickup": "food", "take": "food",
