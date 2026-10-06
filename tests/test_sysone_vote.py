@@ -74,7 +74,7 @@ def _setup(style="decide"):
     for o in w.agents.values():
         o.hunger = o.energy = o.warmth = 90.0
     m = Mind(None)
-    m.upsert({"id": "test", "model": "tev1:0.8b", "base_url": "http://192.168.10.103:11434/v1",
+    m.upsert({"id": "test", "model": "tev1:0.8b", "base_url": "http://127.0.0.1:11434/v1",
               "prompt_style": style})
     m.assign(w, "test")
     return w, a, m, m.brains["test"]
