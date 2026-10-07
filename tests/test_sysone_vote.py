@@ -431,3 +431,25 @@ def test_decide_brain_reflection_skipped_with_no_narrator(monkeypatch):
 
     asyncio.run(run())
     assert seen == [] and a.last_reflect_day < 0
+
+
+def test_state_truncated_422_retries_once_shorter():
+    async def run():
+        calls = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            calls.append(len(body["state"]))
+            if len(calls) == 1:
+                return httpx.Response(422, json={"error": "state: part of state was dropped to fit the context",
+                                                 "code": "STATE_TRUNCATED"})
+            return _sysone_reply("A", {"A": 0.8, "B": 0.2})(request)
+
+        b = _brain(handler)
+        try:
+            return await SYS.vote(b, "Sigrid is hungry.\n" + "island weather village stores line. " * 120, {"A": "x", "B": "y"}), calls
+        finally:
+            await b.close()
+
+    v, calls = asyncio.run(run())
+    assert v["choice"] == "A" and len(calls) == 2 and calls[1] < calls[0]

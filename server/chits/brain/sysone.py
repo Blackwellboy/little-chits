@@ -104,8 +104,11 @@ async def vote(brain, state: str, criteria: Dict[str, str], question: str = "pic
         state, crit = _fit(state, criteria)
         body["state"], body["questions"][question]["criteria"] = state, crit
         r = await brain.client().post(url, headers=headers, content=json.dumps(body))
-        if r.status_code >= 400 and "token" in r.text.lower() and "limit" in r.text.lower():
-            # a 512-context decision model choking on a long scene: halve the budget once and retry
+        t = r.text.lower()
+        if r.status_code >= 400 and ("truncat" in t or "dropped" in t
+                                     or ("token" in t and "limit" in t) or "too long" in t):
+            # a 512-context decision model choking on a long scene: halve the budget once and retry.
+            # (Ollama words it as tokens-vs-limit, Ollaya 422s STATE_TRUNCATED: "part of state was dropped")
             state, crit = _fit(state, criteria, budget=TOTAL_MAX // 2)
             body["state"], body["questions"][question]["criteria"] = state, crit
             t0 = time.monotonic()
