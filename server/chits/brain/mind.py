@@ -725,7 +725,7 @@ class Mind:
                 self._resolve(rec, "adopted" if adopted else "stale", world.tick)
                 diag.chief(world, "adopted" if adopted else "stale on arrival", ask, end=True)
             except Exception as e:  # the question stands until it expires; need decides then
-                rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}"
+                rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}: {str(e)[:100]}"
                 self._resolve(rec, "failed", world.tick)
                 diag.chief(world, "request failed", ask, error=type(e).__name__)
 
@@ -807,7 +807,7 @@ class Mind:
                 rec["choice"] = {"requested": letter, "confidence": SYS.confidence(res, scores, letter), **info}
                 self._resolve(rec, "adopted" if on_choice(valid.index(letter)) else "stale", world.tick)
             except Exception as e:  # no answer: the simulator's rule decides
-                rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}"
+                rec["parse"] = rec.get("parse") or f"error: {type(e).__name__}: {str(e)[:100]}"
                 on_fail()
                 self._resolve(rec, "failed", world.tick)
 
