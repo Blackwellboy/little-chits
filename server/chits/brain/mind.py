@@ -28,7 +28,7 @@ from ..sim.agent import TICKS_PER_DAY, Agent
 from . import prompt as P
 from . import sysone as SYS
 from .instinct import Instinct, tools_first
-from .llm import BrainConfig, LLMBrain
+from .llm import BrainConfig, LLMBrain, ModelServerError
 from .pioneers import plan as pioneer_plan
 from .parse import ParseError, parse_lesson_items, parse_lessons, parse_plan, parse_reflection
 
@@ -363,12 +363,15 @@ class Mind:
                 self._wait(a)
             else:
                 self._instinct_plan(world, a, "instinct (while thinking)", filler=True)
-        # weekly reflection
+        # weekly reflection: on its own brain, or on the narrator the user picked when its own
+        # brain is decision-only and takes no chat
         day = world.tick // TICKS_PER_DAY
         if reflection_due(a, day, world.hour) and len(a.memories) >= 6 and not a.thinking \
                 and (brain.stats.queued < 2 or world.hour > 20):
-            a.last_reflect_day = day
-            self._spawn(self._reflect(world, a, brain))
+            rb = brain if self._takes_chat(brain) else self.narrator_brain()
+            if rb is not None:
+                a.last_reflect_day = day
+                self._spawn(self._reflect(world, a, rb))
 
     def new_match(self) -> None:
         """A new match starts: requests still in flight belong to the old one and must not be recorded in it."""
@@ -476,6 +479,29 @@ class Mind:
     def style_of(self, brain: LLMBrain) -> str:
         """The prompt style a request goes out in: the brain's own, or full in a model-only run (no instinct menu)."""
         return "full" if self.model_only else (getattr(brain.cfg, "prompt_style", "full") or "full")
+
+    @staticmethod
+    def _note_no_chat(brain: LLMBrain, e: Exception) -> None:
+        """A decision-only model 400s on chat: Ollama says `does not support chat`, Ollaya 404s
+        `/v1/chat/completions not found`. Remember, so decide paths stop spending a failing chat
+        fallback on it. Instinct covers the decision instead. (Only decide paths read the flag.)"""
+        if not isinstance(e, ModelServerError):
+            return
+        s = str(e).lower()
+        if "does not support chat" in s or ("404" in s and "not found" in s and "chat" in s):
+            brain.__dict__["no_chat"] = True
+
+    @staticmethod
+    def _takes_chat(brain: LLMBrain) -> bool:
+        """Whether a written reply (plan, reflection, narration) can go to this brain: never to a decide
+        brain or one already known chat-less."""
+        return brain.cfg.prompt_style != "decide" and not brain.__dict__.get("no_chat")
+
+    def narrator_brain(self) -> Optional[LLMBrain]:
+        """The shared storyteller when it can take chat: reflections for decision-only brains are written
+        here, on the narrator the user picked."""
+        n = self.brains.get(self.narrator) if self.narrator else None
+        return n if n is not None and n.healthy() and self._takes_chat(n) else None
 
     def _duty(self, world, a: Agent) -> bool:
         """A pioneer (sim/pioneers.py) lights the new village's fire and builds its home there on instinct, whatever its
@@ -667,8 +693,12 @@ class Mind:
                     try:
                         res = await SYS.decide_letters(brain, state, [PJ.option_words(o) for o in options])
                     except (SYS.SystemOneMissing, SYS.SystemOneBadKey):
-                        res = await brain.chat(msgs, max_tokens=1, json_reply=False,
-                                               extra={"logprobs": True, "top_logprobs": 10})
+                        try:
+                            res = await brain.chat(msgs, max_tokens=1, json_reply=False,
+                                                   extra={"logprobs": True, "top_logprobs": 10})
+                        except Exception as e:
+                            self._note_no_chat(brain, e)
+                            raise
                 else:
                     res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
                 if rec.get("match") != self.match:
@@ -751,8 +781,12 @@ class Mind:
                     try:
                         res = await SYS.decide_letters(brain, state, [str(o) for o in info["options"]][:n])
                     except (SYS.SystemOneMissing, SYS.SystemOneBadKey):
-                        res = await brain.chat(msgs, max_tokens=1, json_reply=False,
-                                               extra={"logprobs": True, "top_logprobs": 10})
+                        try:
+                            res = await brain.chat(msgs, max_tokens=1, json_reply=False,
+                                                   extra={"logprobs": True, "top_logprobs": 10})
+                        except Exception as e:
+                            self._note_no_chat(brain, e)
+                            raise
                 else:
                     res = await brain.chat(msgs, max_tokens=1, json_reply=False, extra={"logprobs": True, "top_logprobs": 10})
                 if rec.get("match") != self.match:
@@ -802,8 +836,15 @@ class Mind:
                     scores = {k: math.log(max(float(p), 1e-9)) for k, p in v["probabilities"].items()
                               if k in P.LETTERS[:len(opts)]}
             if not letter:
-                res = await brain.chat(at_send, max_tokens=1, json_reply=False,
-                                       extra={"logprobs": True, "top_logprobs": 10})
+                if decide and brain.__dict__.get("no_chat"):
+                    # decision-only model, already known: no chat fallback to spend (instinct covers below)
+                    raise SYS.SystemOneMissing("decision-only model takes no chat vote")
+                try:
+                    res = await brain.chat(at_send, max_tokens=1, json_reply=False,
+                                           extra={"logprobs": True, "top_logprobs": 10})
+                except Exception as e:
+                    self._note_no_chat(brain, e)
+                    raise
                 opts = sent.get("options") or []
                 if not opts:
                     raise ValueError("no options")
@@ -831,11 +872,12 @@ class Mind:
             recent = brain.__dict__.setdefault("recent_escalations", deque(maxlen=40))
             budget = len(recent) < 5 or sum(recent) / len(recent) < float(getattr(brain.cfg, "escalate_share", 0.3) or 0)
             # a two-level mind: the plan is written by the planner the brain names. Never another model in its place:
-            # a planner that is missing or down means no escalation (the choice runs), and the record says so
+            # a named planner that is missing, down, or itself decision-only (no chat to write with) means no
+            # escalation (the choice runs), and the record says so
             planner = brain
             if getattr(brain.cfg, "escalate_to", ""):
                 planner = self.brains.get(brain.cfg.escalate_to)
-                if planner is not None and not planner.healthy():
+                if planner is not None and (not planner.healthy() or not self._takes_chat(planner)):
                     planner = None
             room = planner is not None and planner.stats.queued < max(1, planner.cfg.max_concurrency)
             go_full = (own or unsure) and budget and room
@@ -971,6 +1013,7 @@ class Mind:
         except Exception as e:
             entry.update(ok=False, error=f"{type(e).__name__}: {str(e)[:160]}")
             rec["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+            self._note_no_chat(brain, e)
             if rec.get("planner") != brain.id:
                 self._resolve(rec, "failed", world.tick)
         finally:
@@ -990,7 +1033,8 @@ class Mind:
         try:
             # (a native-sampling Lab run's model reflects at its own sealed temperature too: Codex on #151)
             res = await brain.chat(at_send, max_tokens=450, temperature=brain.cfg.temperature if self.native_sampling else 0.6)
-        except Exception:
+        except Exception as e:
+            self._note_no_chat(brain, e)
             return
         if self.match != match:
             return
