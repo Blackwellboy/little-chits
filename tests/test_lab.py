@@ -133,6 +133,55 @@ def test_statistics_on_known_answers():
     assert stats.km_median([2, None, None], 10) is None  # fewer than half
 
 
+def test_paired_statistics_on_known_answers():
+    # Exact Wilcoxon signed-rank. Six positive diffs: W+ = 21, the top of the distribution, p = 2/64.
+    w = stats.wilcoxon_signed([1, 2, 3, 4, 5, 6])
+    assert (w["n"], w["w_plus"]) == (6, 21) and abs(w["p"] - 2 / 64) < 1e-12
+    assert abs(w["min_p"] - 2 / 64) < 1e-12  # with n pairs the smallest exact two-sided p is 2/2**n
+    # All-negative: the same p from the lower tail (W+ = 0), the one-sided-tail trap.
+    w2 = stats.wilcoxon_signed([-1, -2, -3, -4, -5, -6])
+    assert w2["w_plus"] == 0 and w2["p"] == w["p"]
+    # Zeros are dropped (they carry no sign), so n counts non-zero pairs, not seeds.
+    wz = stats.wilcoxon_signed([1, 2, 3, 4, 5, 6, 0, 0])
+    assert wz["n"] == 6 and wz["p"] == w["p"]
+    # Ties get average ranks; fractional ranks (halves) must not break the exact distribution.
+    wt = stats.wilcoxon_signed([1, 1, 2, 2, 3, 3])  # ranks 1.5,1.5,3.5,3.5,5.5,5.5, all positive: W+ = 21
+    assert wt["w_plus"] == 21.0 and abs(wt["p"] - 2 / 64) < 1e-12
+    # Direct proof the fractional ranks are honoured, not floored: 1,1,2 ranks 1.5,1.5,3, so W+ = 6, not 5.
+    wf = stats.wilcoxon_signed([1, 1, 2])
+    assert wf["w_plus"] == 6.0 and abs(wf["p"] - 0.25) < 1e-12  # (floored ranks would give W+ = 5)
+    # A weaker signal: a larger p than the all-one-sign case.
+    wm = stats.wilcoxon_signed([1, -2, 3, -4, 5, -6, 7, 8])
+    assert wm["p"] > wt["p"]
+    # Above 20 pairs: the normal approximation, still a probability.
+    wb = stats.wilcoxon_signed([1, -1] * 11 + [2, 2])
+    assert wb["n"] == 24 and 0 < wb["p"] <= 1
+    # Sign test: 6 positives against 1 negative, two-sided exact: 2 * 8/128 = 0.125.
+    s = stats.sign_test([1, 1, 1, 1, 1, 1, -1])
+    assert (s["pos"], s["neg"], s["n"]) == (6, 1, 7) and abs(s["p"] - 0.125) < 1e-12
+    assert stats.sign_test([1, -1, 0])["n"] == 2 and abs(stats.sign_test([1, -1, 0])["p"] - 1.0) < 1e-12
+    # The frozen JevK5-vs-Gemma study reproduces its published paired p-values (issue #159).
+    import csv
+    from pathlib import Path
+    frozen = Path(__file__).resolve().parents[1] / "docs/research/jevk5-vs-gemma/runs-blind.csv"
+    rows = list(csv.DictReader(frozen.read_text().splitlines()))
+
+    def diffs(metric):
+        vals = {}
+        for r in rows:
+            vals.setdefault(r["seed"], {})[r["arm"]] = float(r[metric])
+        return [vals[seed]["B"] - vals[seed]["A"] for seed in sorted(vals, key=int)
+                if "A" in vals[seed] and "B" in vals[seed]]
+
+    # (the published vectors, in the report's own order: 1, 2, 3, 42, 7, 99 — the test is order-free)
+    assert sorted(diffs("population")) == [-12, -6, -5, -3, -2, -1]
+    assert sorted(map(abs, diffs("era"))) == [0, 0, 1, 1, 1, 1]
+    assert sorted(diffs("discoveries")) == [-10, -9, -9, -8, 2, 5]
+    assert abs(stats.wilcoxon_signed(diffs("discoveries"))["p"] - 0.15625) < 1e-9
+    assert abs(stats.wilcoxon_signed(diffs("era"))["p"] - 1.0) < 1e-9
+    assert abs(stats.wilcoxon_signed(diffs("population"))["p"] - 0.03125) < 1e-9
+
+
 def test_an_experiment_runs_resumes_applies_matched_interventions_and_reports_blind(tmp_path):
     spec = ExperimentSpec.from_dict(_proto(interventions=[{"day": 2, "kind": "drought"},
                                                           {"day": 2, "kind": "ore_shortage", "params": {"radius": 30}}]))

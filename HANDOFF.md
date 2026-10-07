@@ -137,6 +137,7 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #104 | **Item uses (F35) on** (`items.ITEM_USES = True`) |
 | #105 | The hunger margin applies to a chit with no plan (issue #101) |
 | #106 | **Hoarding (F33) on** (`actions.PLENTY = True`), with the grain reserve at 4 days (`surplus.GRAIN_DAYS`) |
+| #159 | Paired statistics: the Lab report's Wilcoxon signed-rank (exact to 20 non-zero pairs) and sign test replace the unpaired Mann-Whitney; the frozen JevK5-vs-Gemma p-values (0.15625 / 1.0 / 0.03125) are a regression test |
 | #108 | "Plan from here" above |
 | #109 | Research readiness audit, gates A-L (`docs/RESEARCH_READINESS.md`) |
 | #110 | The Lab runs model-vs-model studies |
