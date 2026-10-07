@@ -217,3 +217,27 @@ def test_a_wolf_a_watchtower_drove_off_is_not_counted_as_an_attack():
     w.emit("wolf", "A wolf bit someone", 2, a.id, a.x, a.y)
     fired = p.fired()
     assert fired["wolf attack"] == 1 and fired["watchtower kept a wolf off"] == 1
+
+
+def test_the_morphology_report_records_what_physically_stands():
+    # the #161 baseline: what the world IS, next to what its age label claims; honest about what is not simulated
+    import morphology as M
+
+    w, (a, b) = village()
+    row = M.morphology(w, births=0, starved=0, low=len(w.agents), day=1)
+    for part in ("day", "population", "age", "age_evidence", "settlements", "housing", "structures",
+                 "storage", "roads", "transport_items", "power", "space"):
+        assert part in row, part
+    # housing capacity is the built homes' HOME_CAP, and occupancy is honest arithmetic, not vibes
+    from chits.sim.buildings import HOME_CAP
+    expect = sum(n * HOME_CAP[d] for d, n in row["housing"]["by_design"].items())
+    assert row["housing"]["capacity"] == expect
+    if expect:
+        assert row["housing"]["occupancy"] == round(len(w.agents) / expect, 2)
+    # honesty: what main does not simulate is recorded as not simulated, never inferred
+    assert "not simulated" in row["power"]["powered_loads"]
+    assert "bare tiles" in row["roads"]["types"]
+    assert row["space"]["launches"] == 0
+    # every age reached carries provenance: who, when, which key
+    for e in row["age_evidence"]:
+        assert e["by"] and e["key"] and "mode" in e and "day" in e
