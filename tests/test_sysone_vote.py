@@ -336,3 +336,98 @@ def test_decide_without_a_planner_runs_the_choice(monkeypatch):
     _run_ask(m, w, a, b)
     assert calls == [] and not a.last_choice["escalated"]
     assert m.decisions[-1]["choice"]["denial"] == "planner unavailable"
+
+
+def test_long_state_is_trimmed_to_fit_a_512_context():
+    async def run():
+        seen = {}
+
+        def handler(request):
+            body = json.loads(request.content)
+            seen["state"] = body["state"]
+            seen["criteria"] = body["questions"]["pick"]["criteria"]
+            return _sysone_reply("A", {"A": 0.6, "B": 0.4})(request)
+
+        b = _brain(handler)
+        try:
+            state = "You are Sigrid. Your nature: bold.\n" + ("island weather village stores line. " * 120)
+            v = await SYS.vote(b, state, {"A": "gather berries", "B": "hunt rabbit"})
+        finally:
+            await b.close()
+        return v, seen
+
+    v, seen = asyncio.run(run())
+    assert v["choice"] == "A"
+    total = SYS._est_tokens(seen["state"]) + sum(SYS._est_tokens(c) for c in seen["criteria"].values())
+    assert total <= SYS.TOTAL_MAX
+    assert seen["state"].startswith("You are Sigrid")  # identity kept
+
+
+def test_token_limit_error_retries_once_shorter():
+    async def run():
+        calls = []
+
+        def handler(request):
+            body = json.loads(request.content)
+            calls.append(len(body["state"]))
+            if len(calls) == 1:
+                return httpx.Response(400, json={"error": {"message": "question 0: state has 443 tokens; limit is 418"}})
+            return _sysone_reply("B", {"A": 0.3, "B": 0.7})(request)
+
+        b = _brain(handler)
+        try:
+            return await SYS.vote(b, "Sigrid is hungry.\n" + "island weather village stores line. " * 120, {"A": "x", "B": "y"}), calls
+        finally:
+            await b.close()
+
+    v, calls = asyncio.run(run())
+    assert v["choice"] == "B" and len(calls) == 2 and calls[1] < calls[0]
+
+
+def test_decide_brain_weekly_reflection_goes_to_the_narrator(monkeypatch):
+    w, a, m, b = _setup()
+    m.upsert({"id": "narr", "model": "x", "base_url": "http://127.0.0.1:9/v1", "prompt_style": "full"})
+    m.narrator = "narr"
+    assert m.narrator_brain() is m.brains["narr"]
+    a.memories = [object()] * 6
+    a.plan = [{"do": "eat"}]
+    monkeypatch.setattr("chits.brain.mind.reflection_due", lambda *args: True)
+    monkeypatch.setattr(m, "_ask", lambda *args: None)
+    seen = []
+
+    async def fake_reflect(world, agent, brain):
+        seen.append(brain.id)
+
+    monkeypatch.setattr(m, "_reflect", fake_reflect)
+
+    async def run():
+        m.hook(w, a)
+        while m._tasks:
+            await asyncio.gather(*list(m._tasks))
+
+    asyncio.run(run())
+    assert seen == ["narr"]
+
+
+def test_decide_brain_reflection_skipped_with_no_narrator(monkeypatch):
+    w, a, m, b = _setup()
+    m.narrator = ""
+    assert m.narrator_brain() is None
+    a.memories = [object()] * 6
+    a.plan = [{"do": "eat"}]
+    monkeypatch.setattr("chits.brain.mind.reflection_due", lambda *args: True)
+    monkeypatch.setattr(m, "_ask", lambda *args: None)
+    seen = []
+
+    async def fake_reflect(world, agent, brain):
+        seen.append(brain.id)
+
+    monkeypatch.setattr(m, "_reflect", fake_reflect)
+
+    async def run():
+        m.hook(w, a)
+        while m._tasks:
+            await asyncio.gather(*list(m._tasks))
+
+    asyncio.run(run())
+    assert seen == [] and a.last_reflect_day < 0

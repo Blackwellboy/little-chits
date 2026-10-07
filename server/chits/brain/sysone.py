@@ -36,6 +36,40 @@ class SystemOneBadKey(RuntimeError):
     """The decision model answered with an option that was never drafted."""
 
 
+def _est_tokens(text: str) -> int:
+    """Rough token count (chars/4): no tokenizer for the decision model on hand."""
+    return max(1, len(text or "") // 4)
+
+
+def _trim(text: str, max_tokens: int) -> str:
+    """Shorten to ~max_tokens, keeping the head (identity) and the tail (body needs)."""
+    if _est_tokens(text) <= max_tokens:
+        return text
+    head, _, rest = (text or "").partition("\n")
+    keep_chars = max(120, max_tokens * 4 - len(head) - 8)
+    if not rest:  # one long line: hard-cut it
+        return head[:keep_chars] + "…"
+    tail = rest[-keep_chars:]
+    cut = tail.find("\n")
+    tail = tail[cut + 1:] if cut != -1 and len(tail) > keep_chars * 0.7 else tail
+    return head + "\n…\n" + tail
+
+
+STATE_MAX = 280  # tokens: laya-class decision models run ctx 512; the question takes the rest
+CRIT_MAX = 50  # tokens per option
+TOTAL_MAX = 430  # tokens for state + criteria + instructions
+
+
+def _fit(state: str, criteria: Dict[str, str], budget: int = TOTAL_MAX) -> tuple:
+    """Trim criteria, then the state, until state + criteria + instructions fit the budget."""
+    crit = {k: _trim(v, CRIT_MAX) for k, v in criteria.items()}
+    used = sum(_est_tokens(v) for v in crit.values()) + 20  # instructions + framing
+    state = _trim(state, max(120, min(STATE_MAX, budget - used)))
+    if _est_tokens(state) + used > budget:  # many options: shrink the state to what is left
+        state = _trim(state, max(120, budget - used))
+    return state, crit
+
+
 def endpoint(base_url: str) -> str:
     """The SystemOne URL beside a chat base URL (…/v1 or …/chat/completions)."""
     root = (base_url or "").strip().rstrip("/")
@@ -63,11 +97,19 @@ async def vote(brain, state: str, criteria: Dict[str, str], question: str = "pic
             "questions": {question: {"type": "choice",
                                      "instructions": "Which plan should be followed?",
                                      "criteria": criteria}}}
+    url, headers = endpoint(brain.cfg.base_url), brain.headers()
     await brain.sem.acquire(DECISION)
     try:
         t0 = time.monotonic()
-        r = await brain.client().post(endpoint(brain.cfg.base_url), headers=brain.headers(),
-                                      content=json.dumps(body))
+        state, crit = _fit(state, criteria)
+        body["state"], body["questions"][question]["criteria"] = state, crit
+        r = await brain.client().post(url, headers=headers, content=json.dumps(body))
+        if r.status_code >= 400 and "token" in r.text.lower() and "limit" in r.text.lower():
+            # a 512-context decision model choking on a long scene: halve the budget once and retry
+            state, crit = _fit(state, criteria, budget=TOTAL_MAX // 2)
+            body["state"], body["questions"][question]["criteria"] = state, crit
+            t0 = time.monotonic()
+            r = await brain.client().post(url, headers=headers, content=json.dumps(body))
     finally:
         brain.sem.release()
     ms = (time.monotonic() - t0) * 1000
