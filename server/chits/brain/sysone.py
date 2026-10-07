@@ -61,8 +61,11 @@ TOTAL_MAX = 430  # tokens for state + criteria + instructions
 
 
 def _fit(state: str, criteria: Dict[str, str], budget: int = TOTAL_MAX) -> tuple:
-    """Trim criteria, then the state, until state + criteria + instructions fit the budget."""
-    crit = {k: _trim(v, CRIT_MAX) for k, v in criteria.items()}
+    """Trim criteria, then the state, until state + criteria + instructions fit the budget. Many
+    candidates (an election) each get a smaller slice, so the total still fits."""
+    n = max(1, len(criteria))
+    per = max(12, min(CRIT_MAX, (budget - 140) // n))
+    crit = {k: _trim(v, per) for k, v in criteria.items()}
     used = sum(_est_tokens(v) for v in crit.values()) + 20  # instructions + framing
     state = _trim(state, max(120, min(STATE_MAX, budget - used)))
     if _est_tokens(state) + used > budget:  # many options: shrink the state to what is left

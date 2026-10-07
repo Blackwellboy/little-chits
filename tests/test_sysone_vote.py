@@ -453,3 +453,11 @@ def test_state_truncated_422_retries_once_shorter():
 
     v, calls = asyncio.run(run())
     assert v["choice"] == "A" and len(calls) == 2 and calls[1] < calls[0]
+
+
+def test_many_candidates_share_the_budget():
+    state = "An election.\n" + "scene line. " * 200
+    criteria = {chr(65 + i): f"Candidate number {i} of the village" for i in range(10)}
+    s, c = SYS._fit(state, criteria)
+    total = SYS._est_tokens(s) + sum(SYS._est_tokens(v) for v in c.values())
+    assert total <= SYS.TOTAL_MAX
