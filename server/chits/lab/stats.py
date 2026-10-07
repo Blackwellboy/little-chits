@@ -5,6 +5,11 @@
 - paired: per-seed differences between two arms that shared the seed (the stronger design here: same island)
 - cliffs_delta: effect size in [-1, 1], P(a > b) - P(a < b)
 - mann_whitney: U and a two-sided p-value (normal approximation with tie correction; unpaired)
+- wilcoxon_signed: the Wilcoxon signed-rank test for paired differences. Exact two-sided p for up to 20 non-zero
+  pairs (the signed-rank distribution by subset-sum, fractional average ranks made integral by scaling), the usual
+  normal approximation with tie correction above. Zeros are dropped (they carry no sign), so n counts non-zero
+  pairs; with n of them the smallest exact two-sided p is 2/2**n. Both tails: p = 2*min(P(W+<=w), P(W+>=w)).
+- sign_test: the exact two-sided sign test on paired differences (zeros dropped)
 - first_day / km_median: time-to-event with censoring (a run that never got there counts, as "not by day N")
 """
 
@@ -86,6 +91,79 @@ def mann_whitney(a: Sequence[float], b: Sequence[float]) -> Dict[str, float]:
     z = (u1 - n1 * n2 / 2) / math.sqrt(var)
     p = math.erfc(abs(z) / math.sqrt(2))
     return {"u": u1, "p": p}
+
+
+def _avg_ranks(xs: Sequence[float]) -> List[float]:
+    """1-based ranks, ties sharing their average (so 9, 9, 10 ranks 4.5, 4.5, 6)."""
+    order = sorted(range(len(xs)), key=lambda i: xs[i])
+    ranks = [0.0] * len(xs)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and xs[order[j + 1]] == xs[order[i]]:
+            j += 1
+        r = (i + j) / 2 + 1
+        for k in range(i, j + 1):
+            ranks[order[k]] = r
+        i = j + 1
+    return ranks
+
+
+def wilcoxon_signed(diffs: Sequence[float]) -> Dict[str, float]:
+    """The Wilcoxon signed-rank test on paired differences. Zeros are dropped (they carry no sign), so n counts
+    non-zero pairs. Ties get average ranks, which can be fractional: the exact distribution scales them to
+    integers (average ranks of integers are multiples of 1/2). Two-sided, both tails:
+    p = 2*min(P(W+<=w), P(W+>=w)), exact for n <= 20 (the signed-rank distribution by subset-sum), the usual
+    normal approximation with tie correction above. With n non-zero pairs the smallest exact two-sided p is 2/2**n."""
+    d = [x for x in diffs if x == x and x != 0]
+    n = len(d)
+    if not n:
+        return {"n": 0, "w_plus": math.nan, "p": math.nan, "min_p": math.nan}
+    ranks = _avg_ranks([abs(x) for x in d])
+    w = sum(r for r, x in zip(ranks, d) if x > 0)
+    scale = 2 if any(r != int(r) for r in ranks) else 1
+    ri = [int(round(r * scale)) for r in ranks]
+    wi = int(round(w * scale))
+    if n <= 20:
+        # the exact distribution of the signed-rank sum: every sign choice, by subset-sum
+        dist = {0: 1}
+        for r in ri:
+            nxt = dict(dist)
+            for s, c in dist.items():
+                nxt[s + r] = nxt.get(s + r, 0) + c
+            dist = nxt
+        total = 2 ** n
+        below = sum(c for s, c in dist.items() if s <= wi)
+        above = sum(c for s, c in dist.items() if s >= wi)
+        p = min(1.0, 2 * min(below, above) / total)
+        return {"n": n, "w_plus": w, "p": p, "min_p": 2 / total}
+    # normal approximation, tie correction: var = [n(n+1)(2n+1) - sum(t**3 - t)] / 48, in rank units
+    i, ties = 0, []
+    sr = sorted(ranks)
+    while i < n:
+        j = i
+        while j + 1 < n and sr[j + 1] == sr[i]:
+            j += 1
+        if j > i:
+            ties.append(j - i + 1)
+        i = j + 1
+    var = (n * (n + 1) * (2 * n + 1) - sum(t ** 3 - t for t in ties)) / 48
+    if var <= 0:
+        return {"n": n, "w_plus": w, "p": 1.0, "min_p": 0.0}
+    z = (w - n * (n + 1) / 4) / math.sqrt(var)
+    return {"n": n, "w_plus": w, "p": math.erfc(abs(z) / math.sqrt(2)), "min_p": 0.0}
+
+
+def sign_test(diffs: Sequence[float]) -> Dict[str, float]:
+    """The exact two-sided sign test on paired differences: are the positives and negatives balanced? Zeros
+    (ties) are dropped. With n of them, p = 2 * P(X <= min(pos, neg)) under Bin(n, 1/2), clamped to 1."""
+    d = [x for x in diffs if x == x and x != 0]
+    pos, neg = sum(1 for x in d if x > 0), sum(1 for x in d if x < 0)
+    n = len(d)
+    if not n:
+        return {"n": 0, "pos": 0, "neg": 0, "p": math.nan}
+    less = sum(math.comb(n, k) for k in range(min(pos, neg) + 1))
+    return {"n": n, "pos": pos, "neg": neg, "p": min(1.0, 2 * less / 2 ** n)}
 
 
 def first_day(daily: List[Dict[str, float]], metric: str, at_least: float) -> Optional[int]:

@@ -68,7 +68,17 @@ def analyze(out, unblind: bool = False) -> Dict[str, Any]:
             b = {s: v for s, r in by[l].items() if (v := r["final"].get(m)) is not None}
             p = stats.paired(a, b, seed=2)
             p["cliffs_delta"] = stats.cliffs_delta(list(a.values()), list(b.values()))
-            p["mann_whitney_p"] = stats.mann_whitney(list(a.values()), list(b.values()))["p"]
+            # the arms are paired by seed (same island), so the reported tests are paired: the Wilcoxon
+            # signed-rank (exact to 20 non-zero pairs) and the sign test, not the unpaired Mann-Whitney.
+            # A seed missing either arm is left out of the differences and counted, never aligned by row order.
+            both = sorted(set(a) & set(b), key=str)
+            diffs = [b[s] - a[s] for s in both]
+            p["n_pairs"] = len(both)
+            p["pairs_excluded"] = len(set(a) ^ set(b))
+            wx = stats.wilcoxon_signed(diffs)
+            p["wilcoxon_p"] = wx["p"]
+            p["wilcoxon_nonzero"] = wx["n"]
+            p["sign_test_p"] = stats.sign_test(diffs)["p"]
             pairs[l][m] = p
     events = {}
     for name, ev in spec.events.items():
@@ -129,15 +139,21 @@ def markdown(a: Dict[str, Any]) -> str:
     L += ["", "Mean [95% bootstrap interval] · median, over seeds.", ""]
     for l, per in a["pairs"].items():
         L += [f"## {show[l]} vs {show[a['ref']]}", "",
-              "| metric | mean diff per seed [95% CI] | seeds higher / lower / tied | Cliff's delta | Mann-Whitney p |",
-              "|---|---|---|---|---|"]
+              "| metric | mean diff per seed [95% CI] | seeds higher / lower / tied | Cliff's delta | Wilcoxon p | sign p |",
+              "|---|---|---|---|---|---|"]
         for m, p in per.items():
             if not p.get("n"):
                 continue
+            npair = (f" ({p['n_pairs']} pairs" + (f", {p['pairs_excluded']} excluded" if p["pairs_excluded"] else "") +
+                     (f", {p['wilcoxon_nonzero']} non-zero" if p.get("wilcoxon_nonzero") != p["n_pairs"] else "") + ")")
             L.append(f"| {m} | {_fmt(p['mean_diff'])} [{_fmt(p['ci_lo'])}, {_fmt(p['ci_hi'])}] | "
-                     f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | {_fmt(p['mann_whitney_p'])} |")
-        L += ["", "Differences are paired by seed (both arms had the same island). p-values are not corrected for the "
-                  "number of metrics: read them as a guide, not a verdict.", ""]
+                     f"{p['b_higher']} / {p['a_higher']} / {p['ties']} | {_fmt(p['cliffs_delta'])} | "
+                     f"{_fmt(p['wilcoxon_p'])}{npair} | {_fmt(p['sign_test_p'])} |")
+        L += ["", "Differences are paired by seed (both arms had the same island). The Wilcoxon signed-rank is exact "
+                  "to 20 non-zero pairs (smallest two-sided p 2/2**n; zeros dropped, ties average-ranked) and the "
+                  "sign test is exact; both replaced the unpaired Mann-Whitney the report used before (issue #159). "
+                  "A seed missing either arm is excluded and counted. p-values are not corrected for the number of "
+                  "metrics: read them as a guide, not a verdict.", ""]
     if any(r.get("compute") or any(r["final"].get(k) is not None for _, k in OPPORTUNITY_ROWS) for r in a["runs"]):
         L += ["## Thinking opportunities", "",
               "Per chit-day (one chit alive for one day). Reported, not equalised: a model whose plans run out sooner "
