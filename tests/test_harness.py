@@ -241,3 +241,25 @@ def test_the_morphology_report_records_what_physically_stands():
     # every age reached carries provenance: who, when, which key
     for e in row["age_evidence"]:
         assert e["by"] and e["key"] and "mode" in e and "day" in e
+
+
+def test_the_performance_benchmark_measures_every_family_on_a_frozen_world():
+    # the #161 scaling bench: one frozen synthetic world, every family measured, summaries AND raw samples
+    import perfbench as PB
+
+    r = PB.child(64, 12, "dense", 1, seed=1, warm_days=0, measure_ticks=20)
+    for part in ("base_sha", "size", "target", "pop", "layout", "repeat", "synthetic_population",
+                 "morphology_fingerprint", "anchors", "by_design", "housing_capacity", "road_tiles",
+                 "settlements", "construction_placement_failures", "warm_sites_force_completed",
+                 "tick_ms", "detect_ms", "path_ms", "path_success", "path_len", "todict_ms", "tojson_ms",
+                 "save_json_mb", "snapshot_ms", "snapjson_ms", "snapshot_json_mb", "memory", "renderer",
+                 "samples"):
+        assert part in r, part
+    assert r["synthetic_population"] is True and r["pop"] == 12 == r["target"]
+    assert r["housing_capacity"] >= 1.2 * 12  # (the bench promises a developed world, not a starving one)
+    assert r["road_tiles"] > 0 and r["by_design"]  # (real roads, through the authoritative path)
+    assert r["tick_ms"]["n"] == 20 and len(r["samples"]["tick_ms"]) == 20  # (raw samples, p95 recomputable)
+    assert r["memory"]["method"].startswith("VmRSS")
+    assert "not measured" in r["renderer"]
+    # the read-only families ran before the tick benchmark, and the frozen world stayed frozen
+    assert r["agents_start"] == r["agents_end"] == 12 and r["structures_start"] == r["structures_end"]
