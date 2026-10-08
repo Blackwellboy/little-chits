@@ -73,3 +73,92 @@ def test_a_save_without_a_build_record_takes_it_from_what_stands(monkeypatch):
     assert "built_designs" not in d
     back = World.from_dict(d)
     assert back.built_designs["farm"] == d["first"]["design:farm"]  # (who built the first, and when, from its record)
+
+
+# --- age_rules 2: the late ages are earned by capability, not the idea (issue #161) -------------------------------
+
+MACHINE = next(i for i, (_, k) in enumerate(ERAS) if k == "recipe:engine")
+ELECTRIC = next(i for i, (_, k) in enumerate(ERAS) if k == "recipe:dynamo")
+SPACE = next(i for i, (_, k) in enumerate(ERAS) if k == "design:launch_pad")
+
+
+def _stand(w, a, design):
+    s = w.place_site(design, *w.find_site(design, a.x + 2, a.y, 12), a)
+    w.complete_structure(s, a)
+    return s
+
+
+def test_the_machine_age_needs_a_machine_not_the_idea(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    assert w.age_rules == 2  # (a new deeds world plays by the capability rules)
+    w.learned(a, "recipe:engine", "insight")  # a chit dreams of engines: no machine stands yet
+    assert w.era()[0] < MACHINE
+    _stand(w, a, "theatre")  # an unrelated modern building advances nothing
+    assert w.era()[0] < MACHINE and not w.deed_ages
+    _stand(w, a, "steam_pump")  # an engine-driven machine stands: its cost bought an engine, and it works
+    assert w.era()[0] == MACHINE
+    deed = w.deed_ages["recipe:engine"]
+    assert deed["evidence"] == "building:steam_pump" and deed["by"] == a.id and deed["name"] == a.name
+    assert w.age_record("recipe:engine") == deed  # (the provenance is the record)
+
+
+def test_the_electric_age_needs_generation_and_a_load(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")  # (Machine first, the natural order)
+    _stand(w, a, "power_station")  # generation, but no electrical load yet
+    assert w.era()[0] == MACHINE and "recipe:dynamo" not in w.deed_ages
+    _stand(w, a, "street_lamp")  # a real electrical load: now the age is earned
+    assert w.era()[0] == ELECTRIC
+    assert w.deed_ages["recipe:dynamo"]["evidence"] == "building:power_station+building:street_lamp"
+
+
+def test_the_electric_age_also_arrives_if_the_load_came_first(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    _stand(w, a, "street_lamp")  # a lamp, but nothing generates yet
+    assert w.era()[0] == MACHINE
+    _stand(w, a, "power_station")
+    assert w.era()[0] == ELECTRIC
+
+
+def test_the_space_age_needs_the_launch_not_the_design(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    _stand(w, a, "power_station")
+    _stand(w, a, "street_lamp")
+    w.learned(a, "design:launch_pad", "insight")  # the idea of a launch pad: no rocket has flown
+    assert w.era()[0] == ELECTRIC
+    _stand(w, a, "launch_pad")  # the pad stands, and its completion is the launch (_launch: the first astronauts)
+    assert w.era()[0] == SPACE
+    deed = w.deed_ages["design:launch_pad"]
+    assert deed["evidence"] == "event:launch" and deed["by"] == a.id
+    assert any(e.kind == "launch" for e in w.events)  # (the launch really happened, it is not just a label)
+
+
+def test_capability_ages_keep_their_provenance_across_a_save(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    _stand(w, a, "power_station")
+    _stand(w, a, "street_lamp")
+    _stand(w, a, "launch_pad")
+    d = json.loads(json.dumps(w.to_dict()))
+    assert d["age_rules"] == 2 and set(d["deed_ages"]) == {"recipe:engine", "recipe:dynamo", "design:launch_pad"}
+    monkeypatch.setattr(W, "ERA_BY_DEEDS", False)  # (a later default doesn't reinterpret a saved world)
+    back = World.from_dict(d)
+    assert back.age_rules == 2 and back.deed_ages == w.deed_ages
+    assert back.era_index == w.era_index == SPACE and back.era()[0] == SPACE
+
+
+def test_a_world_saved_before_age_rules_plays_by_the_old_rules(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    d = json.loads(json.dumps(w.to_dict()))
+    del d["age_rules"], d["deed_ages"]  # (a #157-era deeds save: it has neither)
+    back = World.from_dict(d)
+    assert back.age_rules == 1 and back.deed_ages == {}
+    w2 = back
+    w2.learned(next(iter(w2.agents.values())), "recipe:engine", "insight")
+    assert w2.era()[0] == MACHINE  # (v1: knowing the engine IS the Machine Age)
+    _stand(w2, next(iter(w2.agents.values())), "power_station")
+    assert w2.era()[0] == MACHINE  # (v1: no capability recording, no load requirement)
+    assert not w2.deed_ages

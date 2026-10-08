@@ -129,6 +129,16 @@ POP_CAP = 60  # chits on a small island (the plan's invariants hold it to 60)
 # Usual seeds: discoveries 77.6 > 72.1, age reached 8.5 > 8.1. Fresh seeds 21-32: 78.4 vs 75.3, age 8.6 both.
 # No change in starvations. Its case is honesty (the age shown is one the world has built), not play.
 ERA_BY_DEEDS = False
+# How far deeds go (fixed at the world's making, saved with it; a world saved before "age_rules" played by 1):
+#   1 — a design-keyed age (Firekeepers, Farmers, Space Age) when one stands (the 2026-06 A/B switch);
+#   2 — the late ages need their capability, not the idea (issue #161): the Machine Age a machine-driven
+#       building (a steam pump, sawmill or factory: each costs an engine, so one standing proves an engine
+#       was made and drives work), the Electric Age generation AND a real electrical load (a power station
+#       and a street lamp), the Space Age the launch itself (the pad's completion is the launch: _launch).
+#       deed_ages records each enabling deed: the provenance of the age.
+AGE_RULES = 2
+CAPABILITY_AGES = ("recipe:engine", "recipe:dynamo", "design:launch_pad")  # earned by deeds, not the idea
+MACHINE_AGE_MACHINES = ("steam_pump", "sawmill", "factory")  # each costs an engine: one standing = machinery works
 POP_CAP_MIN = 6  # the fewest a game may hold a world to (World.cap): enough for families to go on
 # A world held far below what it holds today (90 chits, held at 20) must not simply stop having children: only adults
 # under 40 days have them and a chit lives about 47, so by the time the old had died the youngest would be too old
@@ -346,7 +356,9 @@ class World:
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
         self.era_by_deeds = ERA_BY_DEEDS  # (fixed at the world's making: see ERA_BY_DEEDS)
+        self.age_rules = AGE_RULES if ERA_BY_DEEDS else 1  # (how far deeds go, if this world plays by them)
         self.built_designs: Dict[str, Dict[str, Any]] = {}  # design -> who first completed one here, and when
+        self.deed_ages: Dict[str, Dict[str, Any]] = {}  # capability ages (age_rules 2): key -> the deed that earned it
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
         self.currency = ""  # whatever everyone ends up trading through; never declared
         self.leader = ""  # an authored institution (T26): an elected chief (A) or a recognised elder (B)
@@ -834,12 +846,38 @@ class World:
 
     def age_record(self, key: Optional[str]) -> Optional[Dict[str, Any]]:
         """Who reached the age whose key thing this is, and when ({tick, by, name}), or None if it isn't reached. By
-        deeds (ERA_BY_DEEDS) a building's age is the first one's builder's, not whoever first imagined it."""
+        deeds (ERA_BY_DEEDS) a building's age is the first one's builder's, not whoever first imagined it; by deeds
+        with age_rules 2 the capability ages (CAPABILITY_AGES) come only from the deed that earned them, with its
+        evidence — knowing the design is not the age."""
         if not key:
             return None
-        if getattr(self, "era_by_deeds", False) and key.startswith("design:"):
-            return self.built_designs.get(key[7:])
+        if getattr(self, "era_by_deeds", False):
+            if getattr(self, "age_rules", 1) >= 2:
+                if key in CAPABILITY_AGES:
+                    return self.deed_ages.get(key)
+                if key.startswith("design:"):
+                    return self.built_designs.get(key[7:])
+            elif key.startswith("design:"):
+                return self.built_designs.get(key[7:])
         return self.first.get(key)
+
+    def _record_deed_ages(self, s: Structure, by: Agent) -> None:
+        """age_rules 2: the late ages are earned by capability, and the enabling deed is the provenance (issue #161).
+        Called when a building stands, only for the designs that can complete a capability."""
+        rec = {"tick": self.tick, "by": by.id, "name": by.name}
+        if s.design in MACHINE_AGE_MACHINES and "recipe:engine" not in self.deed_ages:
+            # its cost already bought an engine: machinery physically works here
+            self.deed_ages["recipe:engine"] = {**rec, "evidence": f"building:{s.design}", "structure": s.id}
+        if s.design == "power_station" and "recipe:dynamo" not in self.deed_ages \
+                and "street_lamp" in self.built_designs:
+            self.deed_ages["recipe:dynamo"] = {**rec, "evidence": "building:power_station+building:street_lamp",
+                                               "structure": s.id}
+        elif s.design == "street_lamp" and "recipe:dynamo" not in self.deed_ages \
+                and "power_station" in self.built_designs:
+            self.deed_ages["recipe:dynamo"] = {**rec, "evidence": "building:power_station+building:street_lamp",
+                                               "structure": s.id}
+        if s.design == "launch_pad" and "design:launch_pad" not in self.deed_ages:
+            self.deed_ages["design:launch_pad"] = {**rec, "evidence": "event:launch", "structure": s.id}
 
     def update_era(self) -> None:
         i, name = self.era()
@@ -1522,6 +1560,8 @@ class World:
         new_build = s.design not in self.built_designs
         if new_build:
             self.built_designs[s.design] = {"tick": self.tick, "by": by.id, "name": by.name}
+        if getattr(self, "era_by_deeds", False) and getattr(self, "age_rules", 1) >= 2:
+            self._record_deed_ages(s, by)  # (a capability age is earned the day its deed stands)
         if first or (new_build and getattr(self, "era_by_deeds", False)):  # (the first one built: its age, by deeds)
             self.update_era()
         for aid in s.builders:
@@ -2174,7 +2214,8 @@ class World:
             "deliveries": list(self.deliveries)[-500:], "culture_names": self.culture_names, "signs": self.signs,
             "weather": self.weather, "weather_until": self.weather_until, "settlements": self.settlements,
             "inventions": self.inventions, "beliefs": self.beliefs, "era_index": self.era_index,
-            **({"era_by_deeds": True, "built_designs": dict(sorted(self.built_designs.items()))} if self.era_by_deeds else {}),
+            **({"era_by_deeds": True, "age_rules": self.age_rules, "built_designs": dict(sorted(self.built_designs.items())),
+                "deed_ages": dict(sorted(self.deed_ages.items()))} if self.era_by_deeds else {}),
             "trades": self.trades[-200:], "currency": self.currency,
             "leader": self.leader, "leader_since": self.leader_since, "laws": self.laws, "militia_n": self.militia_n,
             "challenge": self.challenge, "cold_until": self.cold_until,
@@ -2233,7 +2274,9 @@ class World:
         w.beliefs = dict(d.get("beliefs") or {})
         w.era_index = int(d.get("era_index", 0))
         w.era_by_deeds = bool(d.get("era_by_deeds", False))  # (a world saved before keeps the ages it reached)
+        w.age_rules = int(d.get("age_rules", 1))  # (a world saved before "age_rules" played by 1: never reinterpreted)
         w.built_designs = {k: dict(v) for k, v in (d.get("built_designs") or {}).items()}
+        w.deed_ages = {k: dict(v) for k, v in (d.get("deed_ages") or {}).items()}
         w.trades = list(d.get("trades") or [])
         w.currency = d.get("currency", "") or ""
         w.leader = d.get("leader", "") or ""

@@ -42,7 +42,7 @@ def morphology(w, births: int, starved: int, low: int, day: int) -> dict:
     electricity is display-only) are recorded as such, never inferred."""
     from chits.sim.buildings import HOME_CAP
     from chits.sim import settlements
-    from chits.sim.world import ERAS
+    from chits.sim.world import ERAS, CAPABILITY_AGES
 
     built = [s for s in w.structures.values() if s.complete]
     by_design = Counter(s.design for s in built)
@@ -81,10 +81,12 @@ def morphology(w, births: int, starved: int, low: int, day: int) -> dict:
             continue
         rec = w.age_record(key)
         if rec:
-            evidence.append({"age": age, "key": key, "mode": "deeds" if getattr(w, "era_by_deeds", False)
-                             and key.startswith("design:") else "knowledge",
+            deeds = getattr(w, "era_by_deeds", False) and (
+                key.startswith("design:") or (getattr(w, "age_rules", 1) >= 2 and key in CAPABILITY_AGES))
+            evidence.append({"age": age, "key": key, "mode": "deeds" if deeds else "knowledge",
                              "by": rec.get("name"), "tick": rec.get("tick"),
-                             "day": round(rec.get("tick", 0) / 240)})
+                             "day": round(rec.get("tick", 0) / 240),
+                             **({"evidence": rec["evidence"]} if rec.get("evidence") else {})})
 
     return {
         "day": day, "tick": w.tick,
@@ -115,8 +117,8 @@ def morphology(w, births: int, starved: int, low: int, day: int) -> dict:
         "space": {"launch_pads": by_design.get("launch_pad", 0),
                   "rocket_parts": sum(n for s in w.structures.values() for k, n in s.storage.items() if k == "rocket_part")
                   + sum(n for pile in w.ground.values() for k, n in pile.items() if k == "rocket_part"),
-                  "launches": 0,  # (no launch mechanic yet: a pad standing is all the game records)
-                  "note": "Space Age key is design:launch_pad; ERA_BY_DEEDS decides knowledge vs deeds"},
+                  "launches": w.lifetime("launch"),
+                  "note": "Space Age key is design:launch_pad; ERA_BY_DEEDS/age_rules decide knowledge vs deeds"},
         "knowledge": len({k for a in w.agents.values() for k in a.knows}),
         "discoveries": len(w.first),
     }

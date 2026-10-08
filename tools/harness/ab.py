@@ -23,7 +23,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 KEYS = ["disc", "era", "pop", "low", "starved", "preventable", "stuck", "produced", "stockpile", "campfire", "farm",
         "homes", "useful", "food", "copper", "iron", "projects", "hints", "outposts", "forgot", "villages", "spread",
-        "tunnels", "loose"]
+        "tunnels", "loose", "machines", "power_stations", "street_lamps", "launch_pads", "launches", "structures",
+        "stored", "settlements", "machine_day", "electric_day", "space_day"]
 SIDES = ("base", "new")
 
 
