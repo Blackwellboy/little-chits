@@ -608,21 +608,37 @@ CHOICE_SYSTEM = ("You are the mind of a small creature called a chit, in a wild 
                  "Answer with one letter only.")
 
 
-def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bool = False,
-                    repair: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
-    """Choose mode (JEV-style): the model reads the scene and picks one of a few drafted plans by letter. One output
-    token instead of ~90: on the RTX 3090 a decision took 6 s instead of 25 s. The system prompt is the same for
-    every chit, so servers can reuse it from their prompt cache. `repair`: its last choice failed (repair_line)."""
+def choice_rows(options: List[Dict[str, Any]], own_idea: bool = False) -> List[str]:
+    """The drafted options as lettered lines, shared by the chat vote and the decide question."""
     from ..sim.actions import describe_step
 
     rows = [f"{LETTERS[i]}) {o['goal']}: " + "; ".join(describe_step(s) for s in o["steps"][:6]) for i, o in enumerate(options)]
     if own_idea:
         rows.append(f"{LETTERS[len(options)]}) {OWN_IDEA}")
+    return rows
+
+
+def decide_question(world, a: Agent, options: List[Dict[str, Any]],
+                    repair: Optional[Dict[str, Any]] = None) -> tuple:
+    """(state, criteria) for the SystemOne decision API: the same scene the chat vote reads, and the same
+    drafted options keyed by letter. A decide brain never takes its own idea (like choose, not cascade)."""
+    head = f"You are {a.name}. Your nature: {a.personality()}.\n"
+    state = (head + choice_scene(world, a) + (repair_line(repair) if repair else "")
+             + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a))
+    rows = choice_rows(options)  # "A) goal: steps..." lines; criteria keep the text after the letter
+    return state, {LETTERS[i]: rows[i][3:] for i in range(len(options))}
+
+
+def choice_messages(world, a: Agent, options: List[Dict[str, Any]], own_idea: bool = False,
+                    repair: Optional[Dict[str, Any]] = None) -> List[Dict[str, str]]:
+    """Choose mode (JEV-style): the model reads the scene and picks one of a few drafted plans by letter. One output
+    token instead of ~90: on the RTX 3090 a decision took 6 s instead of 25 s. The system prompt is the same for
+    every chit, so servers can reuse it from their prompt cache. `repair`: its last choice failed (repair_line)."""
     head = f"You are {a.name}. Your nature: {a.personality()}.\n"
     return [{"role": "system", "content": CHOICE_SYSTEM},
             {"role": "user", "content": head + choice_scene(world, a) + (repair_line(repair) if repair else "")
              + "\n\nYOUR BODY RIGHT NOW: " + body_line(world, a)
-             + "\n\nYOUR OPTIONS:\n" + "\n".join(rows) + "\n\nAnswer with one letter only."}]
+             + "\n\nYOUR OPTIONS:\n" + "\n".join(choice_rows(options, own_idea)) + "\n\nAnswer with one letter only."}]
 
 
 FOOD_REFLEXES = ("eat", "harvest", "gather", "pickup")  # the steps a hunger reflex runs
