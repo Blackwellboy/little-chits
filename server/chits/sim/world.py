@@ -861,6 +861,10 @@ class World:
                 return self.built_designs.get(key[7:])
         return self.first.get(key)
 
+    def _standing(self, design: str) -> bool:
+        """a completed, not-ruined instance of this design stands in the world right now (history is not enough)"""
+        return any(st.design == design and st.complete and not st.ruined for st in self.structures.values())
+
     def _record_deed_ages(self, s: Structure, by: Agent) -> None:
         """age_rules 2: the late ages are earned by capability, and the enabling deed is the provenance (issue #161).
         Called when a building stands, only for the designs that can complete a capability."""
@@ -869,11 +873,11 @@ class World:
             # its cost already bought an engine: machinery physically works here
             self.deed_ages["recipe:engine"] = {**rec, "evidence": f"building:{s.design}", "structure": s.id}
         if s.design == "power_station" and "recipe:dynamo" not in self.deed_ages \
-                and "street_lamp" in self.built_designs:
+                and self._standing("street_lamp"):  # (generation + a living load, now: not merely remembered, #165 P2)
             self.deed_ages["recipe:dynamo"] = {**rec, "evidence": "building:power_station+building:street_lamp",
                                                "structure": s.id}
         elif s.design == "street_lamp" and "recipe:dynamo" not in self.deed_ages \
-                and "power_station" in self.built_designs:
+                and self._standing("power_station"):
             self.deed_ages["recipe:dynamo"] = {**rec, "evidence": "building:power_station+building:street_lamp",
                                                "structure": s.id}
         if s.design == "launch_pad" and "design:launch_pad" not in self.deed_ages:

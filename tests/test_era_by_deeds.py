@@ -121,6 +121,31 @@ def test_the_electric_age_also_arrives_if_the_load_came_first(monkeypatch):
     assert w.era()[0] == ELECTRIC
 
 
+def test_the_electric_age_needs_generation_and_a_load_standing_now_not_in_history(monkeypatch):
+    # (Codex P2, #165: built_designs remembers a station that no longer stands, so a lamp alone earned Electric)
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    ps = _stand(w, a, "power_station")
+    w.remove_structure(ps)  # the real removal path: the station is gone from the land
+    _stand(w, a, "street_lamp")  # a load, but nothing generates: the ledger remembers, the island does not
+    assert w.era()[0] == MACHINE and "recipe:dynamo" not in w.deed_ages
+    ps2 = _stand(w, a, "power_station")  # generation again, while the lamp still stands
+    assert w.era()[0] == ELECTRIC
+    deed = w.deed_ages["recipe:dynamo"]
+    assert deed["structure"] == ps2.id and deed["by"] == a.id  # (provenance: the deed that completed the capability)
+
+
+def test_the_electric_age_also_waits_while_the_load_is_a_ruin(monkeypatch):
+    w, a = _world(True, monkeypatch)
+    _stand(w, a, "steam_pump")
+    lamp = _stand(w, a, "street_lamp")
+    lamp.durability = 0.0  # (fallen: complete, but a ruin)
+    _stand(w, a, "power_station")  # generation, but the only load is a ruin
+    assert w.era()[0] == MACHINE and "recipe:dynamo" not in w.deed_ages
+    _stand(w, a, "street_lamp")  # a living load while the station stands: now the age is earned
+    assert w.era()[0] == ELECTRIC
+
+
 def test_the_space_age_needs_the_launch_not_the_design(monkeypatch):
     w, a = _world(True, monkeypatch)
     _stand(w, a, "steam_pump")
