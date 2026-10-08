@@ -10,6 +10,8 @@ def test_progress_shows_the_road_to_space_honestly():
     # farming was invented, but nobody ever made a stone axe: that age is skipped, not claimed
     w.first["design:campfire"] = {"tick": 10, "by": chit.id, "name": chit.name}
     w.first["design:farm"] = {"tick": 300, "by": chit.id, "name": chit.name}
+    w.built_designs["campfire"] = w.first["design:campfire"]  # (deeds: the age needs one standing, not just known)
+    w.built_designs["farm"] = w.first["design:farm"]
     chit.activity = "gathering wood"
     chit.objective = "somewhere warm before winter"
     events = [{"seq": 1, "tick": w.tick, "kind": "discovery", "importance": 5, "actor": chit.id, "text": "",

@@ -47,6 +47,7 @@ def test_a_building_nobody_has_imagined_says_so_and_the_last_age_has_no_list():
     w = World("A", "A", 3, "direct", 64, 6)
     chit = next(iter(w.agents.values()))
     w.first["design:farm"] = {"tick": 10, "by": chit.id, "name": chit.name}
+    w.built_designs["farm"] = w.first["design:farm"]  # (deeds: the age needs one standing, not just known)
     steps = views.progress(w, [])["milestones"]["steps"]  # Farmers -> Potters: a kiln, then the pot
     assert [(s["action"], s["name"]) for s in steps] == [("build", "kiln"), ("discover", "clay pot")]
     assert steps[0]["detail"].startswith("nobody has")

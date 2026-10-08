@@ -128,7 +128,7 @@ POP_CAP = 60  # chits on a small island (the plan's invariants hold it to 60)
 # Off pending the owner: A/B 2026-10-06 (tools/harness/ab.py, 24 seeds x 60 days) was about neutral, not a win.
 # Usual seeds: discoveries 77.6 > 72.1, age reached 8.5 > 8.1. Fresh seeds 21-32: 78.4 vs 75.3, age 8.6 both.
 # No change in starvations. Its case is honesty (the age shown is one the world has built), not play.
-ERA_BY_DEEDS = False
+ERA_BY_DEEDS = True  # (ON: the deeds2 + deeds2-250d A/Bs, issue #161 — truthful ages, no health cost)
 # How far deeds go (fixed at the world's making, saved with it; a world saved before "age_rules" played by 1):
 #   1 — a design-keyed age (Firekeepers, Farmers, Space Age) when one stands (the 2026-06 A/B switch);
 #   2 — the late ages need their capability, not the idea (issue #161): the Machine Age a machine-driven

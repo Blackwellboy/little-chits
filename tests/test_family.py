@@ -48,6 +48,7 @@ def test_the_spread_of_a_thing_runs_from_whoever_found_it():
 def test_the_eras_endpoint_names_each_ages_first_maker():
     w, (a, b, c, d) = _world()
     w.first["design:campfire"] = {"tick": 30, "by": a.id, "name": a.name}
+    w.built_designs["campfire"] = w.first["design:campfire"]  # (deeds: the age needs one standing, not just known)
     w.first["recipe:stone_axe"] = {"tick": 500, "by": b.id, "name": b.name}
     w.update_era()
     e = views.eras(w)

@@ -17,6 +17,7 @@ def _world(seed=5, name="A"):
                     "recipe:stone_axe": {"tick": 60 * TICKS_PER_DAY, "by": ags[1].id, "name": ags[1].name},
                     "recipe:copper": {"tick": 300 * TICKS_PER_DAY, "by": ags[2].id, "name": ags[2].name},
                     "recipe:iron": {"tick": 380 * TICKS_PER_DAY, "by": ags[3].id, "name": ags[3].name}})
+    w.built_designs["campfire"] = w.first["design:campfire"]  # (deeds: Firekeepers needs a campfire standing)
     w.update_era()
     for a in ags:  # everyone knows what the world has made, but iron (the tests take things away from here)
         for k in ("design:campfire", "recipe:stone_axe", "recipe:copper"):
