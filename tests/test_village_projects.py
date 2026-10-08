@@ -47,6 +47,7 @@ def test_the_village_picks_the_next_ages_first_step_by_need_or_by_its_chief():
     w = _world()
     a = next(iter(w.agents.values()))
     w.first["design:campfire"] = {"tick": 1, "by": a.id, "name": a.name}  # Firekeepers: a stone axe is next
+    w.built_designs["campfire"] = w.first["design:campfire"]  # (deeds: the age needs one standing, not just known)
     w.leader = ""
     p = projects.pick(w)
     # a stone axe needs cord and a sharp stone, which nobody can make yet: the first of them is the project
