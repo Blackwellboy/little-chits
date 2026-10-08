@@ -49,6 +49,14 @@ def metrics(w, low: int, starved: int) -> dict:
         cx, cy = sum(p[0] for p in c) / len(c), sum(p[1] for p in c) / len(c)
         d = sorted(math.hypot(p[0] - cx, p[1] - cy) for p in c)
         spread = round(d[int(len(d) * 0.9)], 1)
+    # issue #161: what the late ages physically stand on, and when each was truly earned (the A/B judges the
+    # label, not only the fate: a lower era under deeds can be the old label losing fake credit)
+    ages = {}
+    for name, key in (("machine_day", "recipe:engine"), ("electric_day", "recipe:dynamo"),
+                      ("space_day", "design:launch_pad")):
+        rec = w.age_record(key)
+        if rec:
+            ages[name] = round(rec.get("tick", 0) / 240)
     return {"disc": st["discoveries"], "era": w.era()[0], "pop": st["population"], "low": min(low, len(w.agents)),
             "starved": starved, "produced": sum(sum(getattr(s, "produced", {}).values()) for s in w.structures.values()),
             "stockpile": b.get("stockpile", 0), "campfire": b.get("campfire", 0), "kiln": b.get("kiln", 0),
@@ -59,7 +67,13 @@ def metrics(w, low: int, starved: int) -> dict:
             "projects": len(civ.get("done", [])), "hints": civ.get("hints_given", 0),
             "outposts": b.get("outpost", 0), "villages": villages, "spread": spread,
             "tunnels": len(getattr(w, "tunnels", {}) or {}),
-            "loose": sum(n for pile in w.ground.values() for k, n in pile.items() if k != "_t")}
+            "loose": sum(n for pile in w.ground.values() for k, n in pile.items() if k != "_t"),
+            "machines": sum(b.get(k, 0) for k in ("steam_pump", "sawmill", "factory")),
+            "power_stations": b.get("power_station", 0), "street_lamps": b.get("street_lamp", 0),
+            "launch_pads": b.get("launch_pad", 0), "launches": w.lifetime("launch"),
+            "structures": len(w.structures), "stored": sum(store.values()),
+            "settlements": len(getattr(w, "settlements", {}) or {}),
+            **ages}
 
 
 def world_rules(rules):
