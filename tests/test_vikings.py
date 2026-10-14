@@ -44,7 +44,6 @@ def test_rune_binds_axe_axe_cuts_sail_sail_outruns_rune():
     assert b.mood == max(0.0, mood[1] - HG.PRIDE) and a.health == 90.0 and b.health == 90.0  # pride, not blood
     assert any("threw axe, axe" in m.text for m in a.memories)
     assert HG.tale(res, a, b) == f"{a.name}'s rune binds the axe"
-    assert HG.habit(b) == "axe 2 of 2"
     # a tie is thrown again; never settled, the one challenged holds its ground
     res = HG.play(w, a, b, ["sail"], ["sail"])
     assert res["winner"] is b and len(res["rounds"]) == HG.MAX_ROUNDS

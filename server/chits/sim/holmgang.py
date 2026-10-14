@@ -10,8 +10,8 @@ Best of three: the first to win two rounds wins. A tie is thrown again, up to MA
 undecided then, the one challenged holds its ground.
 
 A chit that names its throws ({"throws": ["rune", "axe", "sail"]}) plays them in turn, round after round. One that
-doesn't plays its habit: it keeps a throw that won and changes one that lost (most of the time). Every chit's throws
-are tallied in its stats, so a sharp opponent can learn that Bjorn opens with axe, and play rune.
+doesn't plays its habit: it keeps a throw that won and changes one that lost (most of the time). Each side remembers
+what the other threw, so a sharp opponent can learn that Bjorn opens with axe, and play rune (seen_habit).
 
 Two pieces of magic bend fate a little:
 
@@ -51,16 +51,6 @@ def norm_throws(raw: Any) -> List[str]:
     if not isinstance(raw, (list, tuple)):
         return []
     return [t for t in (norm_throw(x) for x in list(raw)[:MAX_ROUNDS]) if t]
-
-
-def habit(a: Agent) -> str:
-    """What this chit tends to throw, by its tally (for the scene: '' until it has played)."""
-    n = {t: a.stats.get(f"throw_{t}", 0) for t in THROWS}
-    total = sum(n.values())
-    if not total:
-        return ""
-    top = max(THROWS, key=lambda t: (n[t], -THROWS.index(t)))
-    return f"{top} {n[top]} of {total}"
 
 
 def seen_habit(a: Agent, o: Agent) -> str:
