@@ -165,7 +165,8 @@ def test_mending_and_fuel_tables_are_the_ones_the_uses_name():
 
 def test_every_item_can_be_obtained():
     made = {r.key for r in RECIPES.values()}
-    obtainable = set(GATHER_RULES) | made | {"meat", "wool", "grain"}  # hunting, tame sheep, harvesting farms
+    obtainable = set(GATHER_RULES) | made | {"meat", "wool", "grain", "rune_charm"}  # hunting, tame sheep, harvesting
+    # farms, praying at a runestone
     missing = [k for k in PIPELINE if k not in obtainable]
     assert not missing, f"items with no way to get them: {missing}"
 

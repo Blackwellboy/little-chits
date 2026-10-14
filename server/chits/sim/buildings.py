@@ -47,7 +47,7 @@ REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower"
                 "university": 30, "theatre": 30, "harbour": 20, "palisade": 30}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
        "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
-       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade")
+       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade", "runestone")
 PALISADE_RADIUS = 22  # a palisade keeps wolves out of this much of the town round its gate
 CITY_ONLY = ("university", "theatre")  # the build verb refuses them outside a city
 # town life: the build verb refuses these outside a town (a village of settlements.TOWN_POP with a working hall).
@@ -715,9 +715,10 @@ def study_mult(world, a: Agent) -> float:
     return STUDY_MULT if any(g.dist(a.x, a.y) <= LIBRARY_REACH for g in fx(world)["great_library"]) else 1.0
 
 
-def voyage_ticks(world) -> int:
-    """How long a boat is at sea: half as long from an island with a lighthouse."""
-    return 60 if fx(world)["lighthouse"] else 120
+def voyage_ticks(world, ship: str = "boat") -> int:
+    """How long a boat is at sea: half as long from an island with a lighthouse, and half as long again in a longship."""
+    t = 60 if fx(world)["lighthouse"] else 120
+    return t // 2 if ship == "longship" else t
 
 
 def keeps_fresh(world, pile) -> bool:

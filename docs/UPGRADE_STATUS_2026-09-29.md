@@ -235,6 +235,39 @@ Instinct-only A/B against `main` (`38cbee2`), before the warehouse:
 Starvations are counted from the last 4,000 events only. A new cost to watch: about 0.4 per world by day 60 (none
 before). The research layer that comes next is planned in `docs/RESEARCH_PLAN_2026-09-30.md`.
 
+## Sixth pass (2026-10-14): the sea raiders
+
+Contact games had boats, traders and a `raid` intent, but a raider who sailed over stayed there for good, and "raid"
+was only an alias for `steal`. This pass adds longships, rune magic and a non-violent way to settle a raid: the
+**holmgang** of **rune, sail, axe**, which is rock, paper, scissors (rune binds axe, axe cuts sail, sail outruns rune).
+The code is in `sim/holmgang.py`, `sim/actions.py` (`holmgang`, `pillage`, praying at a runestone, the longship in
+`sail`) and `brain/voyages.py` (raids at war).
+
+| Piece | What it does | Tests |
+|---|---|---|
+| Sail and longship | A sail is 3 cloth at a workshop. A longship (16 wood, 6 cord, a sail; needs the boat idea and the sail) is preferred to a boat: it crosses in half the time, and on a trading or raiding voyage it waits abroad and is beached at home again. | `test_vikings.py` |
+| `holmgang` | `{"do":"holmgang","to":"<name>","throws":[...]}`: best of three, ties thrown again (at most 9 throws; still undecided, the challenged side holds). Named throws are played in turn; without them a chit plays its habit (win-stay, lose-shift, 70%). Every throw is tallied. The loser loses 8 mood, nobody loses health, and it settles a grudge (both affinities back to at least 0). | same |
+| `pillage` | Only for a raider from over the sea. If a grown-up of the island stands within 6 tiles of the stores (guards first), a holmgang decides it. Win (or nobody there) and carry off the most valuable goods: 4, or 8 if you came by longship. Lose and leave with nothing. Hostility rises either way (theft or fight). Once a trip; home again, the runtime tells of the raid ("in a longship laden with plunder"). | same |
+| Runestone and rune charm | A runestone (10 stone, 2 sharp stones; the longship idea opens it) wards its own islanders within 12 tiles: a tied round goes to the warded side. Praying at it gives one of its islanders a rune charm (one at a time); a charm carried into a holmgang turns one lost round, then crumbles. Strangers get neither. | same |
+| Instinct | At war only: a village with a boat and the longship idea builds a longship, and one raider at a time (3 days apart) sails in it; abroad it pillages, then sails home. | same |
+| Prompt | `pillage` and `holmgang` are listed only while the islands can meet; the verb guide names nothing undiscovered (no charm, runestone or longship); a chit sees an opponent's habit only from the holmgangs it played against them (its own memories). The parser keeps `throws` and drops anything that isn't rune, sail or axe. | same |
+
+Mutation-checked: switching off the charm, the ward, the longship's wait or its speed each fails a test.
+
+**Instinct A/B against `main` (`852ba1f`), 12 seeds x 30 days, 128 map, 18 chits:** identical on every seed and
+every measure (discoveries, era, population and its low point, starvations, goods, homes, campfires, stockpiles,
+stored brick, charcoal, copper and iron). Two earlier drafts were not:
+- a craftable rune charm (stone + sharp stone) was found in 9 worlds in 12 and sent them down other paths, with stored
+  copper 18.2 → 11.0 and iron 6.9 → 3.1;
+- a sail of 2 cloth + 2 cord changed the experiment hint for "2 cord" ("the pieces seemed to want something more"),
+  which was enough to turn 8 seeds.
+
+So charms are given at a runestone, not made, and a sail is cloth alone. In a single world, nothing new happens
+until someone has discovered a sail.
+
+Not yet: crews (several chits in one longship), battles between ships at sea, instinct that raises runestones or
+prays at them, and a run with models in a versus game.
+
 ## What this means for the next slice
 
 In order of value:

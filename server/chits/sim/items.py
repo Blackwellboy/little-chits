@@ -91,6 +91,9 @@ ITEMS: Dict[str, Item] = {
         # town life
         Item("ale", "ale", ("drink", "brewed", "cheering"), food=8, icon="🍺"),
         Item("clothes", "warm clothes", ("wearable", "warm", "woven"), icon="👕"),
+        # the sea-raiders' age: a sail for a longship, and a little carved magic
+        Item("sail", "sail", ("woven", "wide", "catches the wind"), icon="⛵"),
+        Item("rune_charm", "rune charm", ("carved", "small", "hums faintly", "lucky"), icon="ᚱ"),
     ]
 }
 
@@ -210,6 +213,7 @@ RECIPES: Dict[str, Recipe] = {
         _r("loaf", {"flour": 2}, station="fire", work=6),
         _r("ale", {"grain": 2, "berries": 1}, station="workshop", qty=2, work=6),
         _r("clothes", {"fiber": 4, "cord": 1}, station="loom", work=8),
+        _r("sail", {"cloth": 3}, station="workshop", work=10),
     ]
 }
 
@@ -236,6 +240,8 @@ ACTION_USES: Dict[str, str] = {
     "cord": "mend what is built with it (re-lash a stockpile, a bridge, a pen)",
     "brick": "mend what is built of it",
     "sharp_stone": "carry it while gathering plant fiber: it cuts two at a stroke",
+    "rune_charm": "carry it into a holmgang: once, it turns a lost round (then it crumbles); pray at a runestone of "
+                  "your island to be given one",
 }
 # ...of which these are a second use of something gathered or made for something else: no reason for a station to make
 # it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
@@ -333,6 +339,13 @@ DESIGNS: Dict[str, Design] = {
            blurb="a fenced pen for tame animals"),
         _d("boat", "boat", {"wood": 10, "cord": 4}, 40, (("recipe", "cord"), ("recipe", "stone_axe")),
            blurb="a boat to cross the sea"),
+        _d("longship", "longship", {"wood": 16, "cord": 6, "sail": 1}, 60, (("design", "boat"), ("recipe", "sail")),
+           blurb="a dragon-prowed ship with a sail: it crosses the sea in half a boat's time, and on a trading or "
+                 "raiding voyage it waits on the far shore to carry its crew home with what they got"),
+        _d("runestone", "runestone", {"stone": 10, "sharp_stone": 2}, 30, (("design", "longship"),),
+           blurb="a standing stone carved with runes: in a holmgang (rune, sail, axe) anyone of this island within 12 "
+                 "tiles of it wins a tied round, and whoever of this island prays there is given a rune charm",
+           decay=0.3),
         _d("market", "market", {"wood": 8, "stone": 4, "cord": 2}, 30, (("recipe", "basket"),), size=(2, 2),
            blurb="a place to meet and trade"),
         _d("shrine", "shrine", {"stone": 6, "wood": 2}, 25, (("belief", "any"),),
@@ -582,6 +595,8 @@ def normalize_item(raw: object) -> Optional[str]:
         "axe": "stone_axe", "pick": "stone_pick", "pickaxe": "stone_pick", "stone pickaxe": "stone_pick",
         "bricks": "brick", "tablet": "clay_tablet", "tablets": "clay_tablet", "pots": "pot", "clay pot": "pot",
         "alien ship": "alien_ship", "spaceship": "alien_ship", "ufo": "alien_ship", "bible": "holy_book", "book": "holy_book",
+        "charm": "rune_charm", "rune": "rune_charm", "runes": "rune_charm", "amulet": "rune_charm", "talisman": "rune_charm",
+        "sails": "sail", "canvas": "sail",
         "fishes": "fish", "cooked fish": "cooked_fish", "tart": "berry_tart", "pie": "berry_tart",
     }
     if s in aliases:
@@ -616,6 +631,8 @@ def normalize_design(raw: object) -> Optional[str]:
         "millstone": "mill", "smith": "smithy", "blacksmith": "smithy", "anvil": "smithy", "tower": "watchtower",
         "lookout": "watchtower", "watch tower": "watchtower", "schoolhouse": "school", "bell": "bell_tower",
         "belltower": "bell_tower", "bell tower": "bell_tower",
+        "long ship": "longship", "dragon ship": "longship", "drakkar": "longship", "viking ship": "longship",
+        "rune stone": "runestone", "standing stone": "runestone", "runes": "runestone",
     }
     if s in aliases:
         return aliases[s]

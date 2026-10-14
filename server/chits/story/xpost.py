@@ -12,7 +12,7 @@ from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, List, Optional
 
 EMOJI = {"first": "✨", "teaching_chain": "📚", "legacy": "📜", "built_together": "🏗️", "lost_pioneer": "🕯️",
-         "birth": "🍼", "storm": "⛈️", "settlement": "🏘️", "ambition": "🌟", "invention": "💡", "belief": "🕯", "scripture": "📜", "era": "🏛️", "launch": "🚀", "money": "🪙", "election": "🗳️", "elder": "👑", "law": "📜", "militia": "🛡️", "theft": "🫳", "fight": "💢", "miracle": "🪄", "revelation": "👽", "voyage": "⛵", "arrival": "🏝️", "contact": "🤝", "war": "⚔️", "peace": "🕊️", "raid": "🏴‍☠️"}
+         "birth": "🍼", "storm": "⛈️", "settlement": "🏘️", "ambition": "🌟", "invention": "💡", "belief": "🕯", "scripture": "📜", "era": "🏛️", "launch": "🚀", "money": "🪙", "election": "🗳️", "elder": "👑", "law": "📜", "militia": "🛡️", "theft": "🫳", "fight": "💢", "miracle": "🪄", "revelation": "👽", "voyage": "⛵", "arrival": "🏝️", "contact": "🤝", "war": "⚔️", "peace": "🕊️", "raid": "🏴‍☠️", "pillage": "⚔️", "holmgang": "ᚱ"}
 LIMIT = 280
 
 

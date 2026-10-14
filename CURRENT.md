@@ -51,6 +51,9 @@ The evidence audit of `docs/UPGRADE_PLAN.md` is in
   - one-token scoring beyond plans (the chief's project choice is done; elections and trades are not).
 - The ten ideas of the third pass and the ten of the fourth, with commits, tests and A/B results, are in the status
   doc under "Third pass" and "Fourth pass".
+- **Sea raiders (2026-10-14, contact games):** longships, runestones and rune charms, and the holmgang of rune, sail,
+  axe (rock, paper, scissors) that settles grudges and raids without anyone getting hurt. It is in the status doc
+  under "Sixth pass", and the instinct A/B against `main` is identical on all 12 seeds.
 
 ## Codex recovery, resolved 2026-09-29 (history)
 

@@ -73,8 +73,9 @@ def find_moments(events: List[dict], names: Dict[str, str]) -> List[Moment]:
             out.append(_moment("first", 95 if d.get("local_name") else 90, [e], actors, e["text"]))
             if k == "discovery" and actor:
                 pioneers.add(actor)
-        elif k in ("contact", "war", "peace", "raid"):
-            out.append(_moment(k, {"contact": 97, "war": 96, "peace": 95, "raid": 85}[k], [e], actors, e["text"]))
+        elif k in ("contact", "war", "peace", "raid", "pillage", "holmgang"):
+            out.append(_moment(k, {"contact": 97, "war": 96, "peace": 95, "raid": 85, "pillage": 86, "holmgang": 62}[k],
+                               [e], actors, e["text"]))
         elif k in ("voyage", "arrival"):
             out.append(_moment(k, 90 if k == "voyage" else 96, [e], actors, e["text"]))
         elif k in ("miracle", "revelation"):

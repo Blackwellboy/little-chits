@@ -1,6 +1,10 @@
 """Instinct for trade over the sea (contact games only): take a surplus across in a boat, barter it at the other
 village's stores for goods of the same worth, and sail home with them.
 
+At war, a village with a longship sends a raider instead (one at a time): abroad it goes for the stores, a holmgang
+of rune, sail and axe with whoever stands there decides whether it gets anything (sim/holmgang.py), and it sails home
+in the longship, which waited for it. A village at war with a boat and the idea of a longship builds one.
+
 Boats could only carry a chit away for good. Now a village with a surplus and a boat sends one trader at a time;
 abroad, the trader trades at the stores (sim.actions._trade_at_stores: a silent trade, so it works in any culture) and sails home in the
 boat it came in, back to the home it left.
@@ -21,7 +25,15 @@ ABROAD_W, SEND_W = 8.0, 0.9
 
 
 def abroad_plan(world, a: Agent) -> Plan | None:
-    """A trader from over the sea: barter its load, then sail home."""
+    """A trader from over the sea: barter its load, then sail home. A raider: try the stores, then sail home."""
+    if a.origin and a.voyage_intent == "raid":
+        if not a.stats.get("pillaged_trip"):
+            return {"goal": "raid the stores here", "thought": "The longship is beached. To the stores, and may the runes favour me.",
+                    "steps": [{"do": "pillage"}]}
+        if a.stats.get("boat_abroad"):
+            return {"goal": "sail home with the plunder", "thought": "Back to the ship, and home over the whale-road.",
+                    "steps": [{"do": "sail", "intent": "home"}]}
+        return None
     if not a.origin or a.voyage_intent != "trade":
         return None
     if a.stats.get("traded_trip"):
@@ -95,14 +107,61 @@ def send_plan(world, a: Agent) -> Plan | None:
     return None
 
 
+def at_war(world) -> bool:
+    return any(r.get("state") == "war" for r in getattr(world, "relations", {}).values())
+
+
+def raid_plan(world, a: Agent) -> Plan | None:
+    """At war, with a longship at hand: one raider at a time sails over to try the other village's stores."""
+    if a.origin or a.is_child(world.tick) or not getattr(world, "contact", False) or not at_war(world):
+        return None
+    last = (getattr(world, "civic", None) or {}).get("raider_sent", -10 ** 9)
+    if world.tick - last < SEND_EVERY_DAYS * TICKS_PER_DAY:
+        return None
+    if any((o.get("agent") or {}).get("voyage_intent") == "raid" for o in getattr(world, "outbox", [])):
+        return None
+    ship = next((b for b in world.structures_near(a.x, a.y, 60, "longship") if b.functional and world.same_land(a, b)), None)
+    if ship is None:
+        return None
+    return {"goal": "go raiding over the sea",
+            "thought": "They are our enemies now. The longship is ready, and the runes are carved.",
+            "steps": [{"do": "sail", "target": ship.id, "intent": "raid"}]}
+
+
+def longship_plan(world, a: Agent) -> Plan | None:
+    """At war, with a boat but no longship: build one (a sail and a dragon prow) on the shore."""
+    t = world.tick
+    memo = world.__dict__.setdefault("_nolongship", {})  # a planner's cache: not saved, not the chit's state
+    if (a.origin or a.is_child(t) or not getattr(world, "contact", False) or not a.knows_design("longship")
+            or memo.get(a.id, 0) > t or a.reflex_rest.get("nobuild:longship", 0) > t or not at_war(world)):
+        return None
+    if any(s.design == "longship" for s in world.structures.values()):
+        memo[a.id] = t + TICKS_PER_DAY
+        return None
+    from .instinct import _need_steps
+
+    mats = DESIGNS["longship"].material_map
+    steps = _need_steps(a, mats, world)
+    if not steps and any(a.inventory.get(k, 0) < n for k, n in mats.items()):
+        memo[a.id] = t + TICKS_PER_DAY
+        return None
+    hx, hy = _home_xy(world, a)
+    return {"goal": "build a longship",
+            "thought": "A boat is for traders. For a war over the sea we need a longship with a sail.",
+            "steps": steps[:4] + [{"do": "build", "what": "longship", "near": f"{hx},{hy}"}]}
+
+
 def options(world, a: Agent, rng) -> List[Tuple[float, Plan]]:
     plan = abroad_plan(world, a)
     if plan:
         return [(ABROAD_W, plan)]
-    plan = send_plan(world, a) or boat_plan(world, a)
+    plan = raid_plan(world, a)
+    if plan:
+        return [(SEND_W + 1.0 - a.traits.get("caution", 0.5), plan)]
+    plan = send_plan(world, a) or boat_plan(world, a) or longship_plan(world, a)
     return [(SEND_W + a.traits.get("sociability", 0.5), plan)] if plan else []
 
 
-def sent(world) -> None:
-    """A trader has set out: the next one waits a few days."""
-    world.civic["trader_sent"] = world.tick
+def sent(world, who: str = "trader") -> None:
+    """A trader (or raider) has set out: the next one waits a few days."""
+    world.civic[f"{who}_sent"] = world.tick

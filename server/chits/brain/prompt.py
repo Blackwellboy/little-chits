@@ -12,6 +12,7 @@ import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim import buildings as BLD
+from ..sim import holmgang as HG
 from ..sim import terrain as T
 from ..sim.actions import FOODS as _FOODS, STATION_REACH
 from ..sim.agent import Agent
@@ -91,6 +92,12 @@ def verb_guide(world) -> str:
         lines.append('{"do":"sail","intent":"explore|trade|raid|settle"}  (take a boat across the sea to the other island; strangers there sail home the same way)')
         lines.append('{"do":"trade","at":"stores"}  (a trader from over the sea: swap the goods you carried over at the stores here '
                      'for goods of the same worth, then {"do":"sail"} home in your boat)')
+        lines.append('{"do":"pillage","throws":["rune","sail","axe"]}  (a raider from over the sea: go for the stores here. If '
+                     'anyone of this island stands near them, a holmgang decides it: rune binds axe, axe cuts sail, sail '
+                     'outruns rune, best of three, your throws in turn. Win and carry off the best goods; lose and leave '
+                     'with nothing. Nobody is hurt)')
+        lines.append('{"do":"holmgang","to":"<name>","throws":["axe","rune","sail"]}  (challenge someone to rune, sail, axe: '
+                     'best of three; it settles a grudge either way)')
     lines.append('{"do":"hunt","what":"deer|wolf"}  (needs a spear; deer give meat)  {"do":"tame"}  (lure a wild sheep into a pen with grain or berries; tame sheep give wool)')
     if world.rules.religion:  # (a world without religion: no word of prayer, preaching or belief, sim/rules.py)
         lines.append('{"do":"pray"} or {"do":"pray","target":"<shrine id>"}  (spend quiet time at a shrine)')
@@ -416,7 +423,7 @@ def scene(world, a: Agent) -> str:
         f"{DESIGNS[d].name} ({', '.join(f'{n} {world.item_name(m)}' for m, n in DESIGNS[d].materials)}"
         + (f": {DESIGNS[d].blurb}" if DESIGNS[d].blurb else "") + TOWN_WORDS * (BLD.TOWN_GATE and d in BLD.TOWN_ONLY) + ")"
         for d in (k.split(':', 1)[1] for k in a.knows if k.startswith("design:"))
-        if d != "boat" or getattr(world, "contact", False)  # a boat goes nowhere while the islands can't meet
+        if d not in ("boat", "longship", "runestone") or getattr(world, "contact", False)  # a boat goes nowhere while the islands can't meet
     ]
     lines.append("")
     lines.append("YOU KNOW HOW TO MAKE: " + ("; ".join(recipes) if recipes else "nothing yet — experiment!"))
@@ -481,6 +488,9 @@ def scene(world, a: Agent) -> str:
                      if not world.recipe(k) and (n >= 5 or (n >= 2 and k in _FOODS))][:2]
             carry = made + stock
             extra = f", holding {', '.join(carry)}" if carry else ""
+            seen = HG.seen_habit(a, o)  # how they played rune, sail, axe against this chit: a sharp one plays against it
+            if seen:
+                extra += f", in holmgangs with you threw {seen}"
             bits.append(f"{o.name}{relw} {_where(a, o.x, o.y)}, {o.activity}{extra}")
         lines.append("- Chits: " + "; ".join(bits))
     near = world.structures_near(a.x, a.y, SIGHT + 4)
@@ -697,6 +707,7 @@ def _worn(a: Agent, k: str, world=None) -> str:
 
 
 _FORBIDDEN = {"say": "say", "teach": "teach", "write": "write", "preach": "say"}
+_SEA_RAIDERS = ("holmgang", "pillage")  # listed only while the islands can meet
 
 
 _REFLEX = ("warm_up", "wander")  # the simulator's own reflexes: never something to ask a model for
@@ -707,7 +718,7 @@ def compact_system_prompt(world, a: Agent) -> str:
     from ..sim.actions import VERBS
 
     verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX
-             and world.rules.allows_verb(v)]
+             and world.rules.allows_verb(v) and (v not in _SEA_RAIDERS or getattr(world, "contact", False))]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
     invent_line = ("You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts "
                    "can do decides what it can be, and the purpose chooses among that.\n") if world.rules.invention else ""

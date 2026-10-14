@@ -897,8 +897,45 @@ const palisade: Painter = () => {
   return c;
 };
 
+/** A longship drawn up on the shore: a clinker hull with a dragon prow and a curled stern, shields along the rail, and a
+ *  striped square sail on its mast. */
+const longship: Painter = () => {
+  const [c, ctx] = canvas(30, 26);
+  px(ctx, "rgba(0,0,0,0.25)", 2, 24, 26, 2);
+  for (let x = 0; x < 22; x++) {
+    const sag = Math.round(Math.abs(x - 11) / 5);
+    px(ctx, "#6b4526", 4 + x, 17 - sag, 1, 7 - (sag > 1 ? 1 : 0));
+    px(ctx, x % 2 ? "#8a5a2e" : "#7a4a24", 4 + x, 19 - sag, 1, 1);
+  }
+  px(ctx, "#5e3b1d", 6, 23, 18, 1);
+  px(ctx, "#6b4526", 2, 9, 2, 8); px(ctx, "#6b4526", 1, 7, 3, 3); px(ctx, "#8a5a2e", 0, 7, 2, 2);
+  px(ctx, "#c84a3a", 0, 9, 1, 1); px(ctx, "#e8d070", 2, 7, 1, 1);
+  px(ctx, "#6b4526", 26, 10, 2, 7); px(ctx, "#6b4526", 27, 8, 2, 3); px(ctx, "#8a5a2e", 28, 9, 1, 1);
+  const shield = ["#c84a3a", "#e8d070", "#3a6aa8"];
+  for (let i = 0; i < 6; i++) { px(ctx, shield[i % 3], 6 + i * 3, 15 + (i === 0 || i === 5 ? -1 : 0), 2, 2); }
+  px(ctx, "#5e3b1d", 14, 1, 1, 15);
+  for (let y = 0; y < 10; y++) px(ctx, y % 4 < 2 ? "#c84a3a" : "#f2e2b8", 9, 2 + y, 11, 1);
+  px(ctx, "#5e3b1d", 8, 2, 13, 1);
+  return c;
+};
+
+/** A runestone: a grey standing stone carved with a serpent band of red-stained runes, moss at its foot. */
+const runestone: Painter = () => {
+  const [c, ctx] = canvas(14, 26);
+  px(ctx, "rgba(0,0,0,0.25)", 1, 23, 12, 3);
+  for (let y = 0; y < 22; y++) {
+    const w = y < 3 ? 6 + y * 2 : 10;
+    px(ctx, y % 5 === 0 ? "#8f929a" : "#a6a9b1", 7 - Math.floor(w / 2), 2 + y, w, 1);
+  }
+  px(ctx, "#c4c7cf", 3, 6, 1, 14);
+  px(ctx, "#b03a2e", 4, 5, 6, 1); px(ctx, "#b03a2e", 9, 5, 1, 15); px(ctx, "#b03a2e", 4, 19, 6, 1); px(ctx, "#b03a2e", 4, 5, 1, 15);
+  for (const [x, y] of [[6, 8], [7, 9], [6, 10], [6, 12], [7, 13], [7, 14], [6, 16], [7, 16]]) px(ctx, "#5a1e18", x, y, 1, 1);
+  px(ctx, "#4a7a3a", 2, 22, 4, 2); px(ctx, "#5a8a4a", 9, 23, 3, 1);
+  return c;
+};
+
 export const PAINTERS: Record<string, Painter> = {
-  palisade,
+  palisade, longship, runestone,
   town_hall: townHall, plaza, sand_pit: sandPit, tavern, bakery, healer, tailor, park, apartment, university, theatre, harbour,
   campfire, hut, brick_house: brickHouse, stockpile, warehouse, outpost, mine, farm, great_library: greatLibrary, lighthouse, aqueduct, workshop, kiln, furnace, library, monument,
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,

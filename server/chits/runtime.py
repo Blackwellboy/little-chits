@@ -1250,11 +1250,13 @@ class Runtime:
             w.outbox = [o for o in w.outbox if o["arrive_tick"] > w.tick]
             dest = self.worlds[next(i for i in ids if i != w.id)]
             for o in due:
+                longship = bool(((o["agent"] or {}).get("stats") or {}).get("longship_abroad"))
                 a = dest.arrive(o["agent"], w.id, w.name, o.get("inventions"))
                 self._met(w, dest)
                 if a.stats.get("stole_abroad") and not a.origin:
                     # home again with stolen goods
-                    dest.emit("raid", f"{a.name} came home from {w.name} with stolen goods", 4, a.id, a.x, a.y, other=w.id)
+                    dest.emit("raid", f"{a.name} came home from {w.name} " + ("in a longship laden with plunder" if longship
+                              else "with stolen goods"), 4, a.id, a.x, a.y, other=w.id)
                     self.record_incident(dest, w, "raid")
                     a.stats["stole_abroad"] = 0
                 if a.brain != INSTINCT and a.brain not in self.mind.brains:

@@ -34,6 +34,7 @@ VERBS = (
     "drop", "mark", "shelter", "invent", "pray", "preach", "trade", "steal", "guard", "fight", "pickup", "sail", "hunt", "tame",
     "prospect",
     "work", "study", "smelt",
+    "holmgang", "pillage",
 )
 
 VERB_ALIASES = {
@@ -53,6 +54,9 @@ VERB_ALIASES = {
     "rob": "steal", "pilfer": "steal", "raid": "steal", "protect": "guard", "watch": "guard", "defend": "guard",
     "attack": "fight", "hit": "fight", "brawl": "fight",
     "voyage": "sail", "row": "sail", "set_sail": "sail",
+    "duel": "holmgang", "challenge": "holmgang", "rune_sail_axe": "holmgang", "rps": "holmgang",
+    "rock_paper_scissors": "holmgang", "plunder": "pillage", "maraud": "pillage", "sack": "pillage",
+    "go_viking": "pillage", "viking": "pillage",
     "pick_up": "pickup", "grab": "pickup", "collect_item": "pickup", "loot": "pickup",
     "take_cover": "shelter", "go_inside": "shelter", "hide": "shelter", "cover": "shelter",
     "operate": "work", "man": "work", "tend": "work", "run": "work",
@@ -1886,8 +1890,39 @@ def _do_invent(world, a: Agent, step, s) -> str:
     return DONE
 
 
+def _pray_at_runestone(world, a: Agent, rs, s) -> str:
+    """Quiet time at a runestone: one of its own island is given a rune charm (one at a time); a stranger's prayer
+    at foreign runes only calms it."""
+    s["shrine"] = rs.id
+    mv = _goto_structure(world, a, s, rs)
+    if mv == "blocked":
+        return "couldn't reach the runestone"
+    if mv != "arrived":
+        return RUNNING
+    a.activity = "praying"
+    a.set_emote("ᚱ", world.tick, 4)
+    s["t"] = s.get("t", 0) + 1
+    if s["t"] < 12:
+        return RUNNING
+    a.mood = min(100.0, a.mood + 4)
+    if a.origin or a.inventory.get("rune_charm", 0) or not a.add("rune_charm"):
+        s["note"] = "Prayed at the runestone and felt calmer"
+        return DONE
+    world.notice_items(a)
+    a.remember(world.tick, "I prayed at the runestone and the runes were cut into a charm for me", 3, "event")
+    world.emit("rune_charm", f"{a.name} prayed at the runestone and was given a rune charm", 2, a.id, rs.x, rs.y,
+               structure=rs.id)
+    s["note"] = "Prayed at the runestone and was given a rune charm"
+    return DONE
+
+
 def _do_pray(world, a: Agent, step, s) -> str:
-    """Quiet time at a shrine (T21). A chit with no belief of its own may come to share the shrine's."""
+    """Quiet time at a shrine (T21). A chit with no belief of its own may come to share the shrine's. Asked to pray at
+    a runestone, it goes there instead."""
+    ref = s.get("shrine") or step.get("target") or step.get("at")
+    rs = _find_structure(world, a, ref, 30) if ref else None
+    if rs is not None and rs.design == "runestone" and rs.functional:
+        return _pray_at_runestone(world, a, rs, s)
     sh = world.structures.get(s.get("shrine") or str(step.get("target") or ""))
     if sh is None or sh.design != "shrine" or not sh.functional:
         sh = next((x for x in world.structures_near(a.x, a.y, 30, "shrine") if x.functional), None)
@@ -2222,6 +2257,114 @@ def _do_fight(world, a: Agent, step, s) -> str:
     return DONE
 
 
+LOOT, LONGSHIP_LOOT = 4, 8  # what a raider carries off from a pillage: a longship's crew carries off twice as much
+
+
+def _do_holmgang(world, a: Agent, step, s) -> str:
+    """Rune, sail, axe (sim/holmgang.py): a duel that settles a grudge. Nobody is hurt; the loser's pride is."""
+    from . import holmgang as HG
+
+    other = world.agent_by_name(step.get("to") or step.get("target") or "", near=a)
+    if not other or other is a or not other.alive:
+        return f"there's nobody called {step.get('to')} here"
+    if other.is_child(world.tick) or a.is_child(world.tick):
+        return "a holmgang is for grown-ups"
+    mv = _approach_agent(world, a, s, other, 1)
+    if mv == "blocked" or s.get("ticks", 0) > 250:
+        return f"couldn't reach {other.name}"
+    if mv != "arrived":
+        return RUNNING
+    res = HG.play(world, a, other, HG.norm_throws(step.get("throws") or step.get("throw") or step.get("what")))
+    win, lose = res["winner"], res["loser"]
+    for x, y in ((a, other), (other, a)):
+        if x.affinity.get(y.id, 0.0) < 0:
+            x.affinity[y.id] = 0.0  # the holmgang settles it: neither holds the grudge now
+    a.bump("holmgangs")
+    tale = HG.tale(res, a, other)
+    world.emit("holmgang", f"{a.name} challenged {other.name} to a holmgang of rune, sail and axe: {tale}, and "
+                           f"{win.name} won", 3, a.id, a.x, a.y, opponent=other.id, winner=win.id, rounds=res["rounds"])
+    s["note"] = f"Holmgang with {other.name}: " + ("I won" if win is a else "I lost") + f" ({tale})"
+    return DONE
+
+
+def _do_pillage(world, a: Agent, step, s) -> str:
+    """A raider from over the sea goes for the stores. If someone of this island stands near them, the raid is
+    settled by a holmgang of rune, sail and axe; lose and the raider leaves with nothing. Nobody is hurt."""
+    from . import holmgang as HG
+    from .items import base_value
+
+    if not a.origin:
+        return "these are my own people's stores: pillaging is for raiders from over the sea"
+    if a.stats.get("pillaged_trip"):
+        return "I've had my raid here: time to sail home"
+    # the ship may land far from the village: look over the whole island
+    st = _find_structure(world, a, step.get("target"), max(world.w, world.h), lambda x: x.design in STORES
+                         and x.functional and world.same_land(a, x)
+                         and any(n > 0 and (it := world.item(k)) is not None and not it.tool for k, n in x.storage.items()))
+    if st is None or st.design not in STORES:
+        a.stats["pillaged_trip"] = 1
+        return "there are no stores here worth raiding: time to sail home"
+    mv = _goto_structure(world, a, s, st)
+    if mv == "blocked":
+        return "couldn't reach the stores"
+    if mv != "arrived":
+        return RUNNING
+    a.activity = "raiding"
+    s["t"] = s.get("t", 0) + 1
+    if s["t"] < 3:
+        return RUNNING
+    a.stats["pillaged_trip"] = 1
+    founder = world.agents.get(st.founder)
+    locals_ = sorted((o for o in _watchers(world, st, 6, a) if not o.origin and not o.is_child(world.tick)),
+                     key=lambda o: (not (o.activity == "guarding" or o.job == "guard"), st.dist(o.x, o.y), o.id))
+    tale, defender = "", (locals_[0] if locals_ else None)
+    if defender is not None:
+        res = HG.play(world, a, defender, HG.norm_throws(step.get("throws") or step.get("throw")))
+        tale = HG.tale(res, a, defender)
+        if res["winner"] is defender:
+            defender.bump("raids_repelled")
+            for o in _uniq([defender, founder]):
+                o.remember(world.tick, f"{a.name} came over the sea to raid our stores, and {defender.name} sent "
+                                       f"them off in a holmgang", 4, "grudge")
+            world.incident(a, defender, "fight")
+            world.emit("pillage", f"{defender.name} met the raider {a.name} at the stores with rune, sail and axe: "
+                                  f"{tale}. The raider left empty-handed", 4, defender.id, *st.center(),
+                       raider=a.id, defender=defender.id, won=False, rounds=res["rounds"])
+            s["note"] = f"{defender.name} beat me in the holmgang"
+            return f"{defender.name} beat me in the holmgang ({tale}): no plunder this time"
+    cap = LONGSHIP_LOOT if a.stats.get("longship_abroad") else LOOT
+    goods = sorted(((k, n) for k, n in st.storage.items() if n > 0 and (it := world.item(k)) is not None and not it.tool),
+                   key=lambda kn: (-base_value(kn[0]), kn[0]))
+    got: Dict[str, int] = {}
+    for k, n in goods:
+        take = a.add(k, min(n, cap - sum(got.values())))
+        if take > 0:
+            got[k] = take
+            st.storage[k] -= take
+            if st.storage[k] <= 0:
+                st.storage.pop(k)
+        if sum(got.values()) >= cap:
+            break
+    if not got:
+        return "my hands are full"
+    world.dirty_struct.add(st.id)
+    world.notice_items(a)
+    n = sum(got.values())
+    a.bump("pillaged")
+    a.bump("stole_abroad", n)  # (home again, the runtime tells of the raid)
+    for o in _uniq(_watchers(world, st, 6, a) + [founder]):
+        if o is not a:
+            o.like(a.id, -20)
+            o.remember(world.tick, f"{a.name} from over the sea raided our stores and took {_words(world, got)}", 4, "grudge")
+    a.remember(world.tick, f"I raided the stores over the sea and took {_words(world, got)}", 4, "event")
+    world.incident(a, founder or defender, "theft")
+    how = f"won the holmgang against {defender.name} ({tale}) and " if defender else ""
+    world.emit("pillage", f"{a.name}, a raider from over the sea, {how}carried off {_words(world, got)} from the stores",
+               4, a.id, *st.center(), raider=a.id, defender=defender.id if defender else "", won=True, get=got)
+    s["note"] = f"Pillaged {_words(world, got)}"
+    return DONE
+
+
 def _door_hut(world, a: Agent):
     """A hut or house right next to this chit that it could step inside (it isn't inside one already)."""
     if world.in_home(a):
@@ -2508,8 +2651,8 @@ def _do_build(world, a: Agent, step, s) -> str:
             and not (crowded and home.founder != a.id) and not PI.builds_home_at(world, a, ox, oy):
         return (f"I already have a home ({DESIGNS[home.design].name} {home.id}): repair it if it's damaged, or help "
                 f"build someone else's instead of a second one")
-    # (with "_within", no farther off than it says) (a boat, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
-    radii = (3,) if key == "road" else (8,) if key in ("boat", "lighthouse", "mine") else (8, 16, 28)
+    # (with "_within", no farther off than it says) (a boat, longship, lighthouse or mine is already sought far and wide: the wider tries would repeat the same search)
+    radii = (3,) if key == "road" else (8,) if key in ("boat", "longship", "lighthouse", "mine") else (8, 16, 28)
     if within:
         radii = tuple(r for r in radii if r < within) + (within,)
     pos = None
@@ -3838,16 +3981,18 @@ def _do_tame(world, a: Agent, step, s) -> str:
 
 def _do_sail(world, a: Agent, step, s) -> str:
     """Take a boat out to sea (T30). With contact off there is nothing out there. A trader from over the sea sails
-    home in the boat it came in (it is drawn up on the shore: nobody else can take it)."""
+    home in the boat it came in (it is drawn up on the shore: nobody else can take it), and so does a raider who came
+    in a longship. A longship is preferred to a boat: it is twice as fast."""
     if getattr(world, "is_fork", False):
         return "the sea is closed: this is a what-if"
-    if a.origin and a.voyage_intent == "trade" and a.stats.get("boat_abroad"):  # (home, even after a fair has ended)
-        a.stats["boat_abroad"] = a.stats["traded_trip"] = 0
+    if a.origin and a.voyage_intent in ("trade", "raid") and a.stats.get("boat_abroad"):  # (home, even after a fair)
+        a.stats["boat_abroad"] = a.stats["traded_trip"] = a.stats["pillaged_trip"] = 0
         a.voyage_intent = "home"
         a.activity = "sailing home"
-        world.depart(a)
+        world.depart(a, "longship" if a.stats.get("longship_abroad") else "boat")
         return DONE
-    boat = _find_structure(world, a, step.get("target"), 20, lambda x: x.design == "boat" and x.functional)
+    boat = (None if step.get("target") else _find_structure(world, a, None, 20, lambda x: x.design == "longship" and x.functional)) \
+        or _find_structure(world, a, step.get("target"), 20, lambda x: x.design in ("boat", "longship") and x.functional)
     if not boat:
         return "there's no boat nearby (build one on the shore first)"
     mv = _goto_structure(world, a, s, boat)
@@ -3866,11 +4011,19 @@ def _do_sail(world, a: Agent, step, s) -> str:
         from ..brain import voyages
 
         voyages.sent(world)
+    if boat.design == "longship":
+        a.stats["longship_abroad"] = 1
+        if a.voyage_intent == "raid":
+            a.stats["boat_abroad"] = 1  # a longship waits for its raiders too (a raider in a plain boat stays over there)
+    if a.voyage_intent == "raid":
+        from ..brain import voyages
+
+        voyages.sent(world, "raider")
     world.structures.pop(boat.id, None)
     world.removed_struct.add(boat.id)
     for cx, cy in boat.cells():
         world.occupied.pop(cy * world.w + cx, None)
-    world.depart(a)
+    world.depart(a, boat.design)
     return DONE
 
 

@@ -341,6 +341,12 @@ def normalize_step(raw: Any) -> Optional[Dict[str, Any]]:
         for k in ("intent", "home"):
             if k in d:
                 step[k] = d.pop(k)
+    if verb in ("holmgang", "pillage"):  # rune, sail, axe: the throws, in turn (only those three words survive)
+        from ..sim.holmgang import norm_throws
+
+        throws = norm_throws(d.pop("throws", None) or d.pop("throw", None) or d.pop("moves", None) or d.pop("play", None))
+        if throws:
+            step["throws"] = throws
     if verb == "trade":
         for k in ("give", "offer", "get", "want", "for"):
             if k in d:
