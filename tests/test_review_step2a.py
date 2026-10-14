@@ -87,7 +87,7 @@ def test_a_great_library_is_a_library_for_reading_study_and_writing():
 
 PLANNERS = [ROOT / "brain" / f for f in ("builder.py", "instinct.py", "civic.py", "outposts.py", "voyages.py", "pioneers.py",
                                           "prospect.py")] + [ROOT / "sim" / f for f in ("projects.py", "pioneers.py")]
-MODEL_ONLY = ()  # designs only a model-minded chit ever builds (none today: say so here if one is meant to be)
+MODEL_ONLY = ("runestone",)  # designs only a model-minded chit ever builds: instinct raises no runestones yet
 
 
 def test_every_design_has_a_planner_that_can_choose_it():

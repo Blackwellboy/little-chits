@@ -86,6 +86,8 @@ PROOF = {
     "cord": "test_item_verbs.py::test_a_building_is_mended_with_the_plain_stuff_it_is_built_of",
     "brick": "test_item_verbs.py::test_a_building_is_mended_with_the_plain_stuff_it_is_built_of",
     "sharp_stone": "test_item_verbs.py::test_a_sharp_stone_in_hand_cuts_fiber_two_at_a_stroke",
+    "sail": "test_vikings.py::test_a_weathered_longship_is_re_rigged_with_a_sail",
+    "rune_charm": "test_vikings.py::test_a_rune_charm_turns_one_lost_round_and_a_runestone_wards_ties",
 }
 MAX_INTERMEDIATES = 19  # the allow-list may shrink, never grow: a new item needs a verb
 

@@ -240,6 +240,7 @@ ACTION_USES: Dict[str, str] = {
     "cord": "mend what is built with it (re-lash a stockpile, a bridge, a pen)",
     "brick": "mend what is built of it",
     "sharp_stone": "carry it while gathering plant fiber: it cuts two at a stroke",
+    "sail": "mend a weathered longship with it (a new sail)",
     "rune_charm": "carry it into a holmgang: once, it turns a lost round (then it crumbles); pray at a runestone of "
                   "your island to be given one",
 }
@@ -254,7 +255,7 @@ SIDE_USES: Tuple[str, ...] = ("wood", "charcoal", "stone", "fiber", "clay", "cor
 FUEL_VALUE: Dict[str, int] = {"wood": 35, "charcoal": 60}  # what one piece adds to a campfire's fuel (of 100)
 # what a building may be mended with, when it is one of the building's own materials: plain building stuff, never the
 # metal, glass, tablets or machines in it (the first material of a design always mends it, as before)
-MEND_WITH: Tuple[str, ...] = ("wood", "stone", "fiber", "clay", "cord", "brick")
+MEND_WITH: Tuple[str, ...] = ("wood", "stone", "fiber", "clay", "cord", "brick", "sail")
 SHARP_FIBER = 2  # plant fiber cut per stroke with a sharp stone in hand (1 by hand)
 
 

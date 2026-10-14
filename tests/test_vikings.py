@@ -243,3 +243,13 @@ def test_the_viking_verbs_are_offered_only_while_the_islands_can_meet():
     assert "in holmgangs with you threw axe 2 times of 2" in P.scene(w, a)
     for leak in ("rune charm", "runestone", "longship"):  # nothing undiscovered is named
         assert leak not in P.verb_guide(w), leak
+
+
+def test_a_weathered_longship_is_re_rigged_with_a_sail():
+    w, (a, _) = village(seed=3, size=96)
+    ship = put(w, "longship", a, radius=60)
+    ship.durability = 30.0
+    assert actions.mend_materials("longship") == ["wood", "cord", "sail"]
+    a.inventory["sail"] = 1
+    assert run_step(w, a, {"do": "repair", "target": ship.id}) == actions.DONE
+    assert ship.durability == 75.0 and not a.has("sail")
