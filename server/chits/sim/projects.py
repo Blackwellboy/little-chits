@@ -740,18 +740,29 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
 def _rocket_step(world, sc: Scope, recipes: set, have: set) -> Optional[Tuple[str, Dict[str, Any]]]:
     """The space programme's next rocket (sim/space.py), materials first as MAKE_FIRST does it: its fuel and its
     sections, then the rocket at the pad. Only with a launch pad standing and someone in the village who knows the
-    rocket, and none while a rocket already waits for its launch."""
+    rocket, and none while a rocket already waits for its launch. A section short of its own made parts (alloy, a
+    steam engine) is first those, as far down as the village can make them: "make 2 rocket sections" stalled for
+    want of the engines in a late-game probe, set aside every 8 days and picked again."""
     from . import space
 
     if not space.on() or "launch_pad" not in have or "rocket" not in recipes or stock(world, "rocket", sc=sc) >= 1:
         return None
-    r = RECIPES["rocket"]
-    for k, n in r.inputs:
+    for k, n in RECIPES["rocket"].inputs:
         if stock(world, k, sc=sc) < n:
             if k not in recipes or _station_missing(have, RECIPES[k].station):
                 return None  # (nobody here can make it now)
+            k, n = _short_of(world, sc, recipes, have, k, n)
             return k, {"n": n, "launch": 1}
     return "rocket", {"n": 1, "launch": 1}
+
+
+def _short_of(world, sc: Scope, recipes: set, have: set, key: str, n: int, depth: int = 0) -> Tuple[str, int]:
+    """The first made part this village is short of for `n` of `key` that it can make (key itself when none is)."""
+    for k, q in RECIPES[key].inputs:
+        if depth < 4 and k in RECIPES and k in recipes and not _station_missing(have, RECIPES[k].station) \
+                and stock(world, k, sc=sc) < q * n:
+            return _short_of(world, sc, recipes, have, k, q * n, depth + 1)
+    return key, n
 
 
 def _launch_words(p: Dict[str, Any]) -> str:

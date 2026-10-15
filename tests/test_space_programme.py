@@ -212,6 +212,13 @@ def test_a_village_with_a_pad_and_the_rocket_makes_the_next_one_materials_first(
     p = projects.start(w, "make", "rocket_part", c[0][3], None, "need", c[0][4], sc)
     assert projects.title(p) == "make 2 rocket sections for the next launch"
     projects._put(w, sc, None)
+    for o in ags:  # a section's own made parts first, where the village can make them
+        o.learn("recipe:alloy", "taught", w.tick)
+    assert [(key, ex) for _, _, key, _, ex in rocket_c()] == [("alloy", {"n": 4, "launch": 1})]
+    pile.storage["alloy"] = 3  # (two sections take four)
+    assert [(key, ex) for _, _, key, _, ex in rocket_c()] == [("alloy", {"n": 4, "launch": 1})]
+    pile.storage["alloy"] = 4
+    assert [key for _, _, key, _, _ in rocket_c()] == ["rocket_part"]  # (the engine: nobody here makes one)
     pile.storage.update({"rocket_part": 2})
     c = rocket_c()
     assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket", {"n": 1, "launch": 1})]
