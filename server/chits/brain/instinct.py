@@ -1465,6 +1465,10 @@ class Instinct:
         haul = self._haul_idea(world, a, rng)
         if haul:
             return haul
+        if INVENTOR.INSTINCT_INVENTS and rng.random() < INVENTOR.INSTINCT_INVENT:
+            new = INVENTOR.option(world, a, by_instinct=True)  # (now and then something new, not a known recipe)
+            if new:
+                return new
         if rng.random() < 0.35:
             bag = self._heat_idea(world, a, rng)
             if bag:

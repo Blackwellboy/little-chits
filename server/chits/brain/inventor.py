@@ -21,6 +21,16 @@ from ..sim.invent import RULES, effect_words, readings, verdict
 from ..sim.items import normalize_design, normalize_item
 
 INSTINCT = "instinct"  # (brain.mind.INSTINCT: the brain id of a chit with no model)
+# Instinct invents too, now and then (issue #168): a world without a model made nothing new for 1,100 days because
+# only a model may invent. When it would experiment, an instinct chit sometimes (INSTINCT_INVENT of the time) makes the
+# invention option() drafts instead. A model stays the main inventor: it is offered the option every time it chooses.
+INSTINCT_INVENTS = True
+INSTINCT_INVENT = 0.08
+# A/B (2026-10-15, tools/harness/ab.py, paired, only this differs): 8 seeds x 200 days: discoveries 89.0 > 116.5 (8 of 8
+# up, about 32 inventions a world), structures 143 > 155, stored 6084 > 7385, population 56.1 > 57.4, starved 0 > 0;
+# age reached 9.00 > 8.62 and machines 6.5 > 5.0 (inventing takes some of the time the road to the next age had).
+# 24 seeds x 60 days: discoveries 77.1 > 88.1 (18 up, 5 down), age 8.08 > 7.88. On: a world without a model is no
+# longer frozen.
 PART_KINDS = 6  # how many kinds of carried things are tried as parts
 BAG_SIZES = (2, 3)  # an option is a small thing: two or three pieces
 LOW_HEALTH, LOW_MOOD = 80.0, 40.0  # below these a remedy, or something for joy, is worth offering
@@ -113,11 +123,11 @@ def _name(world, a: Agent, bag: Dict[str, int], rule_key: str) -> Optional[str]:
     return None
 
 
-def option(world, a: Agent) -> Optional[Dict[str, Any]]:
+def option(world, a: Agent, by_instinct: bool = False) -> Optional[Dict[str, Any]]:
     """One invention this chit could make now from what it carries, as a plan a model can pick: the first purpose it
     has a use for that some two or three of its things can serve. None for a chit without a model, a child, or when
     nothing it carries makes anything it lacks."""
-    if not model_driven(a) or a.is_child(world.tick) or not world.rules.invention:
+    if not (model_driven(a) or (by_instinct and INSTINCT_INVENTS)) or a.is_child(world.tick) or not world.rules.invention:
         return None
     want = wanted(world, a)
     have = parts(world, a)
