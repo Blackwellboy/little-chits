@@ -393,7 +393,25 @@ button.danger { color: var(--bad); }
 .god-grid button:hover { background: rgba(255, 184, 107, 0.16); }
 .god-grid button small { color: inherit; font-size: 11px; text-align: center; line-height: 1.2; }
 /* the top bar has grown: drop the button captions on narrower screens and never push buttons off-screen */
-@media (max-width: 1560px) { .icon-btn small { display: none; } .icon-btn { padding: 5px 8px; } }
+/* below 1560px the less-used buttons go behind ⋯ (TopBar MoreMenu); the main ones keep their labels */
+.tb-more { display: none; position: relative; font-size: 16px; line-height: 1; }
+@media (max-width: 1560px) {
+  .topbar .tb-extra { display: none; }
+  .tb-more { display: flex; }
+  .icon-btn { padding: 5px 8px; }
+  .skip-run small { display: none; }
+  .skip-note { max-width: 130px; }
+}
+.tb-more .rec-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b; }
+.tb-menu { position: fixed; z-index: 15; display: flex; flex-direction: column; gap: 4px; padding: 8px; min-width: 170px;
+  background: #121726; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+.tb-menu .icon-btn { justify-content: flex-start; gap: 8px; padding: 6px 10px; }
+.tb-menu .icon-btn small { display: inline; font-size: 12px; color: var(--text); }
+/* the clock, the speed buttons and a running skip never shrink or wrap: the bar scrolls instead */
+.topbar > .clock, .topbar > .seg, .topbar > .skip-run, .topbar > .skip-wrap, .topbar > .pace-btn, .topbar > .icon-btn { flex: none; }
+@media (max-width: 1440px) { .topbar .instinct-chip .ic-long { display: none; } .skip-note { max-width: 90px; } }
+.topbar > .seg.speed { display: flex; }  /* (the brains dialog's .speed line made it a wrapping block) */
+.skip-run b { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .topbar { overflow-x: auto; scrollbar-width: none; }
 .topbar::-webkit-scrollbar { display: none; }
 @media (max-width: 1440px) { .brand-text, .clock .era, .mod-text { display: none; } .seg button { padding-left: 8px; padding-right: 8px; } }

@@ -1,5 +1,6 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, errorText } from "../net/socket";
 import { localStorageSet, notifyError, useUI, worlds } from "../state/store";
 import { lookButton } from "./look";
@@ -11,6 +12,34 @@ import { instinctChip, type Thinking } from "./watch";
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
 const SPEED_LABEL: Record<number, string> = { 1: "1×", 2: "2×", 5: "5×", 10: "10×", 25: "25×", 100: "MAX" };
+
+/** ⋯ The bar's less-used buttons, below 1560px: a menu of them with their labels (it hangs from the button, outside
+ *  the bar, which scrolls sideways and would clip it). Closes on a choice, a click elsewhere or Escape. */
+function MoreMenu({ children, dot }: { children: React.ReactNode; dot: boolean }) {
+  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!at) return;
+    const off = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setAt(null); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setAt(null); };
+    window.addEventListener("mousedown", off);
+    window.addEventListener("keydown", key);
+    return () => { window.removeEventListener("mousedown", off); window.removeEventListener("keydown", key); };
+  }, [at]);
+  const toggle = () => {
+    const r = btn.current?.getBoundingClientRect();
+    setAt(at || !r ? null : { top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
+  };
+  return (<>
+    <button ref={btn} className={`icon-btn tb-more ${at ? "on" : ""}`} title="More: night, look, director, replay, god mode, recordings, restart" onClick={toggle}>
+      ⋯{dot && <span className="rec-dot" title="recording" />}
+    </button>
+    {/* (in the page, not the bar: the bar's backdrop filter would hold a fixed menu inside it, clipped) */}
+    {at && createPortal(<div ref={menu} className="tb-menu" style={{ top: at.top, right: at.right }}
+      onClick={(e) => { if ((e.target as HTMLElement).closest("button")) setAt(null); }}>{children}</div>, document.body)}
+  </>);
+}
 
 export function TopBar() {
   const theme = useUI((s) => s.theme);
@@ -48,6 +77,26 @@ export function TopBar() {
     await api("/api/reset", { seed: m.seed, size: m.size });
     set({ selected: null, follow: false });
   };
+  const extras = (cls: string) => (<>
+    <button className={cls} title={`Night: ${nightMode} (click to change)`}
+      onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
+      {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
+    </button>
+    <button className={`${cls} ${theme === "norse" ? "on" : ""}`} title={look.title} disabled={look.disabled}
+      onClick={() => api("/api/theme", { theme: look.next }).catch((e) => notifyError(errorText(e)))}>
+      {look.glyph}<small>{look.label}</small>
+    </button>
+    <button className={`${cls} ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
+      onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
+    <button className={cls} title="Replay: scrub back through the last week (opens the replay viewer)"
+      onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
+    {control?.contract !== "experiment" && (
+      <button className={cls} title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
+    )}
+    <button className={`${cls} ${recording ? "rec-on" : ""}`} title="Recordings: auto-record every day of the game as a clip with its story"
+      onClick={() => set({ recordingsOpen: true })}>🎞<small>{recording ? "● rec" : "record"}</small></button>
+    <button className={cls} title="Restart this game from day 1 (same island, mode and models)" onClick={restart}>↺<small>restart</small></button>
+  </>);
 
   return (
     <header className="topbar">
@@ -78,7 +127,9 @@ export function TopBar() {
       </div>
       {onInstinct.length > 0 && (
         <span className="instinct-chip" title={onInstinct.map((x) => (shownIds.length > 1 ? `${nameOf(x.id)}: ` : "") + x.title).join("\n")}>
-          {onInstinct.length === shownIds.length ? onInstinct[0].text : `⚙ ${onInstinct.map((x) => nameOf(x.id)).join(", ")} on instinct`}
+          {onInstinct.length === shownIds.length
+            ? <>⚙ <span className="ic-long">running on </span>instinct</>  /* (short below 1440px) */
+            : `⚙ ${onInstinct.map((x) => nameOf(x.id)).join(", ")} on instinct`}
         </span>
       )}
 
@@ -109,29 +160,14 @@ export function TopBar() {
       {control?.sandbox_modified && <span className="badge mod" title="Someone reached into this world (god mode or a rewind). Great for stories, not for comparisons.">🪄<span className="mod-text"> modified</span></span>}
       <div className="spacer" />
 
-      <button className="icon-btn" title={`Night: ${nightMode} (click to change)`}
-        onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
-        {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
-      </button>
-      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`} title={look.title} disabled={look.disabled}
-        onClick={() => api("/api/theme", { theme: look.next }).catch((e) => notifyError(errorText(e)))}>
-        {look.glyph}<small>{look.label}</small>
-      </button>
-      <button className={`icon-btn ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
-        onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
-      <button className="icon-btn" title="Replay: scrub back through the last week (opens the replay viewer)"
-        onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
+      {/* the less-used buttons: in the bar on a wide screen, behind ⋯ below 1560px (styles.css) */}
+      {extras("icon-btn tb-extra")}
+      <MoreMenu dot={recording}>{extras("icon-btn")}</MoreMenu>
       {control?.contract !== "experiment" && (
-        <button className="icon-btn" title="Saves: save this game now, load a save, or move one to another computer as a file"
+        <button className="icon-btn tb-main" title="Saves: save this game now, load a save, or move one to another computer as a file"
           onClick={() => set({ savesOpen: true })}>💾<small>saves</small></button>
       )}
-      {control?.contract !== "experiment" && (
-        <button className="icon-btn" title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
-      )}
-      <button className={`icon-btn ${recording ? "rec-on" : ""}`} title="Recordings: auto-record every day of the game as a clip with its story"
-        onClick={() => set({ recordingsOpen: true })}>🎞<small>{recording ? "● rec" : "record"}</small></button>
-      <button className="icon-btn" title="Restart this game from day 1 (same island, mode and models)" onClick={restart}>↺<small>restart</small></button>
-      <button className="icon-btn" title="Start a new game: choose the mode, island and models" onClick={() => set({ newWorldOpen: true })}>⟲<small>new</small></button>
+      <button className="icon-btn tb-main" title="Start a new game: choose the mode, island and models" onClick={() => set({ newWorldOpen: true })}>⟲<small>new</small></button>
 
       <button className="brain-pill" onClick={() => set({ brainsOpen: true })} title="Choose the brains that drive each world">
         {metas.map((w) => {
