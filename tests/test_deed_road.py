@@ -69,3 +69,43 @@ def test_a_great_work_counts_everyone_on_the_island(on, monkeypatch):
     recipes |= {m for m, _ in DESIGNS["launch_pad"].materials}
     step = projects.next_step(w, designs, recipes, set(), "design", "launch_pad", sc=sc)
     assert (step is not None) is on
+
+
+def test_a_standing_station_anywhere_leaves_only_the_lamp(monkeypatch):
+    w, a = _machine_world(monkeypatch)
+    st = w.place_site("power_station", *w.find_site("power_station", a.x - 6, a.y, 14), a)
+    w.complete_structure(st, a)
+    assert projects.age_targets(w, MACHINE + 1) == [("recipe", "dynamo"), ("design", "street_lamp")]
+
+
+def test_the_road_builds_a_machine_only_where_it_has_work_and_says_where(monkeypatch):
+    w, a = _machine_world(monkeypatch)
+    w.deed_ages.pop("recipe:engine")  # (back to the Iron Age: the machine is the next deed)
+    w.structures = {k: s for k, s in w.structures.items() if s.design != "steam_pump"}
+    for o in w.agents.values():
+        for m in ("steam_pump", "sawmill", "factory"):
+            o.learn(f"design:{m}", "taught", w.tick)
+    monkeypatch.setattr(projects, "_utility_site", lambda world, d, sc=None: None if d == "steam_pump" else (7, 9))
+    monkeypatch.setattr(projects, "stock", lambda *args, **kw: 999)  # (every material at hand: the build itself)
+    designs, recipes = projects._known(w)
+    stations = {"campfire", "kiln", "workshop", "furnace", "forge", "factory", "mill"}
+    from chits.sim.items import RECIPES
+    step = projects.age_step(w, designs | {"steam_pump", "sawmill", "factory"}, set(RECIPES), stations, MACHINE)
+    assert step == ("build", "sawmill", {"near": "7,9"})  # the pump has nothing to pump for: the sawmill, and where
+
+
+def test_a_restored_station_lights_the_lamps_again_and_earns_the_age(monkeypatch):
+    from chits.sim import actions
+    w, a = _machine_world(monkeypatch)
+    st = w.place_site("power_station", *w.find_site("power_station", a.x - 6, a.y, 14), a)
+    w.complete_structure(st, a)
+    st.durability, st.ruined_at = 0.0, w.tick  # it falls to ruin...
+    lamp = w.place_site("street_lamp", *w.find_site("street_lamp", a.x + 4, a.y + 3, 14), a)
+    w.complete_structure(lamp, a)  # ...a lamp goes up with nothing to light it: no deed
+    assert "recipe:dynamo" not in w.deed_ages
+    a.inventory[actions.mend_materials("power_station")[0]] = 3
+    for _ in range(3000):
+        w.tick += 1
+        if actions.advance(w, a, {"do": "repair", "target": st.id}) != actions.RUNNING:
+            break
+    assert not st.ruined and "recipe:dynamo" in w.deed_ages and w.era()[0] == MACHINE + 1

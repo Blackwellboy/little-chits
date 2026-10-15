@@ -529,7 +529,9 @@ def age_targets(world, age: int) -> List[Tuple[str, str]]:
     if key == "engine":
         out += [("design", m) for m in MACHINE_AGE_MACHINES]  # any one of them (the first that can be begun)
     elif key == "dynamo":
-        out += [("design", "power_station"), ("design", "street_lamp")]  # both, standing at once
+        # both, standing at once, anywhere on the island (the deed is the world's: a village whose neighbour has the
+        # station needs only the lamp)
+        out += [("design", d) for d in ("power_station", "street_lamp") if not world._standing(d)]
     return out
 
 
@@ -539,8 +541,16 @@ def age_step(world, designs: set, recipes: set, have: set, age: int, sc: Optiona
     the village has set aside for now (a steam pump with no well to serve: then a sawmill)."""
     for kind, key in age_targets(world, age):
         step = next_step(world, designs, recipes, have, kind, key, sc=sc)
-        if step and not skipped(step):
-            return step
+        if not step or skipped(step):
+            continue
+        if DEED_ROAD and step[0] == "build" and step[1] in UTILITY:
+            # a machine or a lamp where it has work to do, as the village's own wish for one is (a pump with no farm
+            # near it was built at its builder's feet)
+            spot = _utility_site(world, step[1], sc)
+            if spot is None:
+                continue
+            step = (step[0], step[1], {**step[2], "near": f"{spot[0]},{spot[1]}"})
+        return step
     return None
 
 
