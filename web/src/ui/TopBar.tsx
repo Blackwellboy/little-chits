@@ -1,11 +1,12 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { api, errorText } from "../net/socket";
 import { localStorageSet, notifyError, useUI, worlds } from "../state/store";
 import { lookButton } from "./look";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { SkipControl } from "./SkipControl";
+import { instinctChip, type Thinking } from "./watch";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
@@ -20,6 +21,13 @@ export function TopBar() {
     const t = setInterval(poll, 15000);
     return () => clearInterval(t);
   }, []);
+  const [thinking, setThinking] = useState<Record<string, Thinking>>({});
+  useEffect(() => {  // ⚙ who is thinking for each world: the bar says so when one runs on instinct
+    const poll = () => api<{ thinking?: Record<string, Thinking> }>("/api/health").then((h) => setThinking(h.thinking ?? {})).catch(() => {});
+    poll();
+    const t = setInterval(poll, 10000);
+    return () => clearInterval(t);
+  }, []);
   const nextNight = { normal: "soft", soft: "off", off: "normal" } as const;
   useUI((s) => s.tick);
   const primary = view === "B" ? "B" : "A";
@@ -31,6 +39,9 @@ export function TopBar() {
   const setView = (v: "A" | "B" | "split") => { set({ view: v }); localStorageSet("view", v); };
   const brainsInUse = metas.some((w) => brains[w.id] && brains[w.id].id !== "instinct");
   const look = lookButton(theme, control?.contract);
+  const shownIds = view === "split" ? metas.map((w) => w.id) : [primary];
+  const nameOf = (id: string) => metas.find((m) => m.id === id)?.name ?? id;
+  const onInstinct = shownIds.flatMap((id) => { const c = instinctChip(thinking[id], brains[id]?.id); return c ? [{ id, ...c }] : []; });
   const restart = async () => {
     const m = worlds[metas[0]?.id]?.meta;
     if (!m || !confirm("Restart this game from day 1? Same island, same mode, same models. The current history is erased.")) return;
@@ -65,6 +76,11 @@ export function TopBar() {
         {clock?.era && <span className="era" title="How far this world has come">{clock.era}</span>}
         <div className="daybar"><i style={{ width: `${((clock?.hour ?? 0) / 24) * 100}%` }} /></div>
       </div>
+      {onInstinct.length > 0 && (
+        <span className="instinct-chip" title={onInstinct.map((x) => (shownIds.length > 1 ? `${nameOf(x.id)}: ` : "") + x.title).join("\n")}>
+          {onInstinct.length === shownIds.length ? onInstinct[0].text : `⚙ ${onInstinct.map((x) => nameOf(x.id)).join(", ")} on instinct`}
+        </span>
+      )}
 
       <div className="seg speed">
         <button className={control?.paused ? "on" : ""} onClick={() => setSpeed(0)} title="Pause">❚❚</button>

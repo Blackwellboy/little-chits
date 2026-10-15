@@ -491,3 +491,33 @@ def eras(w: World) -> Dict[str, Any]:
             heroes.append({"era": era, "who": f.get("name") or "someone", "day": f.get("tick", 0) // TICKS_PER_DAY + 1})
     return {"index": i, "name": name, "heroes": heroes}
 
+
+
+# ---------------------------------------------------------------------------------------------- who is thinking
+THINKING_MIN_STEPS = 20  # finished steps before the recent mix is worth saying anything about
+
+
+def thinking(recent_steps, brain_id: str) -> Dict[str, Any]:
+    """Who is thinking for a world right now: the provenance of its last finished steps (diag's recent_steps, the
+    same categories as the scorecard, provenance.py), and whether it is running on instinct: no model configured,
+    or a model configured but none of the recent steps came from it while instinct stood in for it."""
+    from . import provenance as PV
+
+    by: Dict[str, int] = {}
+    for r in recent_steps:
+        c = r.get("provenance") or "unknown"
+        by[c] = by.get(c, 0) + 1
+    n = sum(by.values())
+
+    def share(cats) -> Optional[float]:
+        return round(100 * sum(by.get(c, 0) for c in cats) / n, 1) if n else None
+
+    model = sum(by.get(c, 0) for c in PV.MODEL)
+    why = ""
+    if brain_id == "instinct":
+        why = "no_model"
+    elif n >= THINKING_MIN_STEPS and model == 0 and by.get("fallback", 0) > 0:
+        why = "model_down"
+    return {"brain": brain_id, "steps": n, "model_pct": share(PV.MODEL), "body_pct": share(("body_reflex",)),
+            "routine_pct": share(("routine",)), "instinct_pct": share(("instinct_plan", "fallback", "filler")),
+            "fallback_pct": share(("fallback",)), "on_instinct": bool(why), "why": why}

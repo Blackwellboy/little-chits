@@ -104,7 +104,22 @@ def health():
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
             "autodetected": r.autodetected, "theme": theme.active(), "pack": r.pack_info(),
-            "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()}}
+            "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()},
+            "thinking": {w.id: _thinking(r, w) for w in r.worlds.values()}}
+
+
+def _thinking(r, w) -> Dict[str, Any]:
+    """Who is thinking for a world (views.thinking), from the diagnostics' recent finished steps (read only)."""
+    from . import diag
+
+    recent: List[Any] = []
+    for _ in range(3):  # (the world steps while a request reads: a copy taken mid-append is simply taken again)
+        try:
+            recent = list(diag.of(w).recent_steps)
+            break
+        except RuntimeError:
+            continue
+    return views.thinking(recent, r.mind.world_brain.get(w.id, INSTINCT))
 
 
 @app.get("/api/worlds")
@@ -549,8 +564,9 @@ def progress(wid: str):
     """🧭 How far a world has come, what it is doing now, and how its latest achievements happened."""
     w = world(wid)
     since = max(0, (w.tick // TICKS_PER_DAY - 1) * TICKS_PER_DAY)
-    evs = R().store.events(w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
-    return views.progress(w, evs)
+    r = R()
+    evs = r.store.events(w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
+    return {**views.progress(w, evs), "thinking": _thinking(r, w)}
 
 
 @app.get("/api/worlds/{wid}/settlements")

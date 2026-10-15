@@ -9,6 +9,7 @@ import { rowClicked } from "./listPosition";
 import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
+import { instinctChip, thinkingLine, type Thinking } from "./watch";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -86,6 +87,7 @@ type ProgressData = {
   day: number; era: { index: number; name: string; of: number }; next: Rung | null; ladder: Rung[];
   doing: [string, number][]; aims: [string, number][]; recent: { day: number; lines: string[] }[];
   counts: { population: number; discoveries: number; structures: number; beliefs: number; known: number };
+  thinking?: Thinking;
 };
 
 /** 🧭 Is this world getting anywhere? Its place on the road to space, what everyone is doing now, and how the
@@ -93,12 +95,15 @@ type ProgressData = {
 function Progress({ world, name }: { world: string; name: string }) {
   const p = usePoll(() => api<ProgressData>(`/api/worlds/${world}/progress`), 8000, [world]);
   const brain = useUI((s) => s.brains[world]?.label);
+  const brainId = useUI((s) => s.brains[world]?.id);
   if (!p) return <p className="muted">Loading…</p>;
+  const chip = instinctChip(p.thinking, brainId);
   const pct = Math.round((p.era.index / p.era.of) * 100);
   const plain = (s: string) => s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/ ?\(#\d+\)/g, "");
   return (
     <div className="progress">
-      <div className="panel-head"><h3>{name}</h3><small className="muted">{brain || "instinct"} · day {p.day}</small></div>
+      <div className="panel-head"><h3>{name}</h3><small className="muted">{brain || "instinct"} · day {p.day}</small>
+        {chip && <span className="instinct-chip" title={chip.title}>{chip.text}</span>}</div>
       <div className="prog-era">
         <b>{p.era.name}</b> <small className="muted">age {p.era.index + 1} of {p.era.of + 1} on the road to space</small>
         <div className="prog-bar"><span style={{ width: `${Math.max(3, pct)}%` }} /></div>
@@ -118,6 +123,8 @@ function Progress({ world, name }: { world: string; name: string }) {
         👥 {p.counts.population} chits · ✦ {p.counts.discoveries} discoveries · 🏠 {p.counts.structures} buildings · 🕯 {p.counts.beliefs} beliefs
         {p.food_days != null && <> · <span className={p.food_days < 3 ? "food-low" : ""} title="How long the food in the stores would feed the village; below 3 days, chits put the project aside and fill the stores">🍞 {p.food_days} days of food in store</span></>}
       </small></div>
+      <p className="small prog-thinking" title="Who decided the steps this world's chits finished lately: the model, instinct (the built-in planner, standing in or filling a wait), body reflexes (eat, sleep, warm up) or upkeep">
+        🧠 Who's thinking: {thinkingLine(p.thinking)}</p>
       <VillageProject p={p} plain={plain} world={world} />
       {p.at_risk && p.at_risk.length > 0 && (
         <div className="prog-risk" title="Things only one living chit knows how to make: if it dies without passing them on, the village forgets them">

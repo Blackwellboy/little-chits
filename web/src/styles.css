@@ -603,3 +603,8 @@ button.danger { color: var(--bad); }
 .nw-rule-list label { display: flex; gap: 8px; align-items: flex-start; }
 .rules-table td { padding: 3px 6px; vertical-align: top; }
 button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+/* ⚙ a world whose chits run without a model says so */
+.instinct-chip { display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap; font-size: 11px; color: #ffc85a;
+  background: rgba(255,200,90,0.1); border: 1px solid rgba(255,200,90,0.35); border-radius: 999px; padding: 2px 9px; cursor: help; }
+.panel-head .instinct-chip { margin-left: auto; }
+.prog-thinking { margin: 6px 0 0; color: var(--muted); }
