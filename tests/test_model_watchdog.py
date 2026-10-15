@@ -52,7 +52,7 @@ async def test_a_model_that_stops_answering_is_told_once_and_again_when_it_answe
     w.step(mind.hook)
     mind.watch(w)
     assert _said(w)[1:] == ["World A's mind env is answering again"]
-    assert mind.down_state("A") == {"down": False, "failing_since": None}
+    assert mind.down_state("A") == {"down": False, "failing_since": None, "chits_wait": False}
     await mind.close()
 
 
@@ -164,6 +164,25 @@ def test_a_loaded_save_starts_the_watch_again(tmp_path):
     w2 = rt.worlds[w.id]
     assert w2.tick >= 5000
     rt.mind.watch(w2)
-    assert rt.mind.down_state(w.id) == {"down": False, "failing_since": w2.tick}  # still failing, but only from now
+    assert rt.mind.down_state(w.id) == {"down": False, "failing_since": w2.tick, "chits_wait": False}  # still failing, but only from now
     rt.store.db.close()
     asyncio.run(rt.mind.close())
+
+
+def test_where_no_instinct_stands_in_the_status_says_the_chits_wait(tmp_path):
+    """Model-led, model-only and experiment runs never put a model's chits on instinct: they wait for it. The event
+    said so already; the status the UI words its pill and chip from says so too."""
+    mind = Mind(tmp_path / "brains.json")
+    b = mind.upsert({"id": "m", "label": "m", "base_url": "http://127.0.0.1:9/v1"})
+    w = World("A", "A", 3, "direct", 64, 3)
+    mind.assign(w, "m")
+    mind.clock = Clock()
+    mind.model_led = True
+    b.stats.consecutive_fail = 5
+    for _ in range(M.DOWN_AFTER_TICKS + 1):
+        w.tick += 1
+        mind.watch(w)
+    assert _said(w) == ["World A's mind m has stopped answering; the chits wait for it"]
+    assert mind.down_state("A")["down"] and mind.down_state("A")["chits_wait"] is True
+    mind.model_led = False
+    assert mind.down_state("A")["chits_wait"] is False

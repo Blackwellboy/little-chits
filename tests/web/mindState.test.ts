@@ -22,3 +22,11 @@ describe("mindState", () => {
                 "World B's mind gemma has stopped answering since day 1: the chits are running on instinct."]);
   });
 });
+
+describe("mindState where the chits wait for their model", () => {
+  it("says they wait, not that they run on instinct (model-led, model-only, experiment)", () => {
+    const down = b({ down: true, failing_since: 240 * 2, chits_wait: true });
+    expect(mindLabel(down)).toBe("env (not answering — waiting)");
+    expect(mindsDown({ A: down })).toEqual(["World A's mind env has stopped answering since day 3: the chits wait for it."]);
+  });
+});

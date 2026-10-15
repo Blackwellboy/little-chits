@@ -3,7 +3,7 @@ import { api } from "../net/socket";
 import { useUI } from "../state/store";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
-import { mindDown, NOT_ANSWERING } from "./mindState";
+import { mindDown, notAnswering } from "./mindState";
 
 /** First visit (T29): what this is, what was found on this machine, and where to go next. */
 export function Welcome() {
@@ -35,7 +35,7 @@ export function Welcome() {
         <p className="found">
           {found.length >= 2 ? <>Found <b>{name(found[0])}</b> on {port(found[0].base_url)} and <b>{name(found[1])}</b> on {port(found[1].base_url)}: model vs model on the same island.</>
             : found.length === 1 ? <>Found <b>{name(found[0])}</b> on {port(found[0].base_url)}: a single-model world.</>
-            : inUse.length ? <>{inUse.map(([wid, label], i) => <span key={wid}>{i ? " and " : ""}World {wid} thinks with <b>{label}</b>{mindDown(brains[wid]) ? ` (${NOT_ANSWERING})` : ""}</span>)}.</>
+            : inUse.length ? <>{inUse.map(([wid, label], i) => <span key={wid}>{i ? " and " : ""}World {wid} thinks with <b>{label}</b>{mindDown(brains[wid]) ? ` (${notAnswering(brains[wid])})` : ""}</span>)}.</>
             : h ?<>No model found. Start llama-server, Ollama or LM Studio, then press 🔍 Scan in ⚙ Brains. Until then the chits run on instinct.</>
             : <>Looking at what's running…</>}
         </p>

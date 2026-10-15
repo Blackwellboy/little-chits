@@ -506,9 +506,10 @@ class Mind:
 
     def down_state(self, world_id: str) -> Dict[str, Any]:
         """For the brain status the UI shows: is this world's model down (failing for DOWN_AFTER_TICKS), and since
-        which tick it has been failing."""
+        which tick it has been failing, and whether its chits wait for it (no instinct stands in) or run on instinct."""
         st = self.down.get(world_id)
-        return {"down": bool(st and st["told"]), "failing_since": st["since"] if st else None}
+        return {"down": bool(st and st["told"]), "failing_since": st["since"] if st else None,
+                "chits_wait": self.no_stand_in()}
 
     def no_stand_in(self) -> bool:
         """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""
