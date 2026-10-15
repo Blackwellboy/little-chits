@@ -121,17 +121,6 @@ def test_a_longer_walk_the_chit_can_afford_is_not_given_up():
     assert s.get("store") == far.id
 
 
-def test_the_eat_step_sets_out_for_the_store_nearest_on_foot():
-    # the margin and the food reflex judge the store by the walk; the eat step went to the nearest as the crow flies
-    w, a = _walled()
-    behind = _store(w, a, 20, 31)  # 11 tiles off, ~50 steps
-    open_ = _store(w, a, 40, 14)  # 20 tiles off, ~20 steps
-    assert behind.dist(a.x, a.y) < open_.dist(a.x, a.y) and _walk(w, a, open_) < _walk(w, a, behind)
-    a.hunger = 18.0
-    s = {}
-    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING and s.get("store") == open_.id
-
-
 def test_a_marked_store_across_a_wall_is_no_store_beside_the_way():
     # 3 tiles off as the crow flies and ~50 steps on foot: taken, it was given up as a long way round, the chit's walk
     # to its own store was dropped, and that long walk became the limit for every later one

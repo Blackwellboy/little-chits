@@ -270,8 +270,8 @@ PASSING_STORE = 3  # an eat step on its way to one store takes food from another
 # next one (115 steps, 29 tiles off) passed, a longer walk than either. (3) Those marks, made where the chit stood,
 # blinded it for the day: its walk to the third store led right past the second (4 tiles, 228 food), and it starved
 # there. (4) The food reflex took wild food nearer as the crow flies (berries 41 steps off, fish that never came)
-# over a store whose walk it could no longer spare. With it: (1) the margin, the food reflex and the eat step take the
-# store nearest on foot (of the nearest few unmarked, never less than the crow's distance; measured only when the walk
+# over a store whose walk it could no longer spare. With it: (1) the margin and the food reflex take the store
+# nearest on foot (of the nearest few unmarked, never less than the crow's distance; measured only when the walk
 # can change the margin, once a day per WALK_GRID square, with a bounded A*: see _walk_from); (2) within one eat step, a
 # walk at least as long as one it already gave up as a long way round, and longer than its hunger can afford, is given
 # up too; (3) a marked store the eat step passes beside is taken when it is close on foot (at most twice its crow's
@@ -727,11 +727,9 @@ def _walk_from(world, a: Agent, st) -> float:
     return got
 
 
-def _walk_nearest(world, a: Agent, cands: list, measure: bool = True):
+def _walk_nearest(world, a: Agent, cands: list):
     """(store, the walk to it in tiles) for the candidate nearest on foot (_walk_from, never less than the crow's
-    distance from where the chit stands), or None. (measure=False: a lone candidate is taken unmeasured.)"""
-    if not measure and len(cands) == 1:
-        return cands[0], max(1.0, float(_crow(a, *cands[0].center())))
+    distance from where the chit stands), or None."""
     best = None
     for st in cands:
         crow = max(1.0, float(_crow(a, *st.center())))
@@ -1098,13 +1096,10 @@ def _do_eat(world, a: Agent, step, s) -> str:
         # turned back and forth on two tiles until it starved (74 in one 60-day run, tools/harness seed 2)
         st = world.structures.get(s.get("store") or "") if STARVING_FETCH else None
         if st is None or not st.functional or not any(st.storage.get(f, 0) > 0 for f in foods_of(world))                 or a.reflex_rest.get("unreach:" + st.id, 0) > world.tick:
-            if STARVING_STORES:
-                # the store nearest on foot, as the margin and the food reflex judged it (by the crow, a chit set out
-                # for a store behind a wall with an open one nearer on foot)
-                got = _walk_nearest(world, a, _store_candidates(world, a), measure=False)
-                st = got[0] if got is not None else None
-            else:
-                st = _stockpile_with(world, a, foods_of(world), 30)
+            # (the nearest as the crow flies, even with STARVING_STORES: set out for the store nearest on foot instead,
+            # chits walked round lakes where the crow's nearest had been given up for fish: seed 42, fish 205 > 45,
+            # discoveries 73 > 49)
+            st = _stockpile_with(world, a, foods_of(world), 30)
         elif HUNGER_MARGIN and not s.get("passing"):
             # ...but not past another store with food right beside the way (once, so two can't take turns): kept to
             # one 30 tiles round a lake, a child walked by a store 2 tiles off with 114 food and starved short of the
