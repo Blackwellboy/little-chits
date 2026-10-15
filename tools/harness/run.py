@@ -64,7 +64,8 @@ def metrics(w, low: int, starved: int) -> dict:
             "useful": sum(b.get(k, 0) for k in USEFUL),
             "food": sum(n for k, n in store.items() if (it := w.item(k)) is not None and it.food > 0),
             "copper": store.get("copper", 0), "iron": store.get("iron", 0),
-            "projects": len(civ.get("done", [])), "hints": civ.get("hints_given", 0),
+            # (whole run: civic["done"] keeps only the last DONE_KEEP; an older save's tallies may know fewer)
+            "projects": max(w.lifetime("project_done"), len(civ.get("done", []))), "hints": civ.get("hints_given", 0),
             "outposts": b.get("outpost", 0), "villages": villages, "spread": spread,
             "tunnels": len(getattr(w, "tunnels", {}) or {}),
             "loose": sum(n for pile in w.ground.values() for k, n in pile.items() if k != "_t"),
