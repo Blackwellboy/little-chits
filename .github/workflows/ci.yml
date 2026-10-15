@@ -1,7 +1,13 @@
 name: ci
 on:
   push:
+    branches: [main]
   pull_request:
+
+# a newer push to the same branch or PR supersedes a run still going
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -21,6 +27,8 @@ jobs:
         run: python -m pytest -q tests
       - name: Web build
         run: cd web && npm run build
+      - name: Web unit tests
+        run: cd web && npm test
       - name: Plan — every ticked-off task must still pass its acceptance tests
         run: |
           python - <<'PY'

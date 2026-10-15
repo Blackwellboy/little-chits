@@ -1,6 +1,8 @@
 """The Experiment Lab (research plan R1): protocols, blind labels, resumable runs, matched interventions, statistics."""
 
 import json
+import math
+import random
 import socket
 import threading
 import time
@@ -156,6 +158,16 @@ def test_paired_statistics_on_known_answers():
     # Above 20 pairs: the normal approximation, still a probability.
     wb = stats.wilcoxon_signed([1, -1] * 11 + [2, 2])
     assert wb["n"] == 24 and 0 < wb["p"] <= 1
+    # ...with the tie correction: W+ = 11*11.5 + 2*23.5 = 173.5, var = 24*25*49/24 - (22**3-22 + 2**3-2)/48 = 1003.5.
+    assert abs(wb["p"] - math.erfc((173.5 - 150) / math.sqrt(1003.5) / math.sqrt(2))) < 1e-12
+    # Known answer, no ties: n = 25, W+ = 100 (ranks 6, 22-25 positive). var = 25*26*51/24 = 1381.25, z = -1.6817,
+    # p = 0.092631; the exact p is 0.095733, so the approximation lands near it (a halved variance gives 0.018).
+    wn = stats.wilcoxon_signed([r if r in (6, 22, 23, 24, 25) else -r for r in range(1, 26)])
+    assert wn["n"] == 25 and wn["w_plus"] == 100 and abs(wn["p"] - 0.0926305231798) < 1e-9
+    # Under the null (random signs, no ties) the test rejects at alpha = .05 about 5% of the time.
+    rng = random.Random(7)
+    hits = sum(stats.wilcoxon_signed([rng.gauss(0, 1) for _ in range(24)])["p"] < 0.05 for _ in range(4000))
+    assert 0.03 <= hits / 4000 <= 0.07
     # Sign test: 6 positives against 1 negative, two-sided exact: 2 * 8/128 = 0.125.
     s = stats.sign_test([1, 1, 1, 1, 1, 1, -1])
     assert (s["pos"], s["neg"], s["n"]) == (6, 1, 7) and abs(s["p"] - 0.125) < 1e-12

@@ -1,6 +1,6 @@
 # Upgrade plan status, 2026-09-29
 
-An evidence check of [docs/UPGRADE_PLAN.md](UPGRADE_PLAN.md) (written 2026-09-28) against the code and tests on
+An evidence check of [docs/history/UPGRADE_PLAN.md](UPGRADE_PLAN.md) (written 2026-09-28) against the code and tests on
 the v2 branch `claude/dazzling-dijkstra-5nv6xh`. The frozen 41-task plan in `plan/` is complete and is not part of
 this list. Every row was checked in the source, not taken from commit titles.
 

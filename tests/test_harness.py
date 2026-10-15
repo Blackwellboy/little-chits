@@ -263,3 +263,16 @@ def test_the_performance_benchmark_measures_every_family_on_a_frozen_world():
     assert "not measured" in r["renderer"]
     # the read-only families ran before the tick benchmark, and the frozen world stayed frozen
     assert r["agents_start"] == r["agents_end"] == 12 and r["structures_start"] == r["structures_end"]
+
+
+def test_the_projects_count_is_the_whole_run_not_the_kept_list():
+    # civic["done"] keeps only the last DONE_KEEP projects, so a long run always read ~30
+    import run as R
+    from chits.sim import projects
+
+    w, ags = village(4)
+    for _ in range(projects.DONE_KEEP + 5):
+        projects.start(w, "build", "farm", "the village has none", None, "need")
+        projects.complete(w, None)
+    assert len(w.civic["done"]) == projects.DONE_KEEP
+    assert R.metrics(w, len(ags), 0)["projects"] == projects.DONE_KEEP + 5

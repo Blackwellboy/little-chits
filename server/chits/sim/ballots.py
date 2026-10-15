@@ -1,4 +1,4 @@
-"""One-token elections and trades (docs/UPGRADE_PLAN.md, "cheap scoring elsewhere"; F28).
+"""One-token elections and trades (docs/history/UPGRADE_PLAN.md, "cheap scoring elsewhere"; F28).
 
 Where chits think with a model, two everyday choices are put to their own minds as a single letter, the way the
 chief chooses the village's next project:
