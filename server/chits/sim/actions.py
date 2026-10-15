@@ -3762,6 +3762,9 @@ def _do_repair(world, a: Agent, step, s) -> str:
     a.practice("building", 0.8)
     if was_ruin:
         world.emit("restored", f"{a.name} restored a ruined {d.name}", 3, a.id, *st.center(), structure=st.id)
+        if getattr(world, "era_by_deeds", False) and getattr(world, "age_rules", 1) >= 2:
+            world._record_deed_ages(st, a)  # (a restored power station lights the lamps again: the deed, now)
+            world.update_era()
     s["note"] = f"Repaired the {d.name} (condition {st.durability:.0f}%)"
     return DONE
 
