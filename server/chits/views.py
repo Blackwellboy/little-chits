@@ -497,10 +497,13 @@ def eras(w: World) -> Dict[str, Any]:
 THINKING_MIN_STEPS = 20  # finished steps before the recent mix is worth saying anything about
 
 
-def thinking(recent_steps, brain_id: str) -> Dict[str, Any]:
+def thinking(recent_steps, brain_id: str, model_up: bool = True, waiting_pct: Optional[float] = None) -> Dict[str, Any]:
     """Who is thinking for a world right now: the provenance of its last finished steps (diag's recent_steps, the
-    same categories as the scorecard, provenance.py), and whether it is running on instinct: no model configured,
-    or a model configured but none of the recent steps came from it while instinct stood in for it."""
+    same categories as the scorecard, provenance.py). `why` says how the model stands:
+        no_model    no model is set for the world (it runs on instinct; a voyager may still bring its own model)
+        model_down  a model is set but is not answering (`model_up` False: the brain's own health): instinct stands in
+        busy        the model answers but is behind: none of the recent steps were its own and instinct filled in
+    Only the first two are "running on instinct": a slow model is not a missing one."""
     from . import provenance as PV
 
     by: Dict[str, int] = {}
@@ -516,11 +519,14 @@ def thinking(recent_steps, brain_id: str) -> Dict[str, Any]:
     why = ""
     if brain_id == "instinct":
         why = "no_model"
-    elif n >= THINKING_MIN_STEPS and model == 0 and by.get("fallback", 0) > 0:
+    elif not model_up:
         why = "model_down"
+    elif n >= THINKING_MIN_STEPS and model == 0 and by.get("fallback", 0) + by.get("filler", 0) > 0:
+        why = "busy"
     return {"brain": brain_id, "steps": n, "model_pct": share(PV.MODEL), "body_pct": share(("body_reflex",)),
             "routine_pct": share(("routine",)), "instinct_pct": share(("instinct_plan", "fallback", "filler")),
-            "fallback_pct": share(("fallback",)), "on_instinct": bool(why), "why": why}
+            "fallback_pct": share(("fallback", "filler")), "waiting_pct": waiting_pct,
+            "on_instinct": why in ("no_model", "model_down"), "why": why}
 
 
 # ---------------------------------------------------------------------------------------------- a chit's life story

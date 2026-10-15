@@ -87,7 +87,7 @@ type ProgressData = {
   day: number; era: { index: number; name: string; of: number }; next: Rung | null; ladder: Rung[];
   doing: [string, number][]; aims: [string, number][]; recent: { day: number; lines: string[] }[];
   counts: { population: number; discoveries: number; structures: number; beliefs: number; known: number };
-  thinking?: Thinking;
+  who_thinks?: Thinking;
 };
 
 /** 🧭 Is this world getting anywhere? Its place on the road to space, what everyone is doing now, and how the
@@ -100,7 +100,7 @@ function Progress({ world, name }: { world: string; name: string }) {
   const stalled = !!p && stallLine(p.day, p.ladder, null, null) != null;
   const why = usePoll(() => (stalled ? api<WhyData>("/api/why") : Promise.resolve(null)), 20000, [world, stalled]);
   if (!p) return <p className="muted">Loading…</p>;
-  const chip = instinctChip(p.thinking, brainId);
+  const chip = instinctChip(p.who_thinks, brainId);
   const on = p.milestones ? p.milestones.steps[nextStep(p.milestones)] : undefined;
   const stall = stallLine(p.day, p.ladder, on ? stepLabel(on) : null, why ? why.worlds?.[world]?.reasons : null);
   const pct = Math.round((p.era.index / p.era.of) * 100);
@@ -130,7 +130,7 @@ function Progress({ world, name }: { world: string; name: string }) {
         {p.food_days != null && <> · <span className={p.food_days < 3 ? "food-low" : ""} title="How long the food in the stores would feed the village; below 3 days, chits put the project aside and fill the stores">🍞 {p.food_days} days of food in store</span></>}
       </small></div>
       <p className="small prog-thinking" title="Who decided the steps this world's chits finished lately: the model, instinct (the built-in planner, standing in or filling a wait), body reflexes (eat, sleep, warm up) or upkeep">
-        🧠 Who's thinking: {thinkingLine(p.thinking)}</p>
+        🧠 Who's thinking: {thinkingLine(p.who_thinks)}</p>
       <VillageProject p={p} plain={plain} world={world} />
       {p.at_risk && p.at_risk.length > 0 && (
         <div className="prog-risk" title="Things only one living chit knows how to make: if it dies without passing them on, the village forgets them">
@@ -372,6 +372,8 @@ function People({ world }: { world: string }) {
   // at speed the list re-sorted under the pointer and a click picked the wrong chit: it holds still while hovered
   const held = useRef<string[] | null>(null);
   const [hover, setHover] = useState(false);
+  // (the list can go while the pointer is on it, for the hall or another world: no mouseleave comes then)
+  useEffect(() => { held.current = null; setHover(false); }, [hall, world, dead]);
   const byId = new Map(fresh.map((a) => [a.id, a]));
   const order = holdOrder(hover ? held.current : null, fresh.map((a) => a.id));
   if (hover) held.current = order;

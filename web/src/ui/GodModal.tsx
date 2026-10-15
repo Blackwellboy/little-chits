@@ -2,6 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useEffect, useState } from "react";
 import { api } from "../net/socket";
 import { useUI } from "../state/store";
+import { ESC_GOD_TOOL, onEscape } from "./escape";
 
 type ItemRow = { key: string; name: string; icon: string; artifact: boolean; props: string[] };
 type Save = { id: number; name: string; created: number; tick: number };
@@ -32,11 +33,12 @@ export function GodModal() {
     api<ItemRow[]>("/api/items").then(setItems).catch(() => {});
     loadSaves();
   }, [godOpen]);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") useUI.getState().set({ godTool: null }); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Escape disarms a god tool (escape.ts: above the Inspector, below an open menu)
+  useEffect(() => onEscape(ESC_GOD_TOOL, () => {
+    if (!useUI.getState().godTool) return false;
+    useUI.getState().set({ godTool: null });
+    return true;
+  }), []);
   if (!godOpen) return null;
   const arm = (t: { action: string; item?: string; label: string }) => set({ godTool: t, godOpen: false });
   const now = (action: string) => {

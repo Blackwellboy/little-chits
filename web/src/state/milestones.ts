@@ -60,12 +60,20 @@ export function addToasts(old: Toast[], events: WorldEvent[], world: string, now
   const fresh = events.filter((e) => e.importance >= 4 || milestoneOf(e))
     .map((e) => ({ ...e, world, key: `${world}-${e.seq}`, _t: now }));
   if (!fresh.length) return old;
-  const all = [...old, ...fresh].filter((t) => (t._t ??= now) > now - TOAST_MS);
-  while (all.length > TOAST_MAX) {
-    const i = all.findIndex((t) => !milestoneOf(t));
-    all.splice(i >= 0 ? i : 0, 1);
+  return capToasts([...old, ...fresh].filter((t) => (t._t ??= now) > now - TOAST_MS));
+}
+
+/** At most `max` toasts: the oldest ordinary one goes first, then the oldest milestone. A "that didn't work" error is
+ *  never pushed out by others (the corner's own timer takes it down once it has been seen). */
+export function capToasts(all: Toast[], max = TOAST_MAX): Toast[] {
+  const out = all.slice();
+  while (out.length > max) {
+    let i = out.findIndex((t) => t.kind !== "error" && !milestoneOf(t));
+    if (i < 0) i = out.findIndex((t) => t.kind !== "error");
+    if (i < 0) break;
+    out.splice(i, 1);
   }
-  return all;
+  return out;
 }
 
 export const TOAST_SHOWN = 2;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { foldToasts, TOAST_SHOWN, type Toast } from "../../web/src/state/milestones";
+import { addToasts, capToasts, foldToasts, TOAST_MAX, TOAST_SHOWN, type Toast } from "../../web/src/state/milestones";
 
 const toast = (seq: number, day: number, kind = "discovery", world = "A"): Toast =>
   ({ seq, tick: (day - 1) * 240 + seq, kind, text: `${kind} ${seq}`, importance: 5, actor: null, x: null, y: null, data: {}, world, key: `${world}-${seq}` });
@@ -34,5 +34,22 @@ describe("foldToasts", () => {
     expect(v.folded).not.toContainEqual(err);
     const same = [{ ...toast(1, 3), tick: 500 }, { ...toast(2, 3), tick: 500 }];
     expect(foldToasts(same, true).shown.map((t) => t.seq)).toEqual([1, 2]);
+  });
+});
+
+describe("capToasts", () => {
+  const err = (n: number): Toast => ({ ...toast(100 + n, 1, "error"), tick: 0, key: `err-${n}`, world: "" });
+  it("never pushes out an error toast, however busy the day", () => {
+    const t = capToasts([err(1), toast(1, 2), toast(2, 2, "death"), toast(3, 3), toast(4, 3), toast(5, 4)]);
+    expect(t).toHaveLength(TOAST_MAX);
+    expect(t.map((x) => x.key)).toContain("err-1");
+    expect(t.map((x) => x.key)).not.toContain("A-2");  // (the ordinary toast goes first)
+  });
+  it("lets errors past the cap rather than lose one", () => {
+    expect(capToasts([err(1), err(2), err(3), err(4), err(5), toast(1, 2)], 4).map((x) => x.key)).toEqual(["err-1", "err-2", "err-3", "err-4", "err-5"]);
+  });
+  it("keeps an error through addToasts", () => {
+    const t = addToasts([err(1)], [1, 2, 3, 4, 5].map((s) => ({ ...toast(s, 2), key: "" })), "A", 1000);
+    expect(t.map((x) => x.key)).toContain("err-1");
   });
 });

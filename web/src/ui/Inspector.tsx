@@ -4,7 +4,8 @@ import { api } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
 import { Portrait } from "./Portrait";
-import { escapeClosesInspector, lifeLines, type LifeEvent } from "./watch";
+import { ESC_INSPECTOR, onEscape } from "./escape";
+import { lifeLines, type LifeEvent } from "./watch";
 
 const HOW: Record<string, string> = {
   instinct: "born knowing", discovered: "discovered it", insight: "had the idea", taught: "was taught",
@@ -38,17 +39,14 @@ export function Inspector() {
     return () => { alive = false; clearInterval(t); };
   }, [selected?.world, selected?.id]);
 
-  useEffect(() => {  // Escape closes it (a dialog or an armed god-mode tool takes Escape first)
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      const s = useUI.getState();
-      const el = e.target as HTMLElement | null;
-      if (escapeClosesInspector({ selected: !!s.selected, dialogOpen: !!document.querySelector(".modal-bg"), godTool: !!s.godTool,
-        typing: !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) })) s.set({ selected: null, follow: false });
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  // Escape closes it: the lowest layer (escape.ts), so an open menu or an armed god tool takes it first; not while a
+  // dialog is up over it
+  useEffect(() => onEscape(ESC_INSPECTOR, () => {
+    const s = useUI.getState();
+    if (!s.selected || document.querySelector(".modal-bg")) return false;
+    s.set({ selected: null, follow: false });
+    return true;
+  }), []);
 
   if (!selected || !detail) return null;
   const close = () => set({ selected: null, follow: false });
@@ -222,7 +220,7 @@ function LifeStory({ world, id, alive }: { world: string; id: string; alive: boo
     let on = true;
     const load = () => api<Life>(`/api/worlds/${world}/chits/${id}/life`).then((l) => on && setLife(l)).catch(() => on && setLife(null));
     load();
-    const t = alive ? setInterval(load, 6000) : null;  // (a dead chit's story is finished)
+    const t = alive ? setInterval(load, 30000) : null;  // (now and then while it lives; a dead chit's story is finished)
     return () => { on = false; if (t) clearInterval(t); };
   }, [world, id, alive]);
   if (!life) return null;

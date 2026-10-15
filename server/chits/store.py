@@ -73,6 +73,9 @@ class Store:
             self.db.execute("ALTER TABLE savepoints ADD COLUMN summary TEXT")  # what the Saves list shows
         self.db.commit()
         self._migrate_timelines()
+        # a chit's own events (the Life tab): built once on an old save, then kept up by every insert
+        self.db.execute("CREATE INDEX IF NOT EXISTS events_by_actor ON events (world_id, actor, seq)")
+        self.db.commit()
 
     def _migrate_timelines(self) -> None:
         """Retain old evidence while giving restored timelines independent identities."""
@@ -248,25 +251,39 @@ class Store:
         out.reverse()
         return out
 
-    def life_events(self, world_id: str, aid: str, kinds, epoch: Any = None, limit: int = 2000) -> List[Dict[str, Any]]:
-        """The events of `kinds` about one chit, oldest first: its own (actor), and the ones that name it in their data
-        (a child's birth, a building it helped raise, a fight). Read-only and bounded (`limit`, the most recent)."""
+    LIFE_MENTIONS = ("birth", "built", "fight")  # events that name a chit in their data (parents, builders, opponent)
+
+    def life_events(self, world_id: str, aid: str, kinds, born_tick: int, until_tick: int, max_seq: Optional[int] = None,
+                    epoch: Any = None, limit: int = 2000) -> List[Dict[str, Any]]:
+        """The stored events of `kinds` about one chit, oldest first. Three short, bounded queries, the lock held for
+        each alone: its own events by the actor index (the newest `limit`), its own birth and death always (however
+        long the life), and the events that name it in their data (a child's birth, a building it helped raise, a
+        fight) within its lifetime only, by the tick index. `max_seq`: nothing newer (the last checkpoint)."""
         kinds = list(kinds)
-        q = (f"SELECT seq, tick, kind, importance, actor, text, data FROM events WHERE world_id=? AND kind IN "
-             f"({','.join('?' * len(kinds))}) AND (actor=? OR (kind IN ('birth','built','fight') AND data LIKE ?))")
-        args: List[Any] = [world_id, *kinds, aid, f'%"{aid}"%']
+        marks = ",".join("?" * len(kinds))
+        tail, more = "", []
+        if max_seq is not None:
+            tail, more = " AND seq<=?", [int(max_seq)]
         if epoch:
-            clause, more = _epoch_clause(epoch)
-            q += clause
-            args += more
-        q += " ORDER BY seq DESC LIMIT ?"
-        args.append(max(1, int(limit)))
-        with self.lock:
-            rows = self.db.execute(q, args).fetchall()
-        out = [{"seq": r[0], "tick": r[1], "kind": r[2], "importance": r[3], "actor": r[4], "text": r[5],
-                "data": json.loads(r[6] or "{}")} for r in rows]
-        out.reverse()
-        return out
+            clause, ep = _epoch_clause(epoch)
+            tail += clause
+            more += ep
+        cols = "SELECT seq, tick, kind, importance, actor, text, data FROM events WHERE world_id=?"
+        lim = max(1, int(limit))
+        queries = [
+            (f"{cols} AND actor=? AND kind IN ({marks}){tail} ORDER BY seq DESC LIMIT ?", [world_id, aid, *kinds, *more, lim]),
+            (f"{cols} AND actor=? AND kind IN ('birth','death'){tail}", [world_id, aid, *more]),
+            (f"{cols} AND tick>=? AND tick<=? AND kind IN ({','.join('?' * len(self.LIFE_MENTIONS))}) AND actor IS NOT ? "
+             f"AND data LIKE ?{tail} ORDER BY seq DESC LIMIT ?",
+             [world_id, int(born_tick), int(until_tick), *self.LIFE_MENTIONS, aid, f'%"{aid}"%', *more, lim]),
+        ]
+        rows: Dict[int, tuple] = {}
+        for q, args in queries:
+            with self.lock:
+                got = self.db.execute(q, args).fetchall()
+            rows.update((r[0], r) for r in got)
+        return [{"seq": r[0], "tick": r[1], "kind": r[2], "importance": r[3], "actor": r[4], "text": r[5],
+                 "data": json.loads(r[6] or "{}")} for _, r in sorted(rows.items())]
 
     def count_kinds(self, world_id: str, kinds, epoch: Any = None, unless: str = "") -> Dict[str, int]:
         """How many events of each kind a world's timeline holds (`unless`: not those whose data has that key)."""

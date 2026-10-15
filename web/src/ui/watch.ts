@@ -4,17 +4,21 @@
 /** Who drove a world's last finished steps (server views.thinking, from the diagnostics' provenance categories). */
 export type Thinking = {
   brain: string; steps: number; model_pct: number | null; body_pct: number | null; routine_pct: number | null;
-  instinct_pct: number | null; fallback_pct: number | null; on_instinct: boolean; why: "" | "no_model" | "model_down";
+  instinct_pct: number | null; fallback_pct: number | null; waiting_pct?: number | null; on_instinct: boolean;
+  why: "" | "no_model" | "model_down" | "busy";
 };
 
-/** The "running on instinct" chip by the world's name: a world with no model, or one whose model has decided none
- *  of its recent steps while instinct stood in. Nothing while a model is thinking. */
+/** The "running on instinct" chip by the world's name: a world with no model, or one whose model is not answering.
+ *  Nothing while a model is thinking, and nothing for a model that is only slow (busy): that one is still there. */
 export function instinctChip(t: Thinking | null | undefined, brainId?: string): { text: string; title: string } | null {
   const why = t?.on_instinct ? t.why : !t && brainId === "instinct" ? "no_model" : "";
-  if (why === "no_model") return { text: "⚙ running on instinct", title: "No model is set for this world: every chit acts on its built-in instinct." };
-  if (why === "model_down") {
-    return { text: "⚙ running on instinct", title: `The model decided none of the last ${t!.steps} steps: instinct is standing in for it.` };
+  if (why === "no_model") {
+    const brought = t?.model_pct ? Math.round(t.model_pct) : 0;  // (a voyager keeps the model it sailed with)
+    return { text: "⚙ running on instinct", title: brought
+      ? `No model is set for this world: its chits act on instinct, apart from a few who brought a model with them (${brought}% of recent steps).`
+      : "No model is set for this world: every chit acts on its built-in instinct." };
   }
+  if (why === "model_down") return { text: "⚙ running on instinct", title: "The model is not answering: instinct is standing in for it until it does." };
   return null;
 }
 
@@ -25,7 +29,9 @@ export function thinkingLine(t: Thinking | null | undefined): string {
     .filter(([, v]) => v != null && v > 0)
     .sort((a, b) => (b[1] as number) - (a[1] as number))
     .map(([k, v]) => `${k} ${Math.round(v as number)}%`);
-  const head = t.brain === "instinct" ? "No model: " : t.why === "model_down" ? "Model not deciding: " : "";
+  const waited = t.waiting_pct ? `, chits waited ${Math.round(t.waiting_pct)}% of the time` : "";
+  const head = t.brain === "instinct" ? "No model: " : t.why === "model_down" ? "Model not answering: "
+    : t.why === "busy" ? `The model is busy (${Math.round(t.fallback_pct ?? 0)}% of steps fell back to instinct${waited}): ` : "";
   return `${head}${parts.join(" · ")} of the last ${t.steps} steps`;
 }
 
@@ -51,12 +57,6 @@ export function holdOrder(held: string[] | null, ids: string[]): string[] {
   const kept = held.filter((id) => now.has(id));
   const had = new Set(kept);
   return [...kept, ...ids.filter((id) => !had.has(id))];
-}
-
-/** Does Escape close the Inspector? Not while a dialog is open or a god-mode tool is armed (those take Escape
- *  first), and not while typing. */
-export function escapeClosesInspector(s: { selected: boolean; dialogOpen: boolean; godTool: boolean; typing: boolean }): boolean {
-  return s.selected && !s.dialogOpen && !s.godTool && !s.typing;
 }
 
 /** One moment of a chit's life (server views.life): its own, or one it was part of (`role`). */
@@ -98,7 +98,7 @@ export function lifeLines(events: LifeEvent[]): (LifeEvent & { icon: string })[]
  *  ideas as it can hold (or none is left to give): the panel said "1094.8/24". Over the mark it says why it waits. */
 export function insightLabel(insight: number, next: number): { text: string; title: string } {
   if (!next) return { text: `${Math.floor(insight)} insight`, title: "Insight the scholars have gathered" };
-  if (insight < next) return { text: `${Math.floor(insight)}/${Math.round(next)} insight to the next`, title: `${insight} of ${next} insight` };
+  if (insight < next) return { text: `${Math.floor(insight)}/${Math.round(next)} insight to the next`, title: `${Math.floor(insight)} of ${Math.round(next)} insight` };
   return { text: "next idea ready: waits for an open one to come true",
     title: `The scholars have ${Math.round(insight)} insight, more than the ${Math.round(next)} a new idea takes. One comes once an open idea comes true (or once there is something left to hint at).` };
 }

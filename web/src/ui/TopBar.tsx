@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAnchor } from "./popover";
 import { api, errorText } from "../net/socket";
 import { localStorageSet, notifyError, useUI, worlds } from "../state/store";
 import { lookButton } from "./look";
@@ -16,28 +17,16 @@ const SPEED_LABEL: Record<number, string> = { 1: "1×", 2: "2×", 5: "5×", 10: 
 /** ⋯ The bar's less-used buttons, below 1560px: a menu of them with their labels (it hangs from the button, outside
  *  the bar, which scrolls sideways and would clip it). Closes on a choice, a click elsewhere or Escape. */
 function MoreMenu({ children, dot }: { children: React.ReactNode; dot: boolean }) {
-  const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+  const [open, setOpen] = useState(false);
   const btn = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!at) return;
-    const off = (e: MouseEvent) => { if (!menu.current?.contains(e.target as Node) && !btn.current?.contains(e.target as Node)) setAt(null); };
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setAt(null); };
-    window.addEventListener("mousedown", off);
-    window.addEventListener("keydown", key);
-    return () => { window.removeEventListener("mousedown", off); window.removeEventListener("keydown", key); };
-  }, [at]);
-  const toggle = () => {
-    const r = btn.current?.getBoundingClientRect();
-    setAt(at || !r ? null : { top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
-  };
+  const r = useAnchor(open, () => setOpen(false), btn, menu);
   return (<>
-    <button ref={btn} className={`icon-btn tb-more ${at ? "on" : ""}`} title="More: night, look, director, replay, god mode, recordings, restart" onClick={toggle}>
+    <button ref={btn} className={`icon-btn tb-more ${open ? "on" : ""}`} title="More: night, look, director, replay, god mode, recordings, restart" onClick={() => setOpen(!open)}>
       ⋯{dot && <span className="rec-dot" title="recording" />}
     </button>
-    {/* (in the page, not the bar: the bar's backdrop filter would hold a fixed menu inside it, clipped) */}
-    {at && createPortal(<div ref={menu} className="tb-menu" style={{ top: at.top, right: at.right }}
-      onClick={(e) => { if ((e.target as HTMLElement).closest("button")) setAt(null); }}>{children}</div>, document.body)}
+    {r && createPortal(<div ref={menu} className="tb-menu" style={{ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }}
+      onClick={(e) => { if ((e.target as HTMLElement).closest("button")) setOpen(false); }}>{children}</div>, document.body)}
   </>);
 }
 
@@ -52,7 +41,7 @@ export function TopBar() {
   }, []);
   const [thinking, setThinking] = useState<Record<string, Thinking>>({});
   useEffect(() => {  // ⚙ who is thinking for each world: the bar says so when one runs on instinct
-    const poll = () => api<{ thinking?: Record<string, Thinking> }>("/api/health").then((h) => setThinking(h.thinking ?? {})).catch(() => {});
+    const poll = () => api<{ who_thinks?: Record<string, Thinking> }>("/api/health").then((h) => setThinking(h.who_thinks ?? {})).catch(() => {});
     poll();
     const t = setInterval(poll, 10000);
     return () => clearInterval(t);

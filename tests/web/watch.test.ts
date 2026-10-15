@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, insightLabel, instinctChip, lifeLines, stallLine, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, lifeLines, stallLine, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -8,11 +8,18 @@ const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_
 describe("instinctChip", () => {
   it("labels a world with no model, and one whose model has stopped deciding", () => {
     expect(instinctChip(t({ brain: "instinct", on_instinct: true, why: "no_model" }))!.text).toBe("⚙ running on instinct");
-    expect(instinctChip(t({ on_instinct: true, why: "model_down", steps: 57 }))!.title).toContain("none of the last 57 steps");
+    expect(instinctChip(t({ on_instinct: true, why: "model_down", steps: 57 }))!.title).toContain("not answering");
+    expect(instinctChip(t({ brain: "instinct", on_instinct: true, why: "no_model", model_pct: 0 }))!.title).toContain("every chit");
     // before the server has answered, a world whose brain is instinct is still said to be
     expect(instinctChip(undefined, "instinct")).not.toBeNull();
   });
-  it("says nothing while a model is thinking", () => {
+  it("does not say every chit acts on instinct when a voyager brought its model", () => {
+    const c = instinctChip(t({ brain: "instinct", on_instinct: true, why: "no_model", model_pct: 12.4 }))!;
+    expect(c.title).not.toContain("every chit");
+    expect(c.title).toContain("12% of recent steps");
+  });
+  it("says nothing while a model is thinking, or only busy", () => {
+    expect(instinctChip(t({ why: "busy", model_pct: 0, fallback_pct: 80 }))).toBeNull();
     expect(instinctChip(t({}))).toBeNull();
     expect(instinctChip(undefined, "m1")).toBeNull();
     expect(instinctChip(t({ brain: "instinct", on_instinct: false }), "instinct")).toBeNull();
@@ -25,7 +32,11 @@ describe("thinkingLine", () => {
     expect(thinkingLine(t({ brain: "instinct", model_pct: 0, instinct_pct: 70, body_pct: 30, routine_pct: 0 })))
       .toBe("No model: instinct 70% · body reflexes 30% of the last 100 steps");
     expect(thinkingLine(t({ why: "model_down", model_pct: 0, instinct_pct: 90, body_pct: 10, routine_pct: null })))
-      .toBe("Model not deciding: instinct 90% · body reflexes 10% of the last 100 steps");
+      .toBe("Model not answering: instinct 90% · body reflexes 10% of the last 100 steps");
+    expect(thinkingLine(t({ why: "busy", model_pct: 0, instinct_pct: 80, body_pct: 20, routine_pct: 0, fallback_pct: 75.4, waiting_pct: 33.3 })))
+      .toBe("The model is busy (75% of steps fell back to instinct, chits waited 33% of the time): instinct 80% · body reflexes 20% of the last 100 steps");
+    expect(thinkingLine(t({ why: "busy", model_pct: 0, instinct_pct: 100, body_pct: 0, routine_pct: 0, fallback_pct: 100 })))
+      .toBe("The model is busy (100% of steps fell back to instinct): instinct 100% of the last 100 steps");
   });
   it("has nothing to share before any step is finished", () => {
     expect(thinkingLine(null)).toBe("No steps finished yet.");
@@ -57,17 +68,6 @@ describe("holdOrder", () => {
   });
   it("is the fresh order when nothing is held", () => {
     expect(holdOrder(null, ["c", "a"])).toEqual(["c", "a"]);
-  });
-});
-
-describe("escapeClosesInspector", () => {
-  const base = { selected: true, dialogOpen: false, godTool: false, typing: false };
-  it("closes an open Inspector", () => expect(escapeClosesInspector(base)).toBe(true));
-  it("leaves Escape to a dialog, an armed god tool or a text box, and does nothing with nothing open", () => {
-    expect(escapeClosesInspector({ ...base, dialogOpen: true })).toBe(false);
-    expect(escapeClosesInspector({ ...base, godTool: true })).toBe(false);
-    expect(escapeClosesInspector({ ...base, typing: true })).toBe(false);
-    expect(escapeClosesInspector({ ...base, selected: false })).toBe(false);
   });
 });
 
@@ -103,6 +103,7 @@ describe("insightLabel", () => {
     expect(l.text).toBe("next idea ready: waits for an open one to come true");
     expect(l.text).not.toContain("1094");
     expect(l.title).toContain("1095");
+    expect(insightLabel(7.63, 24.5).title).toBe("7 of 25 insight");
     expect(insightLabel(24, 24).text).toContain("ready");
   });
   it("has no mark to count to in a world without scholars' ideas", () => {

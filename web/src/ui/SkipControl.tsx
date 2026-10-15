@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useAnchor } from "./popover";
 import { api, errorText } from "../net/socket";
 import { notifyError, useUI } from "../state/store";
 import { SKIP_CHOICES, SKIP_NOTE, skipProgress, skipResult } from "./skip";
@@ -24,6 +25,8 @@ export function SkipControl() {
   }, [ended, !control]);
   const send = (path: string, body: object) =>
     api(path, body).then((c) => set({ control: c })).catch((e) => notifyError(errorText(e)));
+  const menu = useRef<HTMLDivElement>(null);
+  const r = useAnchor(open && !control?.skip, () => setOpen(false), btn, menu);
   if (control?.skip) {
     return (
       <span className="skip-run" title={SKIP_NOTE}>
@@ -38,9 +41,9 @@ export function SkipControl() {
       <button ref={btn} className={`pace-btn ${open ? "on" : ""}`} title={`Skip ahead at full speed, then go back to this speed. ${SKIP_NOTE}`}
         onClick={() => setOpen(!open)}>⏩ skip</button>
       {note && !open && <span className="skip-note" title={note}>{note}</span>}
-      {/* (in the page, not the bar: the bar scrolls sideways and clipped the menu out of sight) */}
-      {open && createPortal(
-        <div className="skip-menu" style={{ position: "fixed", top: (btn.current?.getBoundingClientRect().bottom ?? 48) + 8, left: btn.current?.getBoundingClientRect().left ?? 0 }}>
+      {/* (in the page, not the bar: the bar scrolls sideways and clipped the menu out of sight; popover.ts) */}
+      {r && createPortal(
+        <div ref={menu} className="skip-menu" style={{ position: "fixed", top: r.bottom + 8, left: Math.max(8, Math.min(r.left, window.innerWidth - 258)) }}>
           {SKIP_CHOICES.map((ch) => (
             <button key={ch.label} onClick={() => { setOpen(false); setNote(""); send("/api/skip", { until: ch.until, days: ch.days }); }}>{ch.label}</button>
           ))}
