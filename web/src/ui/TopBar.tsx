@@ -8,7 +8,8 @@ import { lookButton } from "./look";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { SkipControl } from "./SkipControl";
-import { instinctChip, type Thinking } from "./watch";
+import { topBarChips, type Thinking } from "./watch";
+import { mindDown, mindLabel } from "./mindState";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
@@ -59,7 +60,7 @@ export function TopBar() {
   const look = lookButton(theme, control?.contract);
   const shownIds = view === "split" ? metas.map((w) => w.id) : [primary];
   const nameOf = (id: string) => metas.find((m) => m.id === id)?.name ?? id;
-  const onInstinct = shownIds.flatMap((id) => { const c = instinctChip(thinking[id], brains[id]?.id); return c ? [{ id, ...c }] : []; });
+  const onInstinct = topBarChips(shownIds, thinking, brains);  // (none for an outage the 🧠 chip already tells)
   const restart = async () => {
     const m = worlds[metas[0]?.id]?.meta;
     if (!m || !confirm("Restart this game from day 1? Same island, same mode, same models. The current history is erased.")) return;
@@ -162,9 +163,9 @@ export function TopBar() {
         {metas.map((w) => {
           const b = brains[w.id];
           return (
-            <span key={w.id} className={`bp ${b && !b.healthy ? "bad" : ""}`}>
+            <span key={w.id} className={`bp ${b && (!b.healthy || mindDown(b)) ? "bad" : ""}`}>
               <i className={`dot ${w.culture}`} />
-              <b>{b?.label ?? "…"}</b>
+              <b>{mindLabel(b)}</b>
               {b && b.id !== "instinct" && <em>{b.thinking > 0 ? `💭${b.thinking}` : ""} {b.tok_s ? `${Math.round(b.tok_s)} t/s` : ""}</em>}
             </span>
           );

@@ -138,3 +138,31 @@ def test_the_endpoint_needs_the_token_like_the_other_private_reads(tmp_path, mon
         h = {"Authorization": "Bearer why-test-token"}
         assert c.post("/api/control", json={"paused": True}, headers=h).status_code == 200
         assert c.get("/api/why", headers=h).json()["game"] == [{"kind": "paused", "text": "The game is paused."}]
+
+
+def test_the_diagnostics_are_taken_on_the_loop_the_worlds_step_on(tmp_path, monkeypatch):
+    """Live, 2026-10-15: /api/why answered 500 "dictionary changed size during iteration". The report walked a world's
+    buildings from a worker thread while the loop put one up. Built on the loop itself, no step can run mid-walk."""
+    monkeypatch.setenv("CHITS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("CHITS_PER_WORLD", "3")
+    monkeypatch.setenv("CHITS_SPEED", "0")
+    monkeypatch.setenv("CHITS_AUTODETECT", "0")
+    monkeypatch.delenv("CHITS_MODEL_URL", raising=False)
+    from fastapi.testclient import TestClient
+    from chits.app import R, app
+
+    seen = []
+    real = diag.report
+
+    def report(rt):
+        try:
+            seen.append(asyncio.get_running_loop() is rt._task.get_loop())
+        except RuntimeError:  # (no loop: a worker thread, where the worlds can step under the walk)
+            seen.append(False)
+        return real(rt)
+
+    monkeypatch.setattr(diag, "report", report)
+    with TestClient(app) as c:
+        for path in ("/api/why", "/api/diagnostics", "/api/diagnostics.txt", "/api/scorecard"):
+            assert c.get(path).status_code == 200
+    assert seen == [True, True, True, True]  # (the scorecard, polled by the side panel, walks the same report)

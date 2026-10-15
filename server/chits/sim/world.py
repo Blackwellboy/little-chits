@@ -2230,7 +2230,7 @@ class World:
             **({"rng_tick": tick_rngs} if (tick_rngs := self._tick_streams_dict()) else {}),
             "res_amt": self.res_amt, "traffic": list(self.traffic), "roads": sorted(self.roads),
             "tunnels": sorted([i, sid] for i, sid in self.tunnels.items()),
-            "agents": [a.to_dict() for a in self.agents.values()], "dead": [a.to_dict() for a in self.dead.values()],
+            "agents": [a.to_dict() for a in self.agents.values()], "dead": [a.to_record() for a in self.dead.values()],
             "structures": [s.to_dict() for s in self.structures.values()],
             "tablets": [t.to_dict() for t in self.tablets.values()], "seq": self.seq, "first": self.first,
             "counters": self.counters, "history": self.history[-400:],

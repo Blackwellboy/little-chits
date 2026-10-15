@@ -607,6 +607,9 @@ button.danger { color: var(--bad); }
   padding: 10px 14px; border-radius: 10px; background: rgba(120, 20, 20, 0.94); border: 1px solid rgba(255,120,120,0.6);
   color: #fff; font-size: 13px; line-height: 1.4; }
 .loop-error small { display: block; opacity: .85; margin-top: 4px; }
+.mind-down { position: fixed; top: 56px; right: 12px; z-index: 55; max-width: 380px; cursor: pointer;
+  padding: 6px 10px; border-radius: 10px; background: rgba(110, 70, 10, 0.92); border: 1px solid rgba(255,190,90,0.6);
+  color: #fff; font-size: 12px; line-height: 1.4; }
 .icon-btn:disabled { opacity: .45; cursor: default; }
 
 /* 📜 world rules: New Game presets and the read-only panel */

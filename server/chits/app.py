@@ -98,8 +98,18 @@ def world(wid: str):
 
 
 # ------------------------------------------------------------------ read
+# A plain `def` route runs in a worker thread while the loop steps the worlds: reading a world there walked it mid-step
+# ("dictionary changed size during iteration", /api/why, live 2026-10-15). So every route that reads or changes the
+# worlds, the forks or the mind is `async def` and runs on the loop, between two steps. Blocking disk or database work
+# goes to a thread through _io, given only ids, ticks and copies, never a world. A route left as a thread reads only
+# stored data (tests/test_routes_on_loop.py lists each one and why).
+async def _io(fn, *args, **kw):
+    """Blocking disk or database work off the loop. Pass it ids, ticks and copies: never a live world."""
+    return await asyncio.to_thread(fn, *args, **kw)
+
+
 @app.get("/api/health")
-def health():
+async def health():
     r = R()
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
@@ -128,18 +138,22 @@ def _thinking(r, w) -> Dict[str, Any]:
             continue
     bid = r.mind.world_brain.get(w.id, INSTINCT)
     waiting = round(100 * d.waiting_ticks / d.model_ticks, 1) if d.model_ticks else None
-    return views.thinking(recent, bid, bid == INSTINCT or model_up(r.mind.brains.get(bid)), waiting)
+    # "model down" is the watchdog's (Mind.watch: a game day, a minute and three failures in a row), so this line,
+    # the brain pill and the 🧠 chip agree; a brain that no longer exists answers nothing
+    b = r.mind.brains.get(bid)
+    up = bid == INSTINCT or (b is not None and not r.mind.down_state(w.id)["down"])
+    return views.thinking(recent, bid, up, waiting)
 
 
 @app.get("/api/worlds")
-def worlds():
+async def worlds():
     r = R()
     return [{**views.world_meta(w), "clock": w.clock(), "stats": w.stats(), "brain": r.brain_summary().get(w.id)}
             for w in r.worlds.values()]
 
 
 @app.get("/api/worlds/{wid}/agents/{aid}")
-def agent(wid: str, aid: str):
+async def agent(wid: str, aid: str):
     w = world(wid)
     a = w.agents.get(aid) or w.dead.get(aid)
     if not a:
@@ -149,7 +163,7 @@ def agent(wid: str, aid: str):
 
 
 @app.get("/api/worlds/{wid}/agents")
-def agents(wid: str, dead: bool = False):
+async def agents(wid: str, dead: bool = False):
     w = world(wid)
     src = list(w.agents.values()) + (list(w.dead.values()) if dead else [])
     out = []
@@ -180,7 +194,7 @@ def _role(a) -> str:
 
 
 @app.get("/api/worlds/{wid}/structures/{sid}")
-def structure(wid: str, sid: str):
+async def structure(wid: str, sid: str):
     w = world(wid)
     s = w.structures.get(sid)
     if not s:
@@ -202,12 +216,12 @@ def structure(wid: str, sid: str):
 
 
 @app.get("/api/knowledge")
-def knowledge():
+async def knowledge():
     return views.knowledge_table(list(R().worlds.values()))
 
 
 @app.get("/api/worlds/{wid}/encyclopedia/{knowledge}")
-def encyclopedia(wid: str, knowledge: str):
+async def encyclopedia(wid: str, knowledge: str):
     """What a discovered thing is for (views.encyclopedia). 404 for what this world hasn't found."""
     e = views.encyclopedia(world(wid), knowledge)
     if e is None:
@@ -216,7 +230,7 @@ def encyclopedia(wid: str, knowledge: str):
 
 
 @app.get("/api/inventions")
-def inventions():
+async def inventions():
     """Each world's own inventions (T20): what it is, what it's for, who invented it, how many know it, what it does
     (with its strength) and, for one carried here over the sea, where it came from."""
     from .sim.invent import effect_words
@@ -230,7 +244,7 @@ def inventions():
 
 
 @app.get("/api/ideas")
-def building_ideas():
+async def building_ideas():
     """Each world's own ideas for buildings (sim/ideas.py): what each is called, what it is a kind of, who thought of
     it, what it takes, how many know it and how many stand."""
     from .sim.items import DESIGNS
@@ -244,27 +258,28 @@ def building_ideas():
     return out
 
 
-def _replay_data(w, from_tick: int, to_tick: Optional[int], epoch: Optional[str]) -> Dict[str, Any]:
+async def _replay_data(w, from_tick: int, to_tick: Optional[int], epoch: Optional[str]) -> Dict[str, Any]:
     r = R()
     r._flush_events(w)
     ep = epoch or w.epoch
-    evs = [e for e in r.store.events(w.id, since_tick=from_tick, until_tick=to_tick, min_importance=2, limit=20000, epoch=ep)]
-    return {"meta": {**views.world_meta(w), "epoch": ep}, "keyframes": r.store.keyframes(w.id, from_tick, to_tick, ep),
-            "events": evs}
+    meta = {**views.world_meta(w), "epoch": ep}
+    evs = list(await _io(r.store.events, w.id, since_tick=from_tick, until_tick=to_tick, min_importance=2, limit=20000,
+                         epoch=ep))
+    return {"meta": meta, "keyframes": await _io(r.store.keyframes, w.id, from_tick, to_tick, ep), "events": evs}
 
 
 @app.get("/api/worlds/{wid}/replay")
-def replay(wid: str, request: Request, epoch: Optional[str] = None):
+async def replay(wid: str, request: Request, epoch: Optional[str] = None):
     """Keyframes and notable events for scrubbing back through history (T33). One epoch at a time."""
     w = world(wid)
     q = request.query_params
     from_tick = int(q.get("from") or 0)
     to_tick = int(q["to"]) if q.get("to") else None
-    return _replay_data(w, from_tick, to_tick, epoch)
+    return await _replay_data(w, from_tick, to_tick, epoch)
 
 
 @app.get("/api/replay/export")
-def replay_export(days: int = 7):
+async def replay_export(days: int = 7):
     """A single-file replay bundle anyone can open in web/replay.html (T33): no server, no GPU needed."""
     import base64
     import time as _time
@@ -274,12 +289,13 @@ def replay_export(days: int = 7):
     out: Dict[str, Any] = {"version": 1, "exported": _time.strftime("%Y-%m-%dT%H:%M:%S"), "mode": r.mode,
                            "theme": theme.active(), "pack": r.pack_info(), "worlds": {}}
     summary = r.brain_summary()
-    for wid, w in r.worlds.items():
+    for wid, w in list(r.worlds.items()):
         frm = max(0, w.tick - days * 240)
-        d = _replay_data(w, frm, None, None)
+        d = await _replay_data(w, frm, None, None)
         if d["keyframes"] and d["keyframes"][0].get("s") is None:
             # start from a day keyframe so the viewer has the buildings from the first frame
-            prev = [k for k in r.store.keyframes(w.id, max(0, frm - 240), frm, w.epoch) if k.get("s") is not None]
+            prev = [k for k in await _io(r.store.keyframes, w.id, max(0, frm - 240), frm, w.epoch)
+                    if k.get("s") is not None]
             if prev:
                 d["keyframes"].insert(0, prev[-1])
         amt = bytes(min(255, max(0, int(v))) for v in w.res_amt)
@@ -313,7 +329,7 @@ class GodBody(BaseModel):
 
 
 @app.post("/api/worlds/{wid}/god")
-def god(wid: str, body: GodBody):
+async def god(wid: str, body: GodBody):
     """God mode (T28): drop anything, or meddle. Marks the run as a sandbox; refused in experiments."""
     world(wid)
     try:
@@ -330,7 +346,7 @@ class SaveBody(BaseModel):
 
 
 @app.post("/api/savepoints")
-def savepoint_create(body: SaveBody):
+async def savepoint_create(body: SaveBody):
     return R().save_point(body.name)
 
 
@@ -340,7 +356,7 @@ def savepoint_list():
 
 
 @app.post("/api/savepoints/{sid}/restore")
-def savepoint_restore(sid: int):
+async def savepoint_restore(sid: int):
     try:
         ok = R().restore_point(sid)
     except PermissionError as e:
@@ -452,13 +468,13 @@ def _rivals_data() -> Dict[str, Any]:
 
 
 @app.get("/api/rivals")
-def rivals():
+async def rivals():
     """Age of Chitpires (T34): how the islands stand with each other, and a side-by-side count."""
     return _rivals_data()
 
 
 @app.get("/api/rivals/card.svg")
-def rivals_card():
+async def rivals_card():
     from fastapi.responses import Response
     from .story.card import scoreboard_svg
 
@@ -474,7 +490,7 @@ def rivals_card():
 
 
 @app.get("/api/compare")
-def compare_worlds():
+async def compare_worlds():
     """How differently did the two worlds think (T23)? Needs two worlds."""
     from .story.divergence import compare, to_markdown, to_tweet
 
@@ -486,7 +502,7 @@ def compare_worlds():
 
 
 @app.get("/api/government")
-def government():
+async def government():
     """Each world's chief or elder and its laws (T26). An authored institution; what happens inside it is real."""
     out = {}
     for w in R().worlds.values():
@@ -498,24 +514,24 @@ def government():
 
 
 @app.get("/api/beliefs")
-def beliefs():
+async def beliefs():
     """What each world's chits believe (T21), with followers, shrines and tablets. Beliefs, not facts."""
     return {w.id: views.belief_list(w) for w in R().worlds.values()}
 
 
 @app.get("/api/worlds/{wid}/events")
-def events(wid: str, since: int = 0, min_importance: int = 1, limit: int = 300):
-    world(wid)
+async def events(wid: str, since: int = 0, min_importance: int = 1, limit: int = 300):
+    w = world(wid)
     r = R()
-    r._flush_events(r.worlds[wid])
-    return r.store.events(wid, since_tick=since, min_importance=min_importance, limit=limit, epoch=r.worlds[wid].timeline())
+    r._flush_events(w)
+    return await _io(r.store.events, wid, since_tick=since, min_importance=min_importance, limit=limit, epoch=w.timeline())
 
 
 @app.get("/api/worlds/{wid}/decisions")
-def decisions(wid: str, agent: Optional[str] = None, limit: int = 100):
+async def decisions(wid: str, agent: Optional[str] = None, limit: int = 100):
     """Every model decision: which model, which prompt, how long, parsed how, adopted or stale (F2)."""
     world(wid)
-    return R().store.decisions(wid, agent, max(1, min(limit, 5000)))
+    return await _io(R().store.decisions, wid, agent, max(1, min(limit, 5000)))
 
 
 @app.get("/api/decisions.jsonl")
@@ -527,7 +543,7 @@ def decisions_jsonl():
 
 
 @app.get("/api/worlds/{wid}/lineage/{knowledge}")
-def lineage(wid: str, knowledge: str):
+async def lineage(wid: str, knowledge: str):
     """How one piece of knowledge travelled: first discovery, every delivery, and who made it work (F7)."""
     w = world(wid)
     first = w.first.get(knowledge)
@@ -543,33 +559,34 @@ def lineage(wid: str, knowledge: str):
 
 
 @app.get("/api/worlds/{wid}/recap")
-def story_so_far(wid: str):
+async def story_so_far(wid: str):
     """📜 The story so far, for someone who has just arrived: a count or a quote on every line."""
     from .story.recap import recap
 
     w = world(wid)
     rt = R()
-    counts = rt.store.count_kinds(w.id, ("law", "storm", "drought"), epoch=w.timeline())
+    tl = w.timeline()
+    counts = await _io(rt.store.count_kinds, w.id, ("law", "storm", "drought"), epoch=tl)
     # (a lookout driving a wolf off is logged as a "wolf" event too: only the attacks)
-    counts.update(rt.store.count_kinds(w.id, ("wolf",), epoch=w.timeline(), unless="driven_off"))
+    counts.update(await _io(rt.store.count_kinds, w.id, ("wolf",), epoch=tl, unless="driven_off"))
     rival = next((o for o in rt.worlds.values() if o is not w), None)
     return recap(w, counts, rival)
 
 
 @app.get("/api/worlds/{wid}/hall")
-def hall_of_ancestors(wid: str, limit: int = 60):
+async def hall_of_ancestors(wid: str, limit: int = 60):
     """🏛 A short biography for every chit that mattered, from its own record, the most recently departed first."""
     return views.hall(world(wid), max(1, min(300, limit)))
 
 
 @app.get("/api/worlds/{wid}/eras")
-def eras(wid: str):
+async def eras(wid: str):
     """The world's age and each age's first maker (views.eras): lamps and statues in the renderer."""
     return views.eras(world(wid))
 
 
 @app.get("/api/worlds/{wid}/family/{aid}")
-def family(wid: str, aid: str):
+async def family(wid: str, aid: str):
     """A chit's family tree, living and dead."""
     f = views.family(world(wid), aid)
     if f is None:
@@ -578,18 +595,18 @@ def family(wid: str, aid: str):
 
 
 @app.get("/api/worlds/{wid}/spread/{knowledge}")
-def spread(wid: str, knowledge: str):
+async def spread(wid: str, knowledge: str):
     """How the village came to know a thing: a tree from whoever found it (views.spread)."""
     return views.spread(world(wid), knowledge)
 
 
 @app.get("/api/worlds/{wid}/progress")
-def progress(wid: str):
+async def progress(wid: str):
     """🧭 How far a world has come, what it is doing now, and how its latest achievements happened."""
     w = world(wid)
     since = max(0, (w.tick // TICKS_PER_DAY - 1) * TICKS_PER_DAY)
     r = R()
-    evs = r.store.events(w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
+    evs = await _io(r.store.events, w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
     return {**views.progress(w, evs), "who_thinks": _thinking(r, w)}
 
 
@@ -612,19 +629,19 @@ async def chit_life(wid: str, aid: str):
 
 
 @app.get("/api/worlds/{wid}/settlements")
-def settlements(wid: str):
+async def settlements(wid: str):
     from .sim.settlements import detect
 
     return [s.to_dict() for s in detect(world(wid))]
 
 
 @app.get("/api/worlds/{wid}/stories/{day}")
-def story(wid: str, day: int):
+async def story(wid: str, day: int):
     world(wid)
     p = R().data_dir / "stories" / wid / f"day-{day:03d}.md"
     if not p.exists():
         raise HTTPException(404, "no story for that day yet")
-    return {"markdown": p.read_text()}
+    return {"markdown": await _io(p.read_text)}
 
 
 class Narrator(BaseModel):
@@ -632,7 +649,7 @@ class Narrator(BaseModel):
 
 
 @app.post("/api/narrator")
-def set_narrator(body: Narrator):
+async def set_narrator(body: Narrator):
     r = R()
     if body.brain and body.brain not in r.mind.brains:
         raise HTTPException(404, "no such brain")
@@ -646,7 +663,7 @@ class ModelOnlyBody(BaseModel):
 
 
 @app.post("/api/model-led")
-def set_model_led(body: ModelOnlyBody):
+async def set_model_led(body: ModelOnlyBody):
     """Model-led play (docs/MODEL_LED.md): the models' chits get no instinct plans, filler or fallback; their bodies
     keep their reflexes and the simulator still carries out each step. A model that is down leaves its chits waiting,
     visibly, never on instinct. Kept by the game; recorded. Not for an experiment run, which is stricter still."""
@@ -661,7 +678,7 @@ def set_model_led(body: ModelOnlyBody):
 
 
 @app.post("/api/model-only")
-def set_model_only(body: ModelOnlyBody):
+async def set_model_only(body: ModelOnlyBody):
     """A diagnostic, off by default and never kept over a restart: the models' chits get nothing from instinct (no
     menu of drafted options, no instinct plans while a model is slow, no body reflexes), so a run shows what the model
     does on its own. Its chits may die of neglect. Play only, and never for comparing models."""
@@ -676,68 +693,60 @@ def set_model_only(body: ModelOnlyBody):
 
 
 @app.get("/api/worlds/{wid}/sagas")
-def sagas(wid: str):
+async def sagas(wid: str):
     world(wid)
     d = R().data_dir / "stories" / wid
-    return [{"week": int(p.stem.split("-")[1])} for p in sorted(d.glob("week-*.md"))] if d.exists() else []
+    return await _io(lambda: [{"week": int(p.stem.split("-")[1])} for p in sorted(d.glob("week-*.md"))] if d.exists() else [])
 
 
 @app.get("/api/worlds/{wid}/sagas/{week}")
-def saga(wid: str, week: int):
+async def saga(wid: str, week: int):
     world(wid)
     p = R().data_dir / "stories" / wid / f"week-{week:02d}.md"
     if not p.exists():
         raise HTTPException(404, "no saga for that week yet")
-    return {"markdown": p.read_text()}
+    return {"markdown": await _io(p.read_text)}
 
 
 @app.get("/api/story/x")
-def story_x(since_day: int = 1, max_posts: int = 6):
+async def story_x(since_day: int = 1, max_posts: int = 6):
     """A ready-to-post thread from real moments in every world."""
-    from .story.moments import find_moments
     from .story.xpost import make_thread, pick_clip
-    from .sim.agent import TICKS_PER_DAY as TPD
 
-    r = R()
-    summary = r.brain_summary()
-    worlds, moments = [], {}
-    for w in r.worlds.values():
-        r._flush_events(w)
-        worlds.append({"id": w.id, "name": w.name, "brain": summary.get(w.id, {}).get("label", ""), "culture": w.culture,
-                       "day": w.day + 1, "stats": w.stats()})
-        evs = r.store.events(w.id, since_tick=max(0, (since_day - 1) * TPD), min_importance=1, limit=50000, epoch=w.timeline())
-        moments[w.id] = find_moments(evs, r.names(w))
+    worlds, moments = await _story_inputs(since_day)  # (the same walk the cards make)
     return {"posts": make_thread(worlds, moments, max(2, min(max_posts, 12))), "clip": pick_clip(moments)}
 
 
-def _story_inputs(since_day: int = 1):
+async def _story_inputs(since_day: int = 1):
     from .story.moments import find_moments
     from .sim.agent import TICKS_PER_DAY as TPD
 
     r = R()
     summary = r.brain_summary()
     worlds, moments = [], {}
-    for w in r.worlds.values():
+    for w in list(r.worlds.values()):
         r._flush_events(w)
         worlds.append({"id": w.id, "name": w.name, "brain": summary.get(w.id, {}).get("label", ""), "culture": w.culture,
                        "day": w.day + 1, "stats": w.stats()})
-        evs = r.store.events(w.id, since_tick=max(0, (since_day - 1) * TPD), min_importance=1, limit=50000, epoch=w.timeline())
-        moments[w.id] = find_moments(evs, r.names(w))
+        names = r.names(w)
+        evs = await _io(r.store.events, w.id, since_tick=max(0, (since_day - 1) * TPD), min_importance=1, limit=50000,
+                        epoch=w.timeline())
+        moments[w.id] = find_moments(evs, names)
     return worlds, moments
 
 
 @app.get("/api/story/card.svg")
-def story_card(since_day: int = 1):
+async def story_card(since_day: int = 1):
     from fastapi.responses import Response
     from .story.card import scoreboard_svg
     from .story.xpost import pick_clip
 
-    worlds, moments = _story_inputs(since_day)
+    worlds, moments = await _story_inputs(since_day)
     return Response(scoreboard_svg(worlds, pick_clip(moments)), media_type="image/svg+xml")
 
 
 @app.get("/api/story/card.png")
-def story_card_png(since_day: int = 1):
+async def story_card_png(since_day: int = 1):
     from fastapi.responses import Response
     from .story.card import scoreboard_svg
     from .story.xpost import pick_clip
@@ -746,26 +755,30 @@ def story_card_png(since_day: int = 1):
         import cairosvg  # optional
     except ImportError:
         return JSONResponse({"error": "PNG needs the optional cairosvg package: pip install cairosvg. The SVG version is at /api/story/card.svg"}, status_code=501)
-    worlds, moments = _story_inputs(since_day)
-    return Response(cairosvg.svg2png(bytestring=scoreboard_svg(worlds, pick_clip(moments)).encode()), media_type="image/png")
+    worlds, moments = await _story_inputs(since_day)
+    svg = scoreboard_svg(worlds, pick_clip(moments)).encode()
+    return Response(await _io(cairosvg.svg2png, bytestring=svg), media_type="image/png")
 
 
 @app.get("/api/run")
-def run_manifest():
+async def run_manifest():
     """What this run is: contract, mode, seed, exact brains and settings, prompt version, sandbox flags."""
     return R().write_manifest()
 
 
 @app.get("/api/scorecard")
-def scorecard():
+async def scorecard():
     """Which model is building the better civilisation, side by side (diag.scorecard)."""
     from . import diag
 
     return diag.scorecard(R())
 
 
+# The diagnostics walk every world's chits and buildings. A plain `def` endpoint runs in a worker thread while the loop
+# steps the worlds, and a building put up mid-walk ended /api/why in "dictionary changed size during iteration" (live,
+# 2026-10-15). As `async def` they run on the loop itself, between steps, where nothing moves under them.
 @app.get("/api/diagnostics")
-def diagnostics_json():
+async def diagnostics_json():
     """Is the model keeping up, are plans working, is anyone stuck? (see diag.py)"""
     from . import diag
 
@@ -773,7 +786,7 @@ def diagnostics_json():
 
 
 @app.get("/api/diagnostics.txt")
-def diagnostics_txt():
+async def diagnostics_txt():
     from fastapi.responses import PlainTextResponse
     from . import diag
 
@@ -781,7 +794,7 @@ def diagnostics_txt():
 
 
 @app.get("/api/why")
-def why_slow():
+async def why_slow():
     """"Why is nothing happening?": the diagnostics as a few plain sentences per world (diag.why_slow)."""
     from . import diag
 
@@ -789,7 +802,7 @@ def why_slow():
 
 
 @app.get("/api/worlds/{wid}/log.txt")
-def world_log(wid: str, min_importance: int = 1, days: int = 0):
+async def world_log(wid: str, min_importance: int = 1, days: int = 0):
     """Everything that happened, as plain text: one line per event, plus a daily numbers line.
     Handy for checking a long run went smoothly (or pasting into a chat with a model)."""
     from fastapi.responses import PlainTextResponse
@@ -798,10 +811,10 @@ def world_log(wid: str, min_importance: int = 1, days: int = 0):
     r = R()
     r._flush_events(w)
     since = max(0, w.tick - days * TICKS_PER_DAY) if days else 0
-    evs = r.store.events(wid, since_tick=since, min_importance=min_importance, limit=200000, epoch=w.timeline())
     brain = r.mind.world_brain.get(wid, INSTINCT)
     lines = [f"# {w.name} ({w.label}) · seed {w.seed} · brain {brain} · day {w.day}", ""]
     hist = {h.get("day"): h for h in w.history}
+    evs = await _io(r.store.events, wid, since_tick=since, min_importance=min_importance, limit=200000, epoch=w.timeline())
     day = None
     for e in evs:
         d = e["tick"] // TICKS_PER_DAY + 1
@@ -816,17 +829,17 @@ def world_log(wid: str, min_importance: int = 1, days: int = 0):
 
 
 @app.get("/api/worlds/{wid}/chronicle")
-def chronicle(wid: str):
+async def chronicle(wid: str):
     w = world(wid)
     r = R()
     r._flush_events(w)
-    evs = r.store.events(wid, min_importance=1, limit=20000, epoch=w.timeline())
+    evs = await _io(r.store.events, wid, min_importance=1, limit=20000, epoch=w.timeline())
     days = sorted({e["tick"] // 240 + 1 for e in evs}, reverse=True)
     return [views.day_chronicle(w, evs, d) for d in days[:60]]
 
 
 @app.get("/api/worlds/{wid}/history")
-def history(wid: str):
+async def history(wid: str):
     return world(wid).history
 
 
@@ -847,7 +860,7 @@ def get_theme():
 
 
 @app.post("/api/theme")
-def set_theme(b: ThemeBody):
+async def set_theme(b: ThemeBody):
     """The Look button: switch the theme in the game. Presentation only (the same random numbers either way); every
     observer redraws, and chits born from now on get the theme's names."""
     r = R()
@@ -862,7 +875,7 @@ def set_theme(b: ThemeBody):
 
 
 @app.post("/api/experiment/end")
-def end_experiment():
+async def end_experiment():
     """🧪 → play: end an experiment run and keep playing the same worlds (issue #64)."""
     r = R()
     if r.contract != "experiment":
@@ -876,7 +889,7 @@ class PopulationBody(BaseModel):
 
 
 @app.post("/api/population")
-def set_population(b: PopulationBody):
+async def set_population(b: PopulationBody):
     """Hold each world at so many chits (null: the island's own limit). Births pause while a world is at or over it;
     nobody is removed. Play only."""
     r = R()
@@ -891,7 +904,7 @@ def set_population(b: PopulationBody):
 
 
 @app.post("/api/control")
-def control(c: Control):
+async def control(c: Control):
     r = R()
     wants_resume = (c.speed is not None and c.speed != 0) or c.paused is False
     if wants_resume and (r.save_errors or r.invalid_reason):
@@ -967,7 +980,7 @@ class Reset(BaseModel):
 
 
 @app.get("/api/rules")
-def get_rules():
+async def get_rules():
     """What rules a world can have (labels, defaults, meanings) and the rules the running worlds were made with."""
     from .sim import rules as RL
 
@@ -977,7 +990,7 @@ def get_rules():
 
 
 @app.post("/api/reset")
-def reset(body: Reset):
+async def reset(body: Reset):
     r = R()
     if body.chits is not None and not 2 <= body.chits <= 60:
         raise HTTPException(400, "chits must be 2..60")
@@ -1000,7 +1013,7 @@ def reset(body: Reset):
 
 
 @app.get("/api/pack")
-def pack():
+async def pack():
     """The content pack of the running match (None: the base game only), and the limits a pack must keep."""
     from .sim import packs
 
@@ -1030,14 +1043,14 @@ def pack_check(b: PackBody):
 
 
 @app.post("/api/save")
-def save():
+async def save():
     R().save_all()
     return {"ok": True}
 
 
 # ------------------------------------------------------------------ brains
 @app.get("/api/brains")
-def brains():
+async def brains():
     from . import diag
 
     r = R()
@@ -1108,7 +1121,7 @@ def _locked_brain(bid: str) -> None:
 
 
 @app.post("/api/brains")
-def upsert_brain(b: BrainBody):
+async def upsert_brain(b: BrainBody):
     # updating a brain changes only what was sent: filled in with the body's defaults, a request that set the model
     # and slots also reset the live World B brain's prompt_style from "cascade" to "full"
     # (the id first: a body with no id but a label naming an existing brain was filled in with defaults, Codex #42)
@@ -1133,7 +1146,7 @@ def upsert_brain(b: BrainBody):
 
 
 @app.delete("/api/brains/{bid}")
-def delete_brain(bid: str):
+async def delete_brain(bid: str):
     _locked_brain(bid)
     r = R()
     r.mind.remove(bid)
@@ -1190,7 +1203,7 @@ class ForkReq(BaseModel):
 
 
 @app.post("/api/worlds/{wid}/fork")
-def make_fork(wid: str, body: ForkReq):
+async def make_fork(wid: str, body: ForkReq):
     """🔀 What if: a copy of this world as it is now, stepping alongside it with another mind or culture."""
     world(wid)
     try:
@@ -1200,12 +1213,12 @@ def make_fork(wid: str, body: ForkReq):
 
 
 @app.get("/api/forks")
-def list_forks():
+async def list_forks():
     return [R().fork_view(fid) for fid in list(R().forks)]
 
 
 @app.delete("/api/forks/{fid}")
-def end_fork(fid: str):
+async def end_fork(fid: str):
     if not R().end_fork(fid):
         raise HTTPException(404, "no such what-if")
     return {"ok": True}
@@ -1217,7 +1230,7 @@ class Assign(BaseModel):
 
 
 @app.post("/api/worlds/{wid}/brain")
-def assign(wid: str, body: Assign):
+async def assign(wid: str, body: Assign):
     w = world(wid)
     if R().contract == "experiment":
         raise HTTPException(409, "brains can't be swapped during an experiment run")

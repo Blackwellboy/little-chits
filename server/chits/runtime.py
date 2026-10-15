@@ -1026,7 +1026,9 @@ class Runtime:
                         "tok_s_request": round(b.stats.tok_per_s, 1) if b else 0,
                         "in_flight": b.stats.in_flight if b else 0, "queued": b.stats.queued if b else 0,
                         "slots": b.cfg.max_concurrency if b else 0,
-                        "latency_ms": round(b.stats.latency_ms_avg) if b else 0}
+                        "latency_ms": round(b.stats.latency_ms_avg) if b else 0,
+                        # not answering for a day: the chits are on instinct (Mind.watch); the UI says so
+                        **self.mind.down_state(wid)}
         return out
 
     def frame(self, w: World) -> Dict[str, Any]:
@@ -1077,6 +1079,7 @@ class Runtime:
                 w.fair_days = left
                 w.fair_soon = 0 < until <= self.FAIR_READY
                 w.step(self.mind.hook)
+                self.mind.watch(w)  # (its model stopped answering a day ago, or answers again: the world's events say)
                 if w.tick % 24 == 0:
                     self.record_keyframe(w)
             for fk in list(self.forks.values()):  # what-ifs step alongside; they never meet the real islands

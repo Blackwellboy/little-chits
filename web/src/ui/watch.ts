@@ -9,8 +9,9 @@ export type Thinking = {
 };
 
 /** The "running on instinct" chip by the world's name: a world with no model, or one whose model is not answering.
- *  Nothing while a model is thinking, and nothing for a model that is only slow (busy): that one is still there. */
-export function instinctChip(t: Thinking | null | undefined, brainId?: string): { text: string; title: string } | null {
+ *  Nothing while a model is thinking, and nothing for a model that is only slow (busy): that one is still there.
+ *  Where nothing stands in for a down model (model-led, model-only, an experiment: `chitsWait`) its chits wait. */
+export function instinctChip(t: Thinking | null | undefined, brainId?: string, chitsWait = false): { text: string; title: string } | null {
   const why = t?.on_instinct ? t.why : !t && brainId === "instinct" ? "no_model" : "";
   if (why === "no_model") {
     const brought = t?.model_pct ? Math.round(t.model_pct) : 0;  // (a voyager keeps the model it sailed with)
@@ -18,8 +19,22 @@ export function instinctChip(t: Thinking | null | undefined, brainId?: string): 
       ? `No model is set for this world: its chits act on instinct, apart from a few who brought a model with them (${brought}% of recent steps).`
       : "No model is set for this world: every chit acts on its built-in instinct." };
   }
-  if (why === "model_down") return { text: "⚙ running on instinct", title: "The model is not answering: instinct is standing in for it until it does." };
+  if (why === "model_down") return chitsWait
+    ? { text: "⏳ waiting for the model", title: "The model is not answering: nothing stands in for it in this run, so its chits wait until it does." }
+    : { text: "⚙ running on instinct", title: "The model is not answering: instinct is standing in for it until it does." };
   return null;
+}
+
+/** The top bar's chips, one per world shown: none for a world whose model the watchdog says is down, since the 🧠
+ *  chip (Overlays.MindDown) already tells that outage, with the day it began. Two chips for one outage was noise. */
+export function topBarChips(ids: string[], thinking: Record<string, Thinking | undefined>,
+  brains: Record<string, { id: string; down?: boolean; chits_wait?: boolean } | undefined>): { id: string; text: string; title: string }[] {
+  return ids.flatMap((id) => {
+    const b = brains[id];
+    if (b && b.id !== "instinct" && b.down) return [];
+    const c = instinctChip(thinking[id], b?.id, !!b?.chits_wait);
+    return c ? [{ id, ...c }] : [];
+  });
 }
 
 /** The Progress panel's "who's thinking" line: shares of the last finished steps, the biggest first. */

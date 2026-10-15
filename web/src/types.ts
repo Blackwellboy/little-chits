@@ -42,6 +42,8 @@ export type WorldMeta = {
 
 export type BrainSummary = {
   id: string; label: string; thinking: number; healthy: boolean; tok_s: number; latency_ms: number;
+  // not answering (Mind.watch): its chits are on instinct, or wait for it in a model-led, model-only or experiment run
+  down?: boolean; failing_since?: number | null; chits_wait?: boolean;
 };
 
 export type Control = {
