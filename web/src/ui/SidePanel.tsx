@@ -9,6 +9,7 @@ import { rowClicked } from "./listPosition";
 import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
+import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, stallLine, thinkingLine, type Thinking } from "./watch";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -86,6 +87,7 @@ type ProgressData = {
   day: number; era: { index: number; name: string; of: number }; next: Rung | null; ladder: Rung[];
   doing: [string, number][]; aims: [string, number][]; recent: { day: number; lines: string[] }[];
   counts: { population: number; discoveries: number; structures: number; beliefs: number; known: number };
+  who_thinks?: Thinking;
 };
 
 /** 🧭 Is this world getting anywhere? Its place on the road to space, what everyone is doing now, and how the
@@ -93,18 +95,27 @@ type ProgressData = {
 function Progress({ world, name }: { world: string; name: string }) {
   const p = usePoll(() => api<ProgressData>(`/api/worlds/${world}/progress`), 8000, [world]);
   const brain = useUI((s) => s.brains[world]?.label);
+  const brainId = useUI((s) => s.brains[world]?.id);
+  // a long stall asks "Why slow?" for its biggest reason (only then: the diagnostics are not free)
+  const stalled = !!p && stallLine(p.day, p.ladder, null, null) != null;
+  const why = usePoll(() => (stalled ? api<WhyData>("/api/why") : Promise.resolve(null)), 20000, [world, stalled]);
   if (!p) return <p className="muted">Loading…</p>;
+  const chip = instinctChip(p.who_thinks, brainId);
+  const on = p.milestones ? p.milestones.steps[nextStep(p.milestones)] : undefined;
+  const stall = stallLine(p.day, p.ladder, on ? stepLabel(on) : null, why ? why.worlds?.[world]?.reasons : null);
   const pct = Math.round((p.era.index / p.era.of) * 100);
   const plain = (s: string) => s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/ ?\(#\d+\)/g, "");
   return (
     <div className="progress">
-      <div className="panel-head"><h3>{name}</h3><small className="muted">{brain || "instinct"} · day {p.day}</small></div>
+      <div className="panel-head"><h3>{name}</h3><small className="muted">{brain || "instinct"} · day {p.day}</small>
+        {chip && <span className="instinct-chip" title={chip.title}>{chip.text}</span>}</div>
       <div className="prog-era">
         <b>{p.era.name}</b> <small className="muted">age {p.era.index + 1} of {p.era.of + 1} on the road to space</small>
         <div className="prog-bar"><span style={{ width: `${Math.max(3, pct)}%` }} /></div>
         {p.next
           ? <small>Next: <b>{p.next.name}</b>, when someone works out how to make a <b>{p.next.needs}</b>.</small>
           : <small>🚀 They reached space!</small>}
+        {p.next && stall && <small className="prog-stall" title="From the road to the next age and the Why slow? panel">⏳ {stall}</small>}
         {p.milestones && p.milestones.steps.length > 0 && <RoadChecklist c={p.milestones} />}
       </div>
       <div className="prog-ladder">
@@ -118,6 +129,8 @@ function Progress({ world, name }: { world: string; name: string }) {
         👥 {p.counts.population} chits · ✦ {p.counts.discoveries} discoveries · 🏠 {p.counts.structures} buildings · 🕯 {p.counts.beliefs} beliefs
         {p.food_days != null && <> · <span className={p.food_days < 3 ? "food-low" : ""} title="How long the food in the stores would feed the village; below 3 days, chits put the project aside and fill the stores">🍞 {p.food_days} days of food in store</span></>}
       </small></div>
+      <p className="small prog-thinking" title="Who decided the steps this world's chits finished lately: the model, instinct (the built-in planner, standing in or filling a wait), body reflexes (eat, sleep, warm up) or upkeep">
+        🧠 Who's thinking: {thinkingLine(p.who_thinks)}</p>
       <VillageProject p={p} plain={plain} world={world} />
       {p.at_risk && p.at_risk.length > 0 && (
         <div className="prog-risk" title="Things only one living chit knows how to make: if it dies without passing them on, the village forgets them">
@@ -181,6 +194,7 @@ function VillageProject({ p, plain, world }: { p: ProgressData; plain: (s: strin
   const rows = villageOrder(p.project?.villages ?? [], focus && focus.world === world ? focus : null);
   const many = rows.length > 1;
   if (!cur && !done.length && !hints.length && !p.famous && !rows.some((r) => r.active)) return null;
+  const insight = insightLabel(p.research?.insight ?? 0, p.research?.next_idea ?? 0);
   const go = (r: VillageRow<Project>) => r.x != null && r.y != null && useUI.getState().set({ focus: { world, x: r.x + 0.5, y: r.y + 0.5, t: Date.now() } });
   return (
     <div className="prog-project">
@@ -196,7 +210,7 @@ function VillageProject({ p, plain, world }: { p: ProgressData; plain: (s: strin
       ) : cur ? <ProjectLine cur={cur} /> : <p className="small muted">No project right now.</p>}
       {done.length > 0 && <ul className="prog-list">{done.slice(0, 3).map((d) => <li key={d.id}>day {d.day}: {plain(d.text)}</li>)}</ul>}
       {hints.length > 0 && (<>
-        <h4>📚 Scholars' ideas <small className="muted">{p.research!.insight}/{p.research!.next_idea} insight to the next</small></h4>
+        <h4>📚 Scholars' ideas <small className="muted" title={insight.title}>{insight.text}</small></h4>
         <ul className="prog-list">{hints.map((h, i) => <li key={i} className={h.found ? "muted" : ""}>day {h.day}{h.by ? ` (${h.by})` : ""}: {h.text}{h.found ? " ✔ came true" : ""}</li>)}</ul>
       </>)}
       {p.famous && <p className="small">⭐ Most renowned: <b>{p.famous.name}</b> <span className="muted">(renown {p.famous.renown}; chits near them follow their lead)</span></p>}
@@ -248,7 +262,9 @@ function Chronicle({ world }: { world: string }) {
   const weeks = usePoll(() => (mode === "weeks" ? api<any[]>(`/api/worlds/${world}/sagas`) : Promise.resolve(null)), 15000, [world, mode]);
   const [min, setMin] = useState(2);
   const days = usePoll(() => (mode === "days" ? api(`/api/worlds/${world}/chronicle`) : Promise.resolve(null)), 8000, [world, mode]);
-  const evs = (worlds[world]?.events || []).filter((e) => e.importance >= min).slice(-120).reverse();
+  // (Notable and up: each idea once, not again from every chit that comes up with it after the first)
+  const kept = (worlds[world]?.events || []).filter((e) => e.importance >= min);
+  const evs = (min >= 2 ? dropRepeatedIdeas(kept) : kept).slice(-120).reverse();
   return (
     <div className="chron">
       <div className="panel-head">
@@ -352,7 +368,16 @@ function People({ world }: { world: string }) {
   const [hall, setHall] = useState(false);
   const list = usePoll(() => api<any[]>(`/api/worlds/${world}/agents?dead=${dead}`), 2500, [world, dead]);
   const selected = useUI((s) => s.selected);
-  const sorted = useMemo(() => (list || []).slice().sort((a, b) => (b.alive - a.alive) || ((b.leader ? 1 : 0) - (a.leader ? 1 : 0)) || b.known - a.known), [list]);
+  const fresh = useMemo(() => (list || []).slice().sort((a, b) => (b.alive - a.alive) || ((b.leader ? 1 : 0) - (a.leader ? 1 : 0)) || b.known - a.known), [list]);
+  // at speed the list re-sorted under the pointer and a click picked the wrong chit: it holds still while hovered
+  const held = useRef<string[] | null>(null);
+  const [hover, setHover] = useState(false);
+  // (the list can go while the pointer is on it, for the hall or another world: no mouseleave comes then)
+  useEffect(() => { held.current = null; setHover(false); }, [hall, world, dead]);
+  const byId = new Map(fresh.map((a) => [a.id, a]));
+  const order = holdOrder(hover ? held.current : null, fresh.map((a) => a.id));
+  if (hover) held.current = order;
+  const sorted = order.map((id) => byId.get(id)!);
   return (
     <div>
       <div className="panel-head">
@@ -360,7 +385,8 @@ function People({ world }: { world: string }) {
         <label className="toggle"><input type="checkbox" checked={dead} onChange={(e) => setDead(e.target.checked)} /> show departed</label>
         <label className="toggle" title="A short biography for every chit that mattered"><input type="checkbox" checked={hall} onChange={(e) => setHall(e.target.checked)} /> 🏛 hall</label>
       </div>
-      {hall ? <Hall world={world} /> : <ul className="people">
+      {hall ? <Hall world={world} /> : <ul className="people" onMouseEnter={() => { held.current = sorted.map((a) => a.id); setHover(true); }}
+        onMouseLeave={() => { held.current = null; setHover(false); }}>
         {sorted.map((a) => (
           <li key={a.id} className={`${selected?.id === a.id ? "sel" : ""} ${a.alive ? "" : "gone"}`}
             onClick={() => {

@@ -60,12 +60,36 @@ export function addToasts(old: Toast[], events: WorldEvent[], world: string, now
   const fresh = events.filter((e) => e.importance >= 4 || milestoneOf(e))
     .map((e) => ({ ...e, world, key: `${world}-${e.seq}`, _t: now }));
   if (!fresh.length) return old;
-  const all = [...old, ...fresh].filter((t) => (t._t ??= now) > now - TOAST_MS);
-  while (all.length > TOAST_MAX) {
-    const i = all.findIndex((t) => !milestoneOf(t));
-    all.splice(i >= 0 ? i : 0, 1);
+  return capToasts([...old, ...fresh].filter((t) => (t._t ??= now) > now - TOAST_MS));
+}
+
+/** At most `max` toasts: the oldest ordinary one goes first, then the oldest milestone. A "that didn't work" error is
+ *  never pushed out by others (the corner's own timer takes it down once it has been seen). */
+export function capToasts(all: Toast[], max = TOAST_MAX): Toast[] {
+  const out = all.slice();
+  while (out.length > max) {
+    let i = out.findIndex((t) => t.kind !== "error" && !milestoneOf(t));
+    if (i < 0) i = out.findIndex((t) => t.kind !== "error");
+    if (i < 0) break;
+    out.splice(i, 1);
   }
-  return all;
+  return out;
+}
+
+export const TOAST_SHOWN = 2;
+
+/** The toasts as the corner shows them: in day order (two worlds' toasts arrive interleaved, and at speed a frame
+ *  carries several), at most `max` cards, the older ones of a burst folded into one chip ("3 milestones ▸") until it
+ *  is opened. A "that didn't work" error is never folded: it comes last, where the eye lands. */
+export function foldToasts(toasts: Toast[], open: boolean, max = TOAST_SHOWN): { folded: Toast[]; shown: Toast[]; chip: string } {
+  const errors = toasts.filter((t) => t.kind === "error");
+  const rest = toasts.filter((t) => t.kind !== "error").map((t, i) => [t, i] as const)
+    .sort((a, b) => a[0].tick - b[0].tick || a[1] - b[1]).map(([t]) => t);
+  if (open || rest.length <= max) return { folded: [], shown: [...rest, ...errors], chip: "" };
+  const keep = Math.max(1, max - 1);  // (the chip takes a card's place)
+  const folded = rest.slice(0, rest.length - keep);
+  const all = folded.every((t) => milestoneOf(t));
+  return { folded, shown: [...rest.slice(-keep), ...errors], chip: `${folded.length} ${all ? `milestone${folded.length > 1 ? "s" : ""}` : "more"} ▸` };
 }
 
 export type CheckStep = { action: "discover" | "make" | "build"; key: string; name: string; done: boolean; detail: string };

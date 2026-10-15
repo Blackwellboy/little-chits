@@ -104,7 +104,31 @@ def health():
     return {"ok": True, "worlds": {w.id: {"tick": w.tick, "population": len(w.agents)} for w in r.worlds.values()},
             "control": r.control_state(), "clients": len(r.clients), "mode": r.mode, "first_run": r.first_run,
             "autodetected": r.autodetected, "theme": theme.active(), "pack": r.pack_info(),
-            "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()}}
+            "brains": {wid: (b or {}).get("label", "Instinct") for wid, b in r.brain_summary().items()},
+            "who_thinks": {w.id: _thinking(r, w) for w in r.worlds.values()}}
+
+
+def model_up(b) -> bool:
+    """Is a brain answering? Its own health (not cooling down after failures) and no run of failed requests: three
+    in a row is when it backs off (brain/llm.py). A slow brain is up."""
+    return bool(b is not None and b.healthy() and b.stats.consecutive_fail < 3)
+
+
+def _thinking(r, w) -> Dict[str, Any]:
+    """Who is thinking for a world (views.thinking), from the diagnostics' recent finished steps (read only)."""
+    from . import diag
+
+    d = diag.of(w)
+    recent: List[Any] = []
+    for _ in range(3):  # (the world steps while a request reads: a copy taken mid-append is simply taken again)
+        try:
+            recent = list(d.recent_steps)
+            break
+        except RuntimeError:
+            continue
+    bid = r.mind.world_brain.get(w.id, INSTINCT)
+    waiting = round(100 * d.waiting_ticks / d.model_ticks, 1) if d.model_ticks else None
+    return views.thinking(recent, bid, bid == INSTINCT or model_up(r.mind.brains.get(bid)), waiting)
 
 
 @app.get("/api/worlds")
@@ -549,8 +573,27 @@ def progress(wid: str):
     """🧭 How far a world has come, what it is doing now, and how its latest achievements happened."""
     w = world(wid)
     since = max(0, (w.tick // TICKS_PER_DAY - 1) * TICKS_PER_DAY)
-    evs = R().store.events(w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
-    return views.progress(w, evs)
+    r = R()
+    evs = r.store.events(w.id, since_tick=since, min_importance=1, limit=5000, epoch=w.timeline())
+    return {**views.progress(w, evs), "who_thinks": _thinking(r, w)}
+
+
+@app.get("/api/worlds/{wid}/chits/{aid}/life")
+async def chit_life(wid: str, aid: str):
+    """🕯 A chit's life story: its notable moments, born to died, from the events already recorded (views.life).
+    Works for the dead while their record is kept. Read only, and never a checkpoint: the world is read on the
+    game's loop, between steps (this handler is async), then the stored events up to the last checkpoint off it,
+    and the newer ones from the world's recent window in memory."""
+    w = world(wid)
+    a = w.agents.get(aid) or w.dead.get(aid)
+    if not a:
+        raise HTTPException(404, "no such chit")
+    stored = getattr(w, "_stored_seq", 0)
+    fresh = [e.to_dict() for e in list(w.events) if e.seq > stored and e.kind in views.LIFE_KINDS]
+    born, until = max(0, a.born), (w.tick if a.alive else a.died)
+    store, epoch = R().store, w.timeline()
+    rows = await asyncio.to_thread(store.life_events, w.id, aid, views.LIFE_KINDS, born, until, stored, epoch)
+    return views.life(a, rows + fresh)
 
 
 @app.get("/api/worlds/{wid}/settlements")

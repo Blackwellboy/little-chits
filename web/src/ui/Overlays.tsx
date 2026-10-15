@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { pixelCanvas } from "../render/art";
-import { milestoneOf } from "../state/milestones";
+import { foldToasts, milestoneOf, TOAST_SHOWN } from "../state/milestones";
 import { useUI, worlds } from "../state/store";
 import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
@@ -17,9 +17,19 @@ export function Toasts() {
     const t = setTimeout(() => set({ toasts: useUI.getState().toasts.slice(1) }), 6500);
     return () => clearTimeout(t);
   }, [toasts]);
+  const [open, setOpen] = useState(false);
+  const view = foldToasts(toasts, open);
+  useEffect(() => { if (open && toasts.length <= TOAST_SHOWN) setOpen(false); }, [toasts.length]);
   return (
     <div className="toasts">
-      {toasts.map((t) => {
+      {view.chip && (
+        <button className="toast-fold" onClick={() => setOpen(true)} title={view.folded.map((t) => `day ${Math.floor(t.tick / 240) + 1}: ${t.text}`).join("\n")}>
+          {view.folded.slice(-3).map((t) => <span key={t.key} className="ico">{milestoneOf(t)?.icon ?? ICON[t.kind] ?? "✦"}</span>)}
+          <span>{view.chip}</span>
+        </button>
+      )}
+      {open && toasts.length > TOAST_SHOWN && <button className="toast-fold" onClick={() => setOpen(false)}>fold ▾</button>}
+      {view.shown.map((t) => {
         const ms = milestoneOf(t);
         return (
           <div key={t.key} className={`toast k-${t.kind}${ms ? " milestone" : ""}`} onClick={() => {

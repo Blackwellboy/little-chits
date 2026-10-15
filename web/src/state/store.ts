@@ -3,7 +3,7 @@ import type { BrainSummary, Control, WorldEvent, WorldMeta } from "../types";
 import { Socket, socketUrl, type ConnStatus } from "../net/socket";
 import { WorldData } from "./world";
 import { pickTheme, setTheme, type ThemeId } from "../theme";
-import { addToasts, type Toast } from "./milestones";
+import { addToasts, capToasts, type Toast } from "./milestones";
 
 export type Tab = "progress" | "why" | "chronicle" | "people" | "knowledge" | "stats" | "rules" | null;
 
@@ -75,8 +75,8 @@ let errSeq = 0;
 /** Say a failed action out loud: a toast with the server's reason (issue #63). */
 export function notifyError(text: string) {
   const ui = useUI.getState();
-  ui.set({ toasts: [...ui.toasts, { seq: 0, tick: 0, kind: "error", text, importance: 4, actor: null, x: null, y: null, data: {},
-    world: "", key: `err-${++errSeq}` }].slice(-5) });
+  ui.set({ toasts: capToasts([...ui.toasts, { seq: 0, tick: 0, kind: "error", text, importance: 4, actor: null, x: null, y: null, data: {},
+    world: "", key: `err-${++errSeq}` }], 5) });
 }
 
 let frameCount = 0;

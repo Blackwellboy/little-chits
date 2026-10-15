@@ -393,7 +393,25 @@ button.danger { color: var(--bad); }
 .god-grid button:hover { background: rgba(255, 184, 107, 0.16); }
 .god-grid button small { color: inherit; font-size: 11px; text-align: center; line-height: 1.2; }
 /* the top bar has grown: drop the button captions on narrower screens and never push buttons off-screen */
-@media (max-width: 1560px) { .icon-btn small { display: none; } .icon-btn { padding: 5px 8px; } }
+/* below 1560px the less-used buttons go behind ⋯ (TopBar MoreMenu); the main ones keep their labels */
+.tb-more { display: none; position: relative; font-size: 16px; line-height: 1; }
+@media (max-width: 1560px) {
+  .topbar .tb-extra { display: none; }
+  .tb-more { display: flex; }
+  .icon-btn { padding: 5px 8px; }
+  .skip-run small { display: none; }
+  .skip-note { max-width: 130px; }
+}
+.tb-more .rec-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: #ff6b6b; }
+.tb-menu { position: fixed; z-index: 15; display: flex; flex-direction: column; gap: 4px; padding: 8px; min-width: 170px;
+  background: #121726; border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); }
+.tb-menu .icon-btn { justify-content: flex-start; gap: 8px; padding: 6px 10px; }
+.tb-menu .icon-btn small { display: inline; font-size: 12px; color: var(--text); }
+/* the clock, the speed buttons and a running skip never shrink or wrap: the bar scrolls instead */
+.topbar > .clock, .topbar > .seg, .topbar > .skip-run, .topbar > .skip-wrap, .topbar > .pace-btn, .topbar > .icon-btn { flex: none; }
+@media (max-width: 1440px) { .topbar .instinct-chip .ic-long { display: none; } .skip-note { max-width: 90px; } }
+.topbar > .seg.speed { display: flex; }  /* (the brains dialog's .speed line made it a wrapping block) */
+.skip-run b { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
 .topbar { overflow-x: auto; scrollbar-width: none; }
 .topbar::-webkit-scrollbar { display: none; }
 @media (max-width: 1440px) { .brand-text, .clock .era, .mod-text { display: none; } .seg button { padding-left: 8px; padding-right: 8px; } }
@@ -603,3 +621,22 @@ button.danger { color: var(--bad); }
 .nw-rule-list label { display: flex; gap: 8px; align-items: flex-start; }
 .rules-table td { padding: 3px 6px; vertical-align: top; }
 button.link { background: none; border: none; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+/* ⚙ a world whose chits run without a model says so */
+.instinct-chip { display: inline-flex; align-items: center; gap: 4px; flex: none; white-space: nowrap; font-size: 11px; color: #ffc85a;
+  background: rgba(255,200,90,0.1); border: 1px solid rgba(255,200,90,0.35); border-radius: 999px; padding: 2px 9px; cursor: help; }
+.panel-head .instinct-chip { margin-left: auto; }
+.prog-thinking { margin: 6px 0 0; color: var(--muted); }
+/* a burst of toasts folds into one chip; a banner never covers an open dialog */
+.toast-fold { pointer-events: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 999px;
+  background: rgba(20,16,8,0.85); border: 1px solid rgba(255,209,102,0.55); color: #ffd166; font-size: 12px; backdrop-filter: blur(10px); cursor: pointer; }
+.toast-fold .ico { font-size: 14px; }
+.toast-fold:hover { background: rgba(40,32,14,0.92); }
+body:has(.modal-bg) .banner { display: none; }
+/* a dead chit's inspector says so */
+.inspector .departed { margin-top: 10px; border-color: rgba(180,190,230,0.35); background: rgba(12,14,24,0.6); font-size: 13px; line-height: 1.45; color: #d8def0; }
+/* 🕯 a chit's life story */
+.life { list-style: none; margin: 0; padding: 0 0 0 4px; border-left: 2px solid rgba(255,255,255,0.08); }
+.life li { display: grid; grid-template-columns: 48px 20px 1fr; gap: 4px; align-items: baseline; padding: 3px 0 3px 6px; font-size: 12px; line-height: 1.35; }
+.life li small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.life li.imp4, .life li.imp5 { color: #fff3c4; font-weight: 600; }
+.prog-stall { display: block; margin-top: 4px; color: #ffc85a; line-height: 1.4; }

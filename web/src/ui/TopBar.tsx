@@ -1,15 +1,34 @@
 import { useShallow } from "zustand/react/shallow";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useAnchor } from "./popover";
 import { api, errorText } from "../net/socket";
 import { localStorageSet, notifyError, useUI, worlds } from "../state/store";
 import { lookButton } from "./look";
 import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { SkipControl } from "./SkipControl";
+import { instinctChip, type Thinking } from "./watch";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
 const SPEED_LABEL: Record<number, string> = { 1: "1×", 2: "2×", 5: "5×", 10: "10×", 25: "25×", 100: "MAX" };
+
+/** ⋯ The bar's less-used buttons, below 1560px: a menu of them with their labels (it hangs from the button, outside
+ *  the bar, which scrolls sideways and would clip it). Closes on a choice, a click elsewhere or Escape. */
+function MoreMenu({ children, dot }: { children: React.ReactNode; dot: boolean }) {
+  const [open, setOpen] = useState(false);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const r = useAnchor(open, () => setOpen(false), btn, menu);
+  return (<>
+    <button ref={btn} className={`icon-btn tb-more ${open ? "on" : ""}`} title="More: night, look, director, replay, god mode, recordings, restart" onClick={() => setOpen(!open)}>
+      ⋯{dot && <span className="rec-dot" title="recording" />}
+    </button>
+    {r && createPortal(<div ref={menu} className="tb-menu" style={{ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }}
+      onClick={(e) => { if ((e.target as HTMLElement).closest("button")) setOpen(false); }}>{children}</div>, document.body)}
+  </>);
+}
 
 export function TopBar() {
   const theme = useUI((s) => s.theme);
@@ -18,6 +37,13 @@ export function TopBar() {
     const poll = () => api<{ recording: boolean }>("/api/recorder").then((r) => set({ recording: r.recording })).catch(() => {});
     poll();
     const t = setInterval(poll, 15000);
+    return () => clearInterval(t);
+  }, []);
+  const [thinking, setThinking] = useState<Record<string, Thinking>>({});
+  useEffect(() => {  // ⚙ who is thinking for each world: the bar says so when one runs on instinct
+    const poll = () => api<{ who_thinks?: Record<string, Thinking> }>("/api/health").then((h) => setThinking(h.who_thinks ?? {})).catch(() => {});
+    poll();
+    const t = setInterval(poll, 10000);
     return () => clearInterval(t);
   }, []);
   const nextNight = { normal: "soft", soft: "off", off: "normal" } as const;
@@ -31,12 +57,35 @@ export function TopBar() {
   const setView = (v: "A" | "B" | "split") => { set({ view: v }); localStorageSet("view", v); };
   const brainsInUse = metas.some((w) => brains[w.id] && brains[w.id].id !== "instinct");
   const look = lookButton(theme, control?.contract);
+  const shownIds = view === "split" ? metas.map((w) => w.id) : [primary];
+  const nameOf = (id: string) => metas.find((m) => m.id === id)?.name ?? id;
+  const onInstinct = shownIds.flatMap((id) => { const c = instinctChip(thinking[id], brains[id]?.id); return c ? [{ id, ...c }] : []; });
   const restart = async () => {
     const m = worlds[metas[0]?.id]?.meta;
     if (!m || !confirm("Restart this game from day 1? Same island, same mode, same models. The current history is erased.")) return;
     await api("/api/reset", { seed: m.seed, size: m.size });
     set({ selected: null, follow: false });
   };
+  const extras = (cls: string) => (<>
+    <button className={cls} title={`Night: ${nightMode} (click to change)`}
+      onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
+      {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
+    </button>
+    <button className={`${cls} ${theme === "norse" ? "on" : ""}`} title={look.title} disabled={look.disabled}
+      onClick={() => api("/api/theme", { theme: look.next }).catch((e) => notifyError(errorText(e)))}>
+      {look.glyph}<small>{look.label}</small>
+    </button>
+    <button className={`${cls} ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
+      onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
+    <button className={cls} title="Replay: scrub back through the last week (opens the replay viewer)"
+      onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
+    {control?.contract !== "experiment" && (
+      <button className={cls} title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
+    )}
+    <button className={`${cls} ${recording ? "rec-on" : ""}`} title="Recordings: auto-record every day of the game as a clip with its story"
+      onClick={() => set({ recordingsOpen: true })}>🎞<small>{recording ? "● rec" : "record"}</small></button>
+    <button className={cls} title="Restart this game from day 1 (same island, mode and models)" onClick={restart}>↺<small>restart</small></button>
+  </>);
 
   return (
     <header className="topbar">
@@ -65,6 +114,13 @@ export function TopBar() {
         {clock?.era && <span className="era" title="How far this world has come">{clock.era}</span>}
         <div className="daybar"><i style={{ width: `${((clock?.hour ?? 0) / 24) * 100}%` }} /></div>
       </div>
+      {onInstinct.length > 0 && (
+        <span className="instinct-chip" title={onInstinct.map((x) => (shownIds.length > 1 ? `${nameOf(x.id)}: ` : "") + x.title).join("\n")}>
+          {onInstinct.length === shownIds.length
+            ? <>⚙ <span className="ic-long">running on </span>instinct</>  /* (short below 1440px) */
+            : `⚙ ${onInstinct.map((x) => nameOf(x.id)).join(", ")} on instinct`}
+        </span>
+      )}
 
       <div className="seg speed">
         <button className={control?.paused ? "on" : ""} onClick={() => setSpeed(0)} title="Pause">❚❚</button>
@@ -93,29 +149,14 @@ export function TopBar() {
       {control?.sandbox_modified && <span className="badge mod" title="Someone reached into this world (god mode or a rewind). Great for stories, not for comparisons.">🪄<span className="mod-text"> modified</span></span>}
       <div className="spacer" />
 
-      <button className="icon-btn" title={`Night: ${nightMode} (click to change)`}
-        onClick={() => { const n = nextNight[nightMode]; set({ nightMode: n }); localStorageSet("night", n); }}>
-        {nightMode === "normal" ? "🌙" : nightMode === "soft" ? "🌗" : "☀️"}<small>{nightMode}</small>
-      </button>
-      <button className={`icon-btn ${theme === "norse" ? "on" : ""}`} title={look.title} disabled={look.disabled}
-        onClick={() => api("/api/theme", { theme: look.next }).catch((e) => notifyError(errorText(e)))}>
-        {look.glyph}<small>{look.label}</small>
-      </button>
-      <button className={`icon-btn ${director ? "on" : ""}`} title="Director: the camera cuts to discoveries, births, storms and builds by itself (drag or click to take over)"
-        onClick={() => { set({ director: !director }); localStorageSet("director", director ? "0" : "1"); }}>🎬<small>director</small></button>
-      <button className="icon-btn" title="Replay: scrub back through the last week (opens the replay viewer)"
-        onClick={() => window.open(`/replay.html?src=${encodeURIComponent("/api/replay/export?days=7")}`, "_blank")}>▶<small>replay</small></button>
+      {/* the less-used buttons: in the bar on a wide screen, behind ⋯ below 1560px (styles.css) */}
+      {extras("icon-btn tb-extra")}
+      <MoreMenu dot={recording}>{extras("icon-btn")}</MoreMenu>
       {control?.contract !== "experiment" && (
-        <button className="icon-btn" title="Saves: save this game now, load a save, or move one to another computer as a file"
+        <button className="icon-btn tb-main" title="Saves: save this game now, load a save, or move one to another computer as a file"
           onClick={() => set({ savesOpen: true })}>💾<small>saves</small></button>
       )}
-      {control?.contract !== "experiment" && (
-        <button className="icon-btn" title="God mode: drop anything, meddle, save and rewind" onClick={() => set({ godOpen: true })}>🪄<small>god</small></button>
-      )}
-      <button className={`icon-btn ${recording ? "rec-on" : ""}`} title="Recordings: auto-record every day of the game as a clip with its story"
-        onClick={() => set({ recordingsOpen: true })}>🎞<small>{recording ? "● rec" : "record"}</small></button>
-      <button className="icon-btn" title="Restart this game from day 1 (same island, mode and models)" onClick={restart}>↺<small>restart</small></button>
-      <button className="icon-btn" title="Start a new game: choose the mode, island and models" onClick={() => set({ newWorldOpen: true })}>⟲<small>new</small></button>
+      <button className="icon-btn tb-main" title="Start a new game: choose the mode, island and models" onClick={() => set({ newWorldOpen: true })}>⟲<small>new</small></button>
 
       <button className="brain-pill" onClick={() => set({ brainsOpen: true })} title="Choose the brains that drive each world">
         {metas.map((w) => {
