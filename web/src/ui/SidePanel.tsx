@@ -476,6 +476,7 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
   const rows = usePoll(() => api<any[]>("/api/knowledge"), 3000, []);
   const inv = usePoll(() => api<Record<string, any[]>>("/api/inventions"), 5000, []);
   const bel = usePoll(() => api<Record<string, any[]>>("/api/beliefs"), 5000, []);
+  const ideas = usePoll(() => api<Record<string, any[]>>("/api/ideas"), 5000, []);
   const [cmpOpen, setCmpOpen] = useState(false);
   const [openKey, setOpenKey] = useState<string | null>(null);
   // the entry opens below the whole table (thousands of pixels down in an old world): bring it to the reader, or a
@@ -552,6 +553,23 @@ function Knowledge({ metas }: { metas: { id: string; name: string; culture: stri
                 {invOpen === m.id + x.key && <EntryCard world={m.id} name={m.name} k={`recipe:${x.key}`} />}
               </div>
             )) : <small className="muted">nothing invented yet</small>}
+          </div>
+        );
+      })}
+      <div className="panel-head inv-head"><h3>🏗 Building ideas</h3><small className="muted">buildings the chits designed themselves</small></div>
+      {metas.map((m) => {
+        const list = ideas?.[m.id] || [];
+        return (
+          <div key={m.id} className="inv-world">
+            <h4><span className={`dot ${m.culture}`} />{m.name}</h4>
+            {list.length ? list.map((x) => (
+              <div key={x.key} className="inv-row">
+                <b>🏗 {x.name}</b> <small className="muted">a kind of {x.base_name}</small>
+                <small className="muted"> · {x.by_name}'s idea, day {x.day} · {x.knowers} know it · {x.standing} standing</small>
+                {x.purpose_text && <div className="small muted">“{x.purpose_text}”</div>}
+                <div className="small muted">built from {Object.entries(x.materials as Record<string, number>).map(([k, n]) => `${n} ${k.replace(/_/g, " ")}`).join(", ")}</div>
+              </div>
+            )) : <small className="muted">no building ideas yet</small>}
           </div>
         );
       })}

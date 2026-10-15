@@ -19,6 +19,9 @@ export type StructureView = {
   worked_until?: number; produced?: Record<string, number> | null;
   // a home being rebuilt bigger where it stands: into what, what it still needs, how far the work is
   upgrade?: { to: string; name: string; needs: Record<string, number>; progress: number } | null;
+  // a chit's own idea for a building, built as a variant of an existing one (server sim/ideas.py): its own name (also
+  // in `name`), the idea's key, what it is a kind of and whose idea it was. Absent on every other structure.
+  title?: string; idea?: string; base_name?: string; inventor?: string | null;
 };
 
 export type WorldEvent = {

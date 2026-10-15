@@ -12,6 +12,7 @@ import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from ..sim import buildings as BLD
+from ..sim import ideas as IDEAS
 from ..sim import terrain as T
 from ..sim.actions import FOODS as _FOODS, STATION_REACH
 from ..sim.agent import Agent
@@ -398,7 +399,7 @@ def scene(world, a: Agent) -> str:
         lines.append(f"Tools in hand: {', '.join(tools)}.")
     home = world.structures.get(a.home or "")
     if home:
-        lines.append(f"Home: {DESIGNS[home.design].name} {home.id}, {_where(a, *home.center())}.")
+        lines.append(f"Home: {IDEAS.name_of(home)} {home.id}, {_where(a, *home.center())}.")
     else:
         lines.append("You have no home yet.")
     # knowledge
@@ -417,7 +418,7 @@ def scene(world, a: Agent) -> str:
         + (f": {DESIGNS[d].blurb}" if DESIGNS[d].blurb else "") + TOWN_WORDS * (BLD.TOWN_GATE and d in BLD.TOWN_ONLY) + ")"
         for d in (k.split(':', 1)[1] for k in a.knows if k.startswith("design:"))
         if d != "boat" or getattr(world, "contact", False)  # a boat goes nowhere while the islands can't meet
-    ]
+    ] + [IDEAS.describe(world, i, a) for i in IDEAS.known(world, a)]  # (its village's own building ideas it knows)
     lines.append("")
     lines.append("YOU KNOW HOW TO MAKE: " + ("; ".join(recipes) if recipes else "nothing yet — experiment!"))
     lines.append("YOU KNOW HOW TO BUILD: " + "; ".join(designs))
@@ -490,12 +491,14 @@ def scene(world, a: Agent) -> str:
     sts = [s for s in near if s.design != "campfire" or s in fires][:10]
     for s in sts:
         d = DESIGNS[s.design]
+        title = IDEAS.title_of(s)
+        nm = f"{title} (a {d.name})" if title else d.name  # (an invented building: its own name, and what it is)
         who = world.agents.get(s.founder) or world.dead.get(s.founder)
         by = f" by {who.name}" if who else ""
         if not s.complete:
             need = ", ".join(f"{n} {world.item_name(k)}" for k, n in s.needs.items())
             prog = int(100 * s.work_done / max(1, s.work_total))
-            lines.append(f"- CONSTRUCTION SITE {s.id}: {d.name}{by}, {_where(a, *s.center())}; " + (f"still needs {need}" if need else f"all materials in, {prog}% built"))
+            lines.append(f"- CONSTRUCTION SITE {s.id}: {nm}{by}, {_where(a, *s.center())}; " + (f"still needs {need}" if need else f"all materials in, {prog}% built"))
             continue
         state = []
         if s.ruined:
@@ -516,8 +519,9 @@ def scene(world, a: Agent) -> str:
         if s.id == a.home:
             state.append("your home")
         state += BLD.state_words(world, s, a)
-        known = "" if a.knows_design(s.design) else " (you don't know how to build this)"
-        lines.append(f"- {d.name.capitalize()} {s.id}{by}, {_where(a, *s.center())}{': ' + ', '.join(state) if state else ''}{known}")
+        knows = f"idea:{s.idea}" in a.knows if IDEAS.idea_of(world, s) else a.knows_design(s.design)
+        known = "" if knows else " (you don't know how to build this)"
+        lines.append(f"- {nm if title else d.name.capitalize()} {s.id}{by}, {_where(a, *s.center())}{': ' + ', '.join(state) if state else ''}{known}")
     signs = sorted((g for g in getattr(world, "signs", {}).values() if max(abs(g["x"] - a.x), abs(g["y"] - a.y)) <= SIGHT),
                    key=lambda g: max(abs(g["x"] - a.x), abs(g["y"] - a.y)))[:5]
     if signs:
@@ -731,6 +735,7 @@ def compact_scene(world, a: Agent) -> str:
     L.append(f"Carrying ({a.load()}/{a.capacity()}): {inv}{' FULL' if a.free_space() <= 0 else ''}.")
     rec = [world.item_name(k.split(':', 1)[1]) for k in a.knows if k.startswith("recipe:")]
     des = [DESIGNS[k.split(':', 1)[1]].name for k in a.knows if k.startswith("design:")]
+    des += [i["name"] for i in IDEAS.known(world, a)]
     L.append("Can make: " + (", ".join(rec) or "nothing yet (experiment!)") + ". Can build: " + (", ".join(des) or "nothing") + ".")
     mems = a.recall(4, keywords=[a.goal] if a.goal else None, now=t)
     if mems:

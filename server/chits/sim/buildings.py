@@ -374,6 +374,7 @@ def finish_upgrade(world, st, by: Agent) -> bool:
     for cx, cy in st.cells():
         world.occupied[cy * world.w + cx] = st.id
     st.design, st.durability, st.ruined_at, st.completed, st.upgrade = to, 100.0, -1, world.tick, {}
+    st.idea = st.title = ""  # (an invented home rebuilt as a bigger one is that one now)
     world.dirty_struct.add(st.id)
     hands = [world.agents[i] for i in up["by"] if i in world.agents] or [by]
     names = [x.name for x in hands]

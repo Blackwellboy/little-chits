@@ -88,6 +88,12 @@ def main(argv):
     from chits.sim import items
     if hasattr(items, "ITEM_USES"):
         items.ITEM_USES = False  # F35's item uses change a one-village run; they have tests of their own
+    try:  # (chits' own building ideas, sim/ideas.py: an older tree has none)
+        from chits.sim import ideas
+
+        ideas.INVENTED_BUILDINGS = False
+    except ImportError:
+        pass
     from chits.sim import world as world_mod
     if hasattr(world_mod, "RNG_STREAMS"):  # streams per system, chit and tick: off, the running streams of old trees
         world_mod.RNG_STREAMS = False

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from .. import diag
 from . import items as IT
 from . import buildings as BLD
+from . import ideas as IDEAS
 from . import terrain as T
 from .agent import HUNGER_PER_TICK, Agent, TICKS_PER_DAY
 from .items import (
@@ -1692,8 +1693,10 @@ def plan_needs(world, steps) -> Dict[str, int]:
         do = s.get("do")
         if do in ("build", "help"):
             site = world.structures.get(str(s.get("site") or s.get("target") or ""))
-            key = site.design if site is not None else normalize_design(s.get("what"))
-            for k, n in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+            idea = IDEAS.by_name(world, s.get("what")) if site is None else None
+            key = site.design if site is not None else idea["base"] if idea else normalize_design(s.get("what"))
+            mats = idea["materials"] if idea else DESIGNS[key].material_map if key else {}
+            for k, n in (site.needs if site is not None else mats).items():
                 add(k, n)
         elif do == "craft" and (k := world.norm_item(s.get("what"))) and (r := world.recipe(k)) is not None:
             for i, m in r.inputs:
@@ -1825,6 +1828,8 @@ def _do_invent(world, a: Agent, step, s) -> str:
     name = sanitize_name(step.get("name"))
     if not name:
         return "an invention needs a name (\"name\": what you call it)"
+    if IDEAS.by_name(world, name):
+        return f"the name {name} is already taken by a building idea: give it a new name"
     taken = (normalize_item(name) or normalize_design(name) or world.invention_by_name(name)
              or world.catalog.pack_key(name))
     if taken:  # otherwise "wood" or "spear" would mean the invention for everyone here from now on
@@ -1849,6 +1854,13 @@ def _do_invent(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("crafting"), 10.0):
         return RUNNING
     a.practice("crafting", 0.8)
+    if IDEAS.INVENTED_BUILDINGS:  # a building of its own (sim/ideas.py): a named variant of one the world knows
+        idea = IDEAS.conceive(world, a, bag, name, purpose_text)
+        if isinstance(idea, str):
+            a.remember(world.tick, f"I tried to think up a {name}: {idea}", 3, "experiment")
+            return idea
+        if idea is not None:
+            return _conceived(world, a, *idea, s)
     v = verdict(bag, purpose_text, world.catalog, world.stations_at(a.x, a.y))  # (what stands here counts, asked for or not)
     ok, pid, effect, feedback = v["ok"], v["purpose"], v["effect"], v["feedback"]
     combo =" + ".join(f"{n} {world.item_name(k)}" if n > 1 else world.item_name(k) for k, n in sorted(bag.items()))
@@ -1883,6 +1895,30 @@ def _do_invent(world, a: Agent, step, s) -> str:
     a.bump("inventions")
     a.remember(world.tick, f"I invented the {name} ({pid}) from {combo}", 5, "discovery")
     s["note"] = f"Invented the {name}"
+    return DONE
+
+
+def _conceived(world, a: Agent, idea: Dict[str, Any], new: bool, s) -> str:
+    """An invention that is a building: the chit knows the idea now (its parts are only the model of it, and are
+    kept); it is built with `build` and the idea's name."""
+    kk = "idea:" + idea["key"]
+    mats = ", ".join(f"{n} {world.item_name(m)}" for m, n in idea["materials"].items())
+    base = DESIGNS[idea["base"]].name
+    kind = f" (a kind of {base})" if a.knows_design(idea["base"]) else ""  # (the chit is told only what it knows)
+    if not new:
+        world.learned(a, kk, "discovered")  # (one "learned" event: the world had it first from someone else)
+        s["note"] = f"Thought up the {idea['name']}{kind} (someone here had the same idea): build it from {mats}"
+        return DONE
+    # a first, counted as an item invention is (world.first), told by one event: the invention, not a discovery too
+    a.learn(kk, "discovered", world.tick)
+    a.bump_rev(f"it thought up the {idea['name']}")
+    world.first.setdefault(kk, {"tick": world.tick, "by": a.id, "name": a.name})
+    world.emit("invention", f"{a.name} thought up the {idea['name']}, a {base} of their own design, built from {mats}",
+               5, a.id, a.x, a.y, key=idea["key"], name=idea["name"], purpose=idea["purpose"], base=idea["base"],
+               building=True, knowledge=kk)
+    a.bump("inventions")
+    a.remember(world.tick, f"I thought up the {idea['name']}{kind}: it is built from {mats}", 5, "discovery")
+    s["note"] = f"Thought up the {idea['name']}{kind}: build it from {mats}"
     return DONE
 
 
@@ -2450,14 +2486,20 @@ def _do_build(world, a: Agent, step, s) -> str:
         return _redirect(world, a, s)
     if s.get("site"):
         return _do_help(world, a, step, s)
-    key = normalize_design(step.get("what"))
-    if not key:
-        return f"'{step.get('what')}' is not a kind of structure anyone knows"
-    if not a.knows_design(key):
-        return f"I don't know how to build a {DESIGNS[key].name} yet"
+    idea = IDEAS.by_name(world, step.get("what"))  # a building idea of this world's own, by its name (sim/ideas.py)
+    if idea is not None:
+        if f"idea:{idea['key']}" not in a.knows:
+            return f"I don't know how to build a {idea['name']} yet"
+        key = idea["base"]
+    else:
+        key = normalize_design(step.get("what"))
+        if not key:
+            return f"'{step.get('what')}' is not a kind of structure anyone knows"
+        if not a.knows_design(key):
+            return f"I don't know how to build a {DESIGNS[key].name} yet"
     if key == "bridge":  # it goes over water, at the nearest narrow crossing
         return BLD.build_bridge(world, a, step, s)
-    up = BLD.upgrade_instead(world, a, key, step)
+    up = BLD.upgrade_instead(world, a, key, step) if idea is None else None
     if up:  # a bigger home for a chit living in a smaller one close by: rebuild that one where it stands
         s["redirect"] = up
         return _redirect(world, a, s)
@@ -2479,11 +2521,12 @@ def _do_build(world, a: Agent, step, s) -> str:
     # the place it is for would not serve it either: a well 8 tiles from dry fields was joined, and watered none, Codex #95)
     for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
         if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
-                and (serves is None or serves(st.x, st.y)):
+                and (serves is None or serves(st.x, st.y)) and (idea is None or st.idea == idea["key"]):
             s["site"] = st.id
             s["joined"] = True
             return _do_help(world, a, step, s)
-    reuse = _use_existing(world, a, key, s, ox, oy)
+    # (an invented building is its builder's own: the plain one standing close by is not a reason not to build it)
+    reuse = _use_existing(world, a, key, s, ox, oy) if idea is None else None
     if reuse is not None:
         return reuse
     cap = step.get("_cap")  # instinct decided "we need one" when planning; by now others may have started theirs
@@ -2529,12 +2572,14 @@ def _do_build(world, a: Agent, step, s) -> str:
     st = world.place_site(key, pos[0], pos[1], a)
     st.builders[a.id] = 0.0
     s["site"] = st.id
-    d = DESIGNS[key]
-    need = ", ".join(f"{n} {world.item_name(k)}" for k, n in d.materials)
+    if idea is not None:
+        IDEAS.mark(world, st, idea)
+    what = IDEAS.name_of(st)
+    need = ", ".join(f"{n} {world.item_name(k)}" for k, n in st.needs.items())
     if key != "road":
-        world.emit("site", f"{a.name} started building a {d.name} (needs {need})", 2, a.id, *st.center(),
-                   design=key, structure=st.id)
-    a.remember(world.tick, f"I started a {d.name} at ({st.x},{st.y}); it needs {need}", 3, "build")
+        world.emit("site", f"{a.name} started building a {what} (needs {need})", 2, a.id, *st.center(),
+                   design=key, structure=st.id, **({"idea": st.idea} if st.idea else {}))
+    a.remember(world.tick, f"I started a {what} at ({st.x},{st.y}); it needs {need}", 3, "build")
     return _do_help(world, a, step, s)
 
 
@@ -2547,10 +2592,10 @@ def build_course(world, a: Agent, step: Dict[str, Any], sown=()):
     materials from a chit that would only feed the campfire beside it)."""
     if step.get("site"):
         return "site", None
-    key = normalize_design(step.get("what"))
-    if not key or not a.knows_design(key):
+    key, idea = build_key(world, a, step.get("what"))
+    if not key:
         return "unknown", None
-    if key == "bridge" or BLD.upgrade_instead(world, a, key, step):
+    if key == "bridge" or (idea is None and BLD.upgrade_instead(world, a, key, step)):
         return "redirect", None
     ox, oy = a.x, a.y
     near = step.get("near") or step.get("at")
@@ -2566,15 +2611,25 @@ def build_course(world, a: Agent, step: Dict[str, Any], sown=()):
     serves = _serving(step, key, within)
     for st in world.structures_near(ox, oy, min(12, within) if within else 12, key):
         if not st.complete and a.reflex_rest.get("unreach:" + st.id, 0) <= world.tick and world.same_land(a, st) \
-                and (serves is None or serves(st.x, st.y)):
+                and (serves is None or serves(st.x, st.y)) and (idea is None or st.idea == idea["key"]):
             return "join", st
-    reuse = reuse_choice(world, a, key, ox, oy, sown)
+    reuse = reuse_choice(world, a, key, ox, oy, sown) if idea is None else None
     if reuse is not None:
         return "reuse", reuse
     cap = step.get("_cap")
     if cap and sum(1 for x in world.structures.values() if x.design == key) >= cap:
         return "cap", None
     return "new", (ox, oy)
+
+
+def build_key(world, a: Agent, what: Any) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """(the design a build step puts up, the building idea it is built as): the idea's base for one of this world's
+    ideas the chit knows; (None, None) for what it can't build."""
+    idea = IDEAS.by_name(world, what)
+    if idea is not None:
+        return (idea["base"], idea) if f"idea:{idea['key']}" in a.knows else (None, None)
+    key = normalize_design(what)
+    return (key, None) if key and a.knows_design(key) else (None, None)
 
 
 def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
@@ -2585,7 +2640,7 @@ def build_could_start(world, a: Agent, step: Dict[str, Any]) -> bool:
     kind, where = build_course(world, a, step)
     if kind != "new":
         return kind != "unknown"  # (it helps, joins, reuses, redirects or has enough)
-    key = normalize_design(step.get("what"))
+    key = build_key(world, a, step.get("what"))[0]
     ox, oy = where
     within = step.get("_within") if isinstance(step.get("_within"), int) and step.get("_within") > 0 else 0
     serves = _serving(step, key, within)
@@ -2686,7 +2741,7 @@ def _do_help(world, a: Agent, step, s) -> str:
         return "couldn't reach the construction site"
     if mv != "arrived":
         return RUNNING
-    d = DESIGNS[st.design]
+    nm = IDEAS.name_of(st)  # (an invented building goes by its own name)
     # deliver whatever is needed
     delivered = []
     for k in list(st.needs):
@@ -2709,7 +2764,7 @@ def _do_help(world, a: Agent, step, s) -> str:
         if not s.get("announced"):
             s["announced"] = True
             fname = f.name if f else "someone"
-            world.emit("helped", f"{a.name} brought {', '.join(delivered)} to {fname}'s {d.name}", 2, a.id,
+            world.emit("helped", f"{a.name} brought {', '.join(delivered)} to {fname}'s {nm}", 2, a.id,
                        *st.center(), structure=st.id)
     if st.needs:
         # try the stockpile before giving up
@@ -2722,9 +2777,9 @@ def _do_help(world, a: Agent, step, s) -> str:
             a.path = []
             return RUNNING
         need = ", ".join(f"{n} {world.item_name(k)}" for k, n in st.needs.items())
-        s["note"] = f"The {d.name} still needs {need}"
+        s["note"] = f"The {nm} still needs {need}"
         return DONE
-    a.activity = f"building {d.name}"
+    a.activity = f"building {nm}"
     a.emote = "🔨"
     a.emote_until = world.tick + 2
     st.work_done += a.skill_speed("building") * (1.1 if a.mood > 70 else 1.0)
@@ -2735,7 +2790,7 @@ def _do_help(world, a: Agent, step, s) -> str:
         world.dirty_struct.add(st.id)
     if st.work_done >= st.work_total:
         world.complete_structure(st, a)
-        s["note"] = f"Finished the {d.name}!"
+        s["note"] = f"Finished the {nm}!"
         return DONE
     return RUNNING
 
@@ -2960,6 +3015,8 @@ def _do_say(world, a: Agent, step, s) -> str:
 def _knowledge_key(raw: Any, world=None) -> Optional[str]:
     if not raw:
         return None
+    if world is not None and (idea := IDEAS.by_name(world, raw)):  # one of this world's building ideas (sim/ideas.py)
+        return f"idea:{idea['key']}"
     if world is not None:  # this world's own inventions and local names, by key or name (T20)
         inv = world.invention_by_name(raw) or world.invention_by_name(str(raw).split(":", 1)[-1])
         if not inv and not normalize_item(str(raw).split(":", 1)[-1]) and not normalize_design(str(raw).split(":", 1)[-1]):
@@ -3025,7 +3082,8 @@ def _do_teach(world, a: Agent, step, s) -> str:
     a.like(other.id, 5)
     other.like(a.id, 6)
     a.bump("taught")
-    s["note"] = f"Taught {other.name} {kk.split(':')[1].replace('_', ' ')}"
+    idea = IDEAS.by_name(world, kk) if kk.startswith("idea:") else None
+    s["note"] = f"Taught {other.name} {idea['name'] if idea else kk.split(':')[1].replace('_', ' ')}"
     return DONE
 
 
@@ -3076,9 +3134,15 @@ def _do_write(world, a: Agent, step, s) -> str:
                        belief=key)
         s["note"] = f"Wrote down the teachings of {b['name']}"
         return DONE
-    what = world.item_name(key) if kind == "recipe" else DESIGNS[key].name
-    text = world.catalog.describe(world.recipe(key)) if kind == "recipe" else (
-        f"a {DESIGNS[key].name} is built from " + ", ".join(f"{n} {world.item_name(m)}" for m, n in DESIGNS[key].materials))
+    if kind == "idea":  # (a building idea: its own name and materials, and what it is a kind of)
+        idea = world.building_ideas[key]
+        what = idea["name"]
+        text = (f"a {what} ({idea['by_name']}'s idea, a kind of {DESIGNS[idea['base']].name}) is built from "
+                + ", ".join(f"{n} {world.item_name(m)}" for m, n in idea["materials"].items()))
+    else:
+        what = world.item_name(key) if kind == "recipe" else DESIGNS[key].name
+        text = world.catalog.describe(world.recipe(key)) if kind == "recipe" else (
+            f"a {DESIGNS[key].name} is built from " + ", ".join(f"{n} {world.item_name(m)}" for m, n in DESIGNS[key].materials))
     tb = Tablet(tid, kk, a.id, a.name, world.tick, a.x, a.y, lib.id if lib and lib.dist(a.x, a.y) <= 2 else None, text)
     world.tablets[tid] = tb
     if tb.in_structure:
@@ -3647,19 +3711,20 @@ def _do_smelt(world, a: Agent, step, s) -> str:
     return DONE
 
 
-def mend_materials(design: str) -> List[str]:
+def mend_materials(design: str, plan=None) -> List[str]:
     """What a building can be mended with: its first material (as ever), then any other of its materials that is
     plain building stuff (MEND_WITH). A stockpile is re-lashed with cord, a furnace patched with stone as well as
-    brick; nobody mends a factory with a steam engine."""
-    mats = [m for m, _ in DESIGNS[design].materials]
+    brick; nobody mends a factory with a steam engine. `plan`: what this one was built from (ideas.plan_of: an
+    invented building is mended with its own materials, not its base's)."""
+    mats = [m for m, _ in (plan if plan is not None else DESIGNS[design].materials)]
     if not IT.ITEM_USES:
         return mats[:1]
     return mats[:1] + [m for m in mats[1:] if m in MEND_WITH]
 
 
-def mend_material(a: Agent, design: str) -> Optional[str]:
+def mend_material(a: Agent, design: str, plan=None) -> Optional[str]:
     """The first of those the chit is carrying."""
-    return next((m for m in mend_materials(design) if a.has(m)), None)
+    return next((m for m in mend_materials(design, plan) if a.has(m)), None)
 
 
 def _do_repair(world, a: Agent, step, s) -> str:
@@ -3670,10 +3735,11 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not st:
         return "nothing nearby needs repair"
     d = DESIGNS[st.design]
-    mat = mend_material(a, st.design)
+    plan = IDEAS.plan_of(world, st)
+    mat = mend_material(a, st.design, plan)
     if mat is None:
-        first = d.materials[0][0]
-        others = [world.item_name(m) for m in mend_materials(st.design) if m != first]
+        first = plan[0][0]
+        others = [world.item_name(m) for m in mend_materials(st.design, plan) if m != first]
         return f"I need {world.item_name(first)}" + (f" (or {', '.join(others)})" if others else "") + f" to repair the {d.name}"
     mv = _goto_structure(world, a, s, st)
     if mv == "blocked":
@@ -3686,7 +3752,7 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("building"), 6.0):
         return RUNNING
     a.remove(mat, 1)
-    if mat != d.materials[0][0]:
+    if mat != plan[0][0]:
         a.bump(f"mended_with_{mat}")
     was_ruin = st.durability <= 0
     st.durability = min(100.0, st.durability + 45)

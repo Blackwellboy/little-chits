@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .actions import STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
+from . import ideas as IDEAS
 from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design
 from .pioneers import APART
 
@@ -390,7 +391,8 @@ def _known(world, sc: Optional[Scope] = None) -> Tuple[set, set]:
     for a in members(world, sc):
         for k in a.knows:
             kind, key = k.split(":", 1)
-            (designs if kind == "design" else recipes).add(key)
+            if kind in ("design", "recipe"):  # (a building idea is neither: sim/ideas.py)
+                (designs if kind == "design" else recipes).add(key)
     return designs, recipes
 
 
@@ -412,9 +414,9 @@ def stock(world, key: str, for_design: Optional[str] = None, sc: Optional[Scope]
     else:
         n = sum(s.storage.get(key, 0) for s in _stores(world, sc))
     n += sum(a.inventory.get(key, 0) for a in members(world, sc))
-    if for_design:
-        need = DESIGNS[for_design].material_map.get(key, 0)
-        n += sum(max(0, need - s.needs.get(key, 0)) for s in world.structures.values()
+    if for_design:  # (delivered: what the site was to take, its idea's materials or its design's, less what it needs)
+        n += sum(max(0, dict(IDEAS.plan_of(world, s)).get(key, 0) - s.needs.get(key, 0))
+                 for s in world.structures.values()
                  if s.design == for_design and not s.complete and (wide or _owns(world, sc, s)))
     return n
 
