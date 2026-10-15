@@ -302,3 +302,14 @@ def test_switched_off_the_pad_is_the_one_launch_as_before(monkeypatch):
     assert not [c for c in projects.candidates(w) if c[3] == "the space programme"]
     space.daily(w)
     assert w.space == {}
+
+
+def test_nothing_finds_the_rocket_so_no_idea_feedback_or_clue_counts_it():
+    from chits.sim import research
+
+    w, ags = _world()
+    a = ags[0]
+    a.familiar.update({"rocket_part", "fuel"})
+    assert "rocket" not in research.candidates(w, a)  # (a scholar's idea for it would wait for ever)
+    assert research.clue("rocket_part") == "heat-proof"  # (the clue it had before there were rockets)
+    assert ACT._experiment_hint({"rocket_part": 1, "fuel": 1}, set()) == ""  # (nor does it feel close)

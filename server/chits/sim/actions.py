@@ -2394,7 +2394,7 @@ def _experiment_hint(bag: Dict[str, int], stations: Set[str], recipes: Optional[
     """Physical feedback: the world 'feels' close without revealing recipes. `recipes`: this world's physics (the
     base recipes, then a content pack's)."""
     have = set(bag)
-    recipes = list(RECIPES.values()) if recipes is None else recipes
+    recipes = [r for r in (RECIPES.values() if recipes is None else recipes) if r.key not in IT.UNFOUND]
     for r in recipes:
         need = dict(r.inputs)
         if need == bag and r.station and r.station not in stations:

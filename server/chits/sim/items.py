@@ -133,6 +133,9 @@ def described_as(function: str) -> List[str]:
 
 STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "loom")
 # (and "pad", the launch pad, where nothing is tried: a rocket is put together there by those who saw one fly)
+# Made only by those who saw one made (sim/space.py): nothing finds it, so no experiment's feedback, scholar's idea or
+# clue's rarity counts it (an idea for a rocket took a scholar's hint slot for good, and changed worlds with no pad)
+UNFOUND = frozenset({"rocket"})
 STATION_NAME = {"pad": "launch pad"}  # a station said otherwise than its key, in a recipe's words
 # the ores (issue #4): one kind of deposit tile, whose metal is fixed by its place and the world's seed (World.ore_item)
 ORE_KINDS = ("ore", "iron_ore")
