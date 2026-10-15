@@ -46,6 +46,7 @@ export function Inspector() {
       <aside className="inspector">
         <button className="x" onClick={close}>✕</button>
         <h2>{s.name.charAt(0).toUpperCase() + s.name.slice(1)}</h2>
+        {s.title && <p className="ambition" title="a chit's own design: it works as the building it is a kind of">💡 {s.inventor ? `${s.inventor}'s idea` : "an invented building"}, a kind of {s.base_name}</p>}
         <p className="muted">{s.blurb}</p>
         <div className="kv">
           <span>Status</span><b>{!s.complete ? `under construction · ${Math.round(s.progress * 100)}%` : s.ruined ? "in ruins" : `condition ${Math.round(s.durability)}%`}</b>
@@ -156,7 +157,7 @@ export function Inspector() {
               <li key={k.key} title={k.detail}>
                 <span className="kicon">{HOW_ICON[k.how] ?? "·"}</span>
                 <div>
-                  <b>{k.icon} {k.name}</b> <span className="muted">{k.kind === "design" ? "build" : "make"}</span>
+                  <b>{k.icon} {k.name}</b> <span className="muted">{k.kind === "recipe" ? "make" : "build"}</span>
                   <small>{HOW[k.how] ?? k.how}{k.from ? ` (${k.from})` : ""} · day {k.day} — {k.detail}</small>
                 </div>
               </li>

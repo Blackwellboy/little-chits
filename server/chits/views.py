@@ -13,6 +13,8 @@ from .sim.world import Structure, World
 
 def knowledge_name(k: str, w: Optional[World] = None) -> str:
     kind, key = k.split(":", 1)
+    if kind == "idea":  # a building idea (sim/ideas.py): its own name (one from another world: its key)
+        return ((w.building_ideas.get(key) if w else None) or {}).get("name", key)
     return item_name(key, w.catalog if w else None) if kind == "recipe" else DESIGNS[key].name
 
 
@@ -35,11 +37,24 @@ def agent_brief(w: World, a: Agent) -> Dict[str, Any]:
     }
 
 
+def _idea_detail(w: World, key: str) -> str:
+    idea = w.building_ideas.get(key)
+    if idea is None:
+        return ""
+    return (f"{idea['by_name']}'s idea, a kind of {DESIGNS[idea['base']].name}: "
+            + ", ".join(f"{n} {item_name(m, w.catalog)}" for m, n in idea["materials"].items()))
+
+
 def structure_view(s: Structure, w: World) -> Dict[str, Any]:
     d = DESIGNS[s.design]
     founder = w.agents.get(s.founder) or w.dead.get(s.founder)
+    # an invented building (sim/ideas.py): its own name, what it is a kind of, and whose idea it was
+    idea = w.building_ideas.get(s.idea) if s.idea else None
+    own = {"title": s.title, "idea": s.idea, "base_name": d.name,
+           "inventor": idea["by_name"] if idea else None} if s.title else {}
     return {
-        "id": s.id, "design": s.design, "name": d.name, "x": s.x, "y": s.y, "w": s.w, "h": s.h,
+        **own,
+        "id": s.id, "design": s.design, "name": s.title or d.name, "x": s.x, "y": s.y, "w": s.w, "h": s.h,
         "complete": s.complete, "progress": round(min(1.0, s.work_done / max(1.0, s.work_total)), 3),
         "needs": s.needs, "durability": round(s.durability, 1), "lit": s.lit, "fuel": round(s.fuel),
         "planted": s.planted, "growth": round(s.growth, 2), "stored": sum(s.storage.values()),
@@ -105,6 +120,7 @@ def snapshot(w: World, events_limit: int = 80) -> Dict[str, Any]:
         "world": world_meta(w),
         "signs": list(w.signs.values()),
         "inventions": list(w.inventions.values()),
+        **({"building_ideas": list(w.building_ideas.values())} if w.building_ideas else {}),
         "beliefs": belief_list(w),
         "ground": ground_view(w),
         "animals": animals_compact(w),
@@ -133,7 +149,7 @@ def agent_detail(w: World, a: Agent, brain_label: str = "") -> Dict[str, Any]:
             "key": k, "kind": kind, "name": knowledge_name(k, w), "how": v["how"], "from": nm(v.get("from")),
             "day": v["tick"] // 240 + 1,
             "detail": w.catalog.describe(w.recipe(key)) if kind == "recipe" else
-            ", ".join(f"{n} {item_name(m)}" for m, n in DESIGNS[key].materials),
+            _idea_detail(w, key) if kind == "idea" else ", ".join(f"{n} {item_name(m)}" for m, n in DESIGNS[key].materials),
             "icon": w.item(key).icon if kind == "recipe" else "",
         })
     rels = sorted(((v, k) for k, v in a.affinity.items() if abs(v) >= 3), reverse=True)[:10]

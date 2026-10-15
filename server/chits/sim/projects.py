@@ -390,7 +390,8 @@ def _known(world, sc: Optional[Scope] = None) -> Tuple[set, set]:
     for a in members(world, sc):
         for k in a.knows:
             kind, key = k.split(":", 1)
-            (designs if kind == "design" else recipes).add(key)
+            if kind in ("design", "recipe"):  # (a building idea is neither: sim/ideas.py)
+                (designs if kind == "design" else recipes).add(key)
     return designs, recipes
 
 

@@ -61,6 +61,7 @@ const WORK_FX: Record<string, { light: number; smoke: boolean; spark: number }> 
 type Particle = { s: Sprite; vx: number; vy: number; life: number; max: number; grow: number; fade: boolean; world: boolean; g: number };
 
 const LABEL = new TextStyle({ fontFamily: "Silkscreen, monospace", fontSize: 11, fill: 0xffffff, stroke: { color: 0x0b0f1a, width: 3 }, align: "center" });
+const INVENTED_TINT = 0xffeccc;  // an invented building: its base's sprite, a shade warmer
 const LABEL_SEL = new TextStyle({ fontFamily: "Silkscreen, monospace", fontSize: 11, fill: 0xffe27a, stroke: { color: 0x0b0f1a, width: 3 }, align: "center" });
 const EMOTE = new TextStyle({ fontFamily: "system-ui, 'Apple Color Emoji', 'Segoe UI Emoji', sans-serif", fontSize: 15 });
 const BUBBLE = new TextStyle({ fontFamily: "Inter, system-ui, sans-serif", fontSize: 11, fill: 0x1b1626, wordWrap: true, wordWrapWidth: 170, lineHeight: 14 });
@@ -579,7 +580,7 @@ export class WorldView {
     if (s.design === "bridge") st = (s.h > s.w ? 10 : 0) + Math.max(s.w, s.h); // which way it runs, how long
     // a home being rebuilt bigger: scaffolding redrawn as the work goes on
     const up = s.upgrade ? `:u${Math.round(s.upgrade.progress * 8)}${Object.keys(s.upgrade.needs).length ? "n" : ""}` : "";
-    return `${s.design}:${st}:${s.ruined ? "r" : ""}${up}`;
+    return `${s.design}:${st}:${s.ruined ? "r" : ""}${up}${s.title ? ":i" : ""}`;
   }
 
   private updateStructure(s: StructureView) {
@@ -611,8 +612,10 @@ export class WorldView {
         sp.anchor.set(0, 1);
         sp.x = (s.w * TS - tex.width) / 2;
         if (ru) { sp.tint = 0x8a8a8a; sp.alpha = 0.85; sp.skew.x = -0.04; }
+        else if (s.title) sp.tint = INVENTED_TINT;
         v.root.addChildAt(sp, 0);
         v.sprite = sp;
+        if (s.title && !ru) this.drawInvented(v.extra, s, tex.height);
         if (s.upgrade) this.drawUpgrade(v.extra, s, tex.height);
         if (s.design === "campfire" && s.lit) {
           const f = new Sprite(this.flames[0]);
@@ -626,6 +629,16 @@ export class WorldView {
       }
       v.key = key;
     }
+  }
+
+  /** A chit's own building (an idea built as a variant of its base): a little pennant on its roof, so the village's
+   *  inventions stand out on the map. Its name shows on hover and in the inspector. */
+  private drawInvented(c: Container, s: StructureView, height: number) {
+    const g = new Graphics();
+    const x = Math.max(2, s.w * TS - 5), top = -height - 1;
+    g.rect(x, top - 6, 1, 7).fill(0x5a3e2b);
+    g.moveTo(x + 1, top - 6).lineTo(x + 6, top - 4).lineTo(x + 1, top - 2).fill(0xffd84a);
+    c.addChild(g);
   }
 
   private drawSite(c: Container, s: StructureView) {
@@ -1270,6 +1283,16 @@ export class WorldView {
         }
         l.bubble.position.set(p.x - l.bubbleBg.width / 2, head - l.bubbleBg.height - (l.name.visible ? 14 : 4));
       }
+    }
+    // an invented building's own name, over it while the pointer is on it
+    let title = this.overlay.getChildByLabel("struct-title") as Text | null;
+    if (!title) { title = new Text({ text: "", style: LABEL, resolution: 2 }); title.label = "struct-title"; title.anchor.set(0.5, 1); this.overlay.addChild(title); }
+    const hs = this.hover ? d.structures.get(this.hover) : undefined;
+    title.visible = !!hs?.title;
+    if (hs?.title) {
+      title.text = hs.inventor ? `${hs.title} (${hs.inventor}'s idea)` : hs.title;
+      const p = this.worldToScreen((hs.x + hs.w / 2) * TS, hs.y * TS - TS);
+      title.position.set(p.x, p.y);
     }
     // selection ring
     let ring = this.overlay.getChildByLabel("ring") as Sprite | null;

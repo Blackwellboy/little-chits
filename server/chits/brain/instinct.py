@@ -19,6 +19,7 @@ from ..sim.actions import (FOODS, era_path, KEEP_STOCK, STATION_NEAR, STATION_RE
                            FUEL_VALUE, _tablet_new, build_could_start, build_course, food_items, mend_material,
                            plan_bill, remembered_place, stockpile_room, store_place, village_stores)
 from ..sim.agent import Agent
+from ..sim import ideas as IDEAS
 from ..sim import items as IT
 from ..sim import world as W
 from ..sim.world import sub_stream
@@ -606,6 +607,8 @@ class Instinct:
                 if out["steps"]:
                     if fn is not self._survive:
                         out["steps"] = (self._answer(world, a, out.get("goal", "")) + out["steps"])[:6]
+                    if IDEAS.on(world):  # a building idea it knows, now and then, in place of the plain one
+                        out["steps"] = IDEAS.instead(world, a, out["steps"])
                     return out
         return {"goal": "look around", "thought": "Nothing pressing. I'll wander.", "steps": [{"do": "wander"}]}
 

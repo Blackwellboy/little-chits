@@ -205,6 +205,21 @@ def inventions():
     return out
 
 
+@app.get("/api/ideas")
+def building_ideas():
+    """Each world's own ideas for buildings (sim/ideas.py): what each is called, what it is a kind of, who thought of
+    it, what it takes, how many know it and how many stand."""
+    from .sim.items import DESIGNS
+
+    out = {}
+    for w in R().worlds.values():
+        out[w.id] = [{**i, "day": i.get("tick", 0) // 240 + 1, "base_name": DESIGNS[i["base"]].name,
+                      "knowers": sum(1 for a in w.agents.values() if f"idea:{i['key']}" in a.knows),
+                      "standing": sum(1 for s in w.structures.values() if s.idea == i["key"] and s.functional)}
+                     for i in w.building_ideas.values()]
+    return out
+
+
 def _replay_data(w, from_tick: int, to_tick: Optional[int], epoch: Optional[str]) -> Dict[str, Any]:
     r = R()
     r._flush_events(w)

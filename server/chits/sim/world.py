@@ -29,6 +29,7 @@ from . import artifacts as ART  # registers the artifacts as items (T28)
 from . import animals as ANIMALS
 from . import projects as PROJECTS  # village projects, research and wants (their shared state: world.civic)
 from . import buildings as BLD
+from . import ideas as IDEAS
 from . import rules as RL
 
 SEASONS = ("spring", "summer", "autumn", "winter")
@@ -215,6 +216,8 @@ class Structure:
     worked_until: int = -1  # a station someone is working a shift at (smoke, sparks) until this tick
     produced: Dict[str, int] = field(default_factory=dict)  # item -> how many this station has made in shifts
     upgrade: Dict[str, Any] = field(default_factory=dict)  # a home being rebuilt bigger (buildings.do_upgrade)
+    idea: str = ""  # an invented building (sim/ideas.py): the world.building_ideas key it was built as
+    title: str = ""  # ...and its name
 
     @property
     def ruined(self) -> bool:
@@ -252,7 +255,9 @@ class Structure:
         return {st} if st else set()
 
     def to_dict(self) -> Dict[str, Any]:
-        return {k: getattr(self, k) for k in self.__dataclass_fields__}
+        # (an invented building's fields only when it is one: every other structure saves as it always did)
+        return {k: getattr(self, k) for k in self.__dataclass_fields__
+                if k not in ("idea", "title") or getattr(self, k)}
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Structure":
@@ -352,6 +357,7 @@ class World:
         # do here what they did at home, and they are saved (World.adopt_foreign). Never mixed into `inventions`:
         # those are what this world thought of itself.
         self.foreign: Dict[str, Dict[str, Any]] = {}
+        self.building_ideas: Dict[str, Dict[str, Any]] = {}  # this world's own ideas for buildings (sim/ideas.py)
         self._strange: set = set()  # keys standing in for things this world cannot name (not saved)
         self.beliefs: Dict[str, Dict[str, Any]] = {}  # what chits believe (T21): content from minds, never magic
         self.era_index = 0
@@ -1555,8 +1561,12 @@ class World:
         first = f"design:{s.design}" not in self.first
         txt = f"{who} finished {'the first ' if first else 'a '}{d.name}" + (" together" if together else "")
         imp = 4 if first else (2 if together else 1)
+        own = IDEAS.built(self, s, who) if s.idea else None  # (an invented building: its own name, its inventor)
+        extra = {"idea": s.idea, "title": s.title} if own else {}
+        if own:
+            txt, imp = own[0], max(imp, 4) if own[1] else imp
         self.emit("built", txt, imp, by.id, *s.center(), design=s.design, structure=s.id, builders=list(s.builders),
-                  together=together, first=first)
+                  together=together, first=first, **extra)
         if first:
             self.first[f"design:{s.design}"] = {"tick": self.tick, "by": by.id, "name": by.name}
         if s.design == "launch_pad":
@@ -1574,9 +1584,12 @@ class World:
                 continue
             a.made_it_work(f"design:{s.design}", self.tick)
             a.bump("built")
-            a.remember(self.tick, f"I helped finish a {d.name}" + (f" with {_join_names([n for n in names if n != a.name])}" if together else ""), 3, "build")
+            a.remember(self.tick, f"I helped finish a {IDEAS.name_of(s)}" + (f" with {_join_names([n for n in names if n != a.name])}" if together else ""), 3, "build")
             if a.learn(f"design:{s.design}", "built", self.tick):
                 pass
+            if own:  # (whoever helped build an invented building knows it now)
+                a.learn(f"idea:{s.idea}", "built", self.tick)
+                a.made_it_work(f"idea:{s.idea}", self.tick)
             for bid in s.builders:
                 if bid != aid:
                     a.like(bid, 6)
@@ -1658,12 +1671,18 @@ class World:
         if channel:
             self.deliver(channel, source, agent, knowledge, None)
         kind, key = knowledge.split(":", 1)
-        nm = self.item_name(key) if kind == "recipe" else DESIGNS[key].name
+        if kind == "idea":  # (an invented building, sim/ideas.py: its own name)
+            nm = "the " + (self.building_ideas.get(key) or {}).get("name", key)
+        else:
+            nm = self.item_name(key) if kind == "recipe" else DESIGNS[key].name
         via = {
             "discovered": "discovered how to make", "taught": "was taught how to make", "observed": "watched and learned how to make",
             "inspected": "figured out how to make", "read": "read how to make", "insight": "imagined",
             "built": "learned to build",
         }.get(how, "learned")
+        if kind == "idea":
+            via = {"taught": "was taught to build", "read": "read how to build", "discovered": "came up with",
+                   "raised": "was taught to build", "built": "learned to build"}.get(how, "learned to build")
         if kind == "design":
             via = {"taught": "was taught to build", "read": "read how to build", "inspected": "studied and learned to build",
                    "observed": "watched and learned to build", "insight": "came up with the idea of a", "built": "learned to build"}.get(how, "learned to build")
@@ -2198,6 +2217,8 @@ class World:
             d["cap"] = self.cap
         if self.foreign:  # (likewise)
             d["foreign"] = self.foreign
+        if self.building_ideas:  # (likewise)
+            d["building_ideas"] = self.building_ideas
         return d
 
     def _to_dict(self) -> Dict[str, Any]:
@@ -2275,6 +2296,9 @@ class World:
         if d.get("pack"):  # (its keys were checked against the base tables when the world was made)
             w.apply_pack(d["pack"], check_base=False)
         w.inventions = dict(d.get("inventions") or {})
+        from .ideas import load as load_ideas
+
+        w.building_ideas = load_ideas(d.get("building_ideas"))
         w.beliefs = dict(d.get("beliefs") or {})
         w.era_index = int(d.get("era_index", 0))
         w.era_by_deeds = bool(d.get("era_by_deeds", False))  # (a world saved before keeps the ages it reached)
