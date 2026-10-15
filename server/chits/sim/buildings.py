@@ -46,7 +46,7 @@ BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
                 "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
                 "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10,
-                "university": 30, "theatre": 30, "harbour": 20, "palisade": 30, "hospital": 30}
+                "university": 30, "theatre": 30, "harbour": 20, "palisade": 30, "hospital": 14}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
        "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
        "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade", "hospital")
