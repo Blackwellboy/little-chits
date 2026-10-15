@@ -107,3 +107,132 @@ def test_a_walk_longer_than_one_given_up_as_a_long_way_round_is_given_up_too():
     assert a.reflex_rest.get("unreach:" + near.id, 0) > w.tick and "store" not in s  # foraging instead
     A._do_eat(w, a, {"do": "eat"}, s)  # the next tick it looks again: only the further store is left
     assert s.get("store") != far.id and a.reflex_rest.get("unreach:" + far.id, 0) > w.tick
+
+
+def test_a_longer_walk_the_chit_can_afford_is_not_given_up():
+    # the given-up length is no absolute limit: a fed chit walks round the lake rather than go without
+    w, a, near, far = _two_stores()
+    w.nearest_resource = lambda x, y, kind, radius, *args, **kw: (25, 20) if kind == "berries" else None
+    a.hunger = 60.0
+    s = {}
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert "gave_up" in s and "store" not in s
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s.get("store") == far.id
+
+
+def test_the_eat_step_sets_out_for_the_store_nearest_on_foot():
+    # the margin and the food reflex judge the store by the walk; the eat step went to the nearest as the crow flies
+    w, a = _walled()
+    behind = _store(w, a, 20, 31)  # 11 tiles off, ~50 steps
+    open_ = _store(w, a, 40, 14)  # 20 tiles off, ~20 steps
+    assert behind.dist(a.x, a.y) < open_.dist(a.x, a.y) and _walk(w, a, open_) < _walk(w, a, behind)
+    a.hunger = 18.0
+    s = {}
+    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING and s.get("store") == open_.id
+
+
+def test_a_marked_store_across_a_wall_is_no_store_beside_the_way():
+    # 3 tiles off as the crow flies and ~50 steps on foot: taken, it was given up as a long way round, the chit's walk
+    # to its own store was dropped, and that long walk became the limit for every later one
+    w, a = _walled()
+    a.x, a.y = 20, 24
+    across = _store(w, a, 20, 27)
+    mine = _store(w, a, 20, 12)
+    assert across.dist(a.x, a.y) <= A.PASSING_STORE and _walk(w, a, across) > 2 * A._crow(a, *across.center())
+    a.reflex_rest["unreach:" + across.id] = w.tick + 240
+    a.hunger = 18.0
+    s = {"store": mine.id}
+    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING
+    assert s["store"] == mine.id and "gave_up" not in s and not s.get("passing")
+
+
+def test_a_marked_store_round_a_short_wall_is_taken_only_if_close_on_foot():
+    # round a short wall the marked store is a dozen steps off, nearer than the chit's own store but four times its
+    # crow's distance: no store beside the way
+    w, a = _walled()
+    for i in range(len(w.tiles)):
+        x, y = i % w.w, i // w.w
+        w.tiles[i] = T.ROCK if (y == 26 and 14 <= x <= 26) else T.GRASS
+    w.rebuild_block()
+    a.x, a.y = 20, 24
+    across = _store(w, a, 20, 27)
+    mine = _store(w, a, 20, 2)
+    crow = A._crow(a, *across.center())
+    assert across.dist(a.x, a.y) <= A.PASSING_STORE and 2 * crow < _walk(w, a, across) < _walk(w, a, mine)
+    a.reflex_rest["unreach:" + across.id] = w.tick + 240
+    a.hunger = 18.0
+    s = {"store": mine.id}
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s["store"] == mine.id and not s.get("passing")
+
+
+def test_a_store_beside_the_way_that_fails_leaves_the_walk_as_it_was(monkeypatch):
+    # should the store beside the way prove out of reach after all, the chit walks on to its own store: it neither
+    # drops that walk nor counts the failure as a long way round
+    w, a = _walled()
+    mine = _store(w, a, 40, 12)
+    beside = _store(w, a, 22, 20, food=20)
+    a.reflex_rest["unreach:" + beside.id] = w.tick + 240
+    a.hunger = 10.0
+    real = A._goto_structure
+    monkeypatch.setattr(A, "_goto_structure", lambda w_, a_, s_, st: "blocked" if st is beside else real(w_, a_, s_, st))
+    s = {"store": mine.id}
+    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING
+    assert s["store"] == mine.id and "gave_up" not in s
+    A._do_eat(w, a, {"do": "eat"}, s)
+    assert s["store"] == mine.id
+
+
+def _counting(w):
+    calls = []
+    real = w.find_path
+
+    def find_path(*args, **kw):
+        calls.append(kw.get("limit"))
+        return real(*args, **kw)
+
+    w.find_path = find_path
+    return calls
+
+
+def test_a_chit_with_no_plan_measures_the_walk_once_a_while_not_every_tick():
+    # a chit waiting on a model has no plan, so no step state to keep its lookup in: 116 A* a tick on a 256 map
+    w, a = _walled()
+    behind = _store(w, a, 20, 31)
+    a.hunger = 30.0
+    calls = _counting(w)
+    w.tick = (w.tick // A.MARGIN_RECHECK + 1) * A.MARGIN_RECHECK
+    for _ in range(A.MARGIN_RECHECK):
+        a.plan = []
+        A.reflexes(w, a)
+        assert a.plan and a.plan[0]["do"] == "eat"  # (the walk is short of its hunger: it sets out)
+        w.tick += 1
+    assert len(calls) == 1
+    assert calls[0] is not None and calls[0] <= 2 * (A.WALK_CAP * A._crow(a, *behind.center()) + 3) ** 2  # bounded
+    w2, b = _walled()
+    _store(w2, b, 24, 20)  # open ground, 4 tiles off: no walk of 3 times that could make the margin short
+    calls2 = _counting(w2)
+    b.hunger = 30.0
+    b.plan = []
+    A.reflexes(w2, b)
+    assert not calls2
+    w3, c = _walled()
+    _store(w3, c, 20, 31)
+    calls3 = _counting(w3)
+    c.hunger, c.plan = 3.0, []  # short as the crow flies already: no walk could make it shorter
+    A.reflexes(w3, c)
+    assert c.plan and c.plan[0]["do"] == "eat" and not calls3
+
+
+def test_the_walk_lookup_sees_marks_and_stores_that_change():
+    w, a = _walled()
+    behind = _store(w, a, 20, 31)
+    a.hunger = 30.0
+    assert A._store_walk(w, a)[0] == behind.id
+    a.reflex_rest["unreach:" + behind.id] = w.tick + 240  # marked after it was measured: not counted any more
+    assert A._store_walk(w, a) is None
+    open_ = _store(w, a, 40, 14, food=0)
+    assert A._store_walk(w, a) is None
+    open_.storage["grain"] = 10  # filled: counted at once
+    assert A._store_walk(w, a)[0] == open_.id
