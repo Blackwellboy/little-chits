@@ -18,7 +18,12 @@ def test_a_world_with_no_model_runs_on_instinct():
 
 def test_a_model_that_only_ever_falls_back_is_instinct_too():
     t = views.thinking(_steps(fallback=15, body_reflex=10), "m1")
-    assert t["on_instinct"] and t["why"] == "model_down" and t["fallback_pct"] == 60.0
+    assert t["on_instinct"] and t["why"] == "model_down" and t["fallback_pct"] == 60.0 and t["instinct_pct"] == 60.0
+    # a model that only picks from instinct's menu, or only repairs, is still deciding
+    for c in ("model_choice", "model_repair"):
+        t = views.thinking(_steps(fallback=30, **{c: 1}), "m1")
+        assert not t["on_instinct"] and t["model_pct"] == round(100 / 31, 1)
+    assert views.thinking(_steps(filler=5, fallback=5), "m1")["instinct_pct"] == 100.0
 
 
 def test_a_model_that_is_thinking_is_not_instinct():
@@ -61,7 +66,10 @@ def test_a_life_story_holds_the_chits_own_moments_its_childrens_births_and_its_d
         w.tick += 3 * TICKS_PER_DAY
         w.kill(a, "old age")
         rt._flush_events(w)
-        life = views.life(a, rt.store.life_events(w.id, a.id, views.LIFE_KINDS, epoch=w.timeline()))
+        rows = rt.store.life_events(w.id, a.id, views.LIFE_KINDS, epoch=w.timeline())
+        assert not [r for r in rows if r["actor"] == other.id and r["kind"] == "learned"], \
+            "the store reads only the events about this chit (a pupil's lesson names its teacher, but is not its moment)"
+        life = views.life(a, rows)
         kinds = [(e["kind"], e["role"]) for e in life["events"]]
         assert ("discovery", "self") in kinds and ("birth", "child") in kinds and ("built", "helped") in kinds
         assert kinds[-1] == ("death", "self") and life["died_day"] == 4 and not life["alive"] and life["cause"]
@@ -84,8 +92,8 @@ def test_a_long_life_is_thinned_but_keeps_its_birth_and_death():
     a = Agent.__new__(Agent)
     a.id, a.name, a.alive, a.born, a.died, a.cause_of_death = "a1", "Ada", False, 0, 50 * TICKS_PER_DAY, "old age"
     rows = [{"seq": 0, "tick": 0, "kind": "birth", "importance": 2, "actor": "a1", "text": "born", "data": {}}]
-    rows += [{"seq": i, "tick": i, "kind": "learned", "importance": 2, "actor": "a1", "text": f"l{i}", "data": {"how": "taught"}}
-             for i in range(1, 300)]
+    rows += [{"seq": i, "tick": i, "kind": "learned" if i % 2 else "job", "importance": 2 if i % 2 else 3, "actor": "a1",
+              "text": f"l{i}", "data": {"how": "taught"}} for i in range(1, 300)]
     rows += [{"seq": 300, "tick": 300, "kind": "invention", "importance": 5, "actor": "a1", "text": "inv", "data": {}},
              {"seq": 301, "tick": 301, "kind": "death", "importance": 1, "actor": "a1", "text": "died", "data": {}}]
     life = views.life(a, rows, limit=20)
