@@ -49,8 +49,11 @@ def test_the_world_holds_more_chits_and_small_villages_have_their_children_first
 
     from types import SimpleNamespace
 
+    monkeypatch.setattr(W, "CITY_GROWTH", False)
     assert W.POP_CAP == 60 and W.World.pop_cap(SimpleNamespace(w=512, h=512)) == W.POP_CAP_BIG == 90
     assert W.World.pop_cap(SimpleNamespace(w=128, h=128)) == 60  # small islands as before
+    monkeypatch.setattr(W, "CITY_GROWTH", True)  # room for cities: in proportion to the island's side
+    assert [W.World.pop_cap(SimpleNamespace(w=s, h=s)) for s in (128, 192, 256, 512)] == [60, 90, 120, 240]
     w = _village(20)
     ags = sorted(w.agents.values(), key=lambda a: a.id)
     big, small = ags[:2], ags[2:4]

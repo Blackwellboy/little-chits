@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .actions import COUNTABLE, STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
+from . import buildings as BLD
 from . import ideas as IDEAS
 from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design, station_of
 from .pioneers import APART
@@ -55,7 +56,7 @@ LEGACY = ""  # the slot an older save's single project is loaded into, until the
 # what a village lacks, and how much it matters (before the leader's own leanings)
 LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace": 2.5, "library": 1.8, "forge": 2.2,
            "factory": 2.0, "market": 1.0, "pen": 0.8, "brick_house": 1.0, "monument": 1.0,
-           "great_library": 1.2, "aqueduct": 1.2, "lighthouse": 0.8,  # great works need many hands (min_pop)
+           "great_library": 1.2, "aqueduct": 1.2, "lighthouse": 0.8, "hospital": 1.3,  # great works need many hands (min_pop)
            # the later ages: a village works together to make the steel, gears and engine these need (on their own,
            # chits knew them but always had a project or a meal to see to first)
            "steam_pump": 1.6, "sawmill": 1.4, "printing_press": 1.8, "power_station": 2.0, "street_lamp": 0.8,
@@ -713,6 +714,8 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
             continue
         if d == "pen" and not any(x["kind"] == "sheep" for x in getattr(world, "animals", {}).values()):
             continue
+        if d in BLD.MODERN and not BLD._growth():
+            continue  # (the modern town's buildings: world.CITY_GROWTH)
         if (d == "market" and pop < 10) or (d == "monument" and pop < 12):
             continue
         extra: Dict[str, Any] = {}

@@ -63,33 +63,33 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**146** occurrences in 22 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**149** occurrences in 22 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
 |---|---|---|
-| `app.py` | 2 | 167, 216 |
+| `app.py` | 2 | 205, 254 |
 | `brain/builder.py` | 12 | 64, 71, 83, 103, 104, 145, 260, 393, 408, 414, 470, 477 |
-| `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
-| `brain/instinct.py` | 20 | 548, 811, 821, 850, 917, 959, 973, 974, 982, 1002, 1069, 1070, 1107, 1156, 1173, 1281, 1287, 1318 |
+| `brain/civic.py` | 5 | 59, 68, 114, 174, 387 |
+| `brain/instinct.py` | 20 | 549, 812, 822, 851, 918, 960, 974, 975, 983, 1003, 1070, 1071, 1108, 1157, 1174, 1282, 1288, 1319 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 7 | 417, 418, 493, 737, 756 |
+| `brain/prompt.py` | 7 | 429, 430, 505, 749, 768 |
 | `brain/surplus.py` | 1 | 139 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 580, 662 |
-| `runtime.py` | 1 | 1154 |
-| `sim/actions.py` | 30 | 793, 1006, 1273, 1367, 1493, 1527, 1550, 1569, 1707, 1845, 1915, 2274, 2498, 2514, 2550, 2585, 2587, 2589, 2591, 2603, 2698, 2765, 3191, 3194, 3196, 3351, 3355, 3770, 3788 |
-| `sim/agent.py` | 1 | 374 |
-| `sim/buildings.py` | 21 | 183, 184, 200, 213, 219, 220, 222, 274, 275, 287, 289, 294, 296, 298, 369, 384, 397, 522, 965, 966, 1063 |
+| `runtime.py` | 1 | 1157 |
+| `sim/actions.py` | 31 | 793, 1006, 1273, 1367, 1493, 1527, 1550, 1569, 1707, 1845, 1915, 2274, 2498, 2514, 2550, 2585, 2587, 2589, 2591, 2593, 2605, 2700, 2767, 3193, 3196, 3198, 3353, 3357, 3772, 3790 |
+| `sim/agent.py` | 1 | 403 |
+| `sim/buildings.py` | 23 | 80, 82, 205, 206, 222, 235, 241, 242, 244, 296, 297, 309, 311, 316, 318, 320, 391, 406, 419, 544, 1002, 1003, 1100 |
 | `sim/hall.py` | 1 | 30 |
 | `sim/ideas.py` | 6 | 114, 117, 215, 221, 247, 275 |
-| `sim/projects.py` | 13 | 576, 589, 707, 731, 778, 784, 786, 1041, 1086, 1098, 1102, 1109, 1160 |
+| `sim/projects.py` | 13 | 577, 590, 708, 734, 781, 787, 789, 1044, 1089, 1101, 1105, 1112, 1163 |
 | `sim/wants.py` | 1 | 89 |
-| `sim/world.py` | 8 | 254, 1055, 1488, 1517, 1534, 1677, 1868, 1872 |
+| `sim/world.py` | 8 | 268, 1072, 1505, 1534, 1551, 1703, 1894, 1898 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
-| `views.py` | 9 | 19, 45, 50, 74, 153, 303, 311, 362 |
+| `views.py` | 9 | 20, 46, 51, 75, 154, 304, 312, 364 |
 
 (Line numbers are those of the commit that last changed this table; `grep -n 'DESIGNS\[' -r server/chits` gives today's.
 `sim/ideas.py` is the variants' own module: it reads the base's entry, which is always in the shared table.)

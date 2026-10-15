@@ -75,8 +75,8 @@ def upgrade_plan(world, a: Agent, rng) -> Optional[Plan]:
     if n <= cap or rng.random() > 0.5:  # (full is fine; more living there than it was built for is crowded)
         return None
     for to in sorted((k for k in BLD.UPGRADES[home.design] if a.knows_design(k)), key=lambda k: -BLD.HOME_CAP[k]):
-        if BLD.town_only(world, to, home.x, home.y):
-            continue  # (an apartment block outside a town: the upgrade would refuse it)
+        if BLD.not_here(world, to, home.x, home.y):
+            continue  # (an apartment block outside a town, a tower block outside a city: the upgrade would refuse it)
         steps = _supply_steps(world, a, BLD.salvage_needs(home.design, to))
         if steps is None or BLD.upgrade_spot(world, home, to) is None:
             continue

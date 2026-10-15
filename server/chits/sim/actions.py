@@ -2587,6 +2587,8 @@ def _do_build(world, a: Agent, step, s) -> str:
     need_pop = DESIGNS[key].min_pop
     if need_pop and len(world.agents) < need_pop:
         return f"a {DESIGNS[key].name} is a great work: it needs at least {need_pop} people living here (there are {len(world.agents)})"
+    if key in BLD.MODERN and not BLD._growth():
+        return f"nobody here builds a {DESIGNS[key].name}"
     if key in BLD.CITY_ONLY and BLD.city_of(world, ox, oy) is None:
         return (f"only a city can build a {DESIGNS[key].name}: a town of 40 or more with five kinds of public building "
                 f"around its hall and paved streets")

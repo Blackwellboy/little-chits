@@ -79,6 +79,8 @@ def main(argv):
         world_rules.ERA_BY_DEEDS = False
     if hasattr(world_rules, "SPACE_PROGRAMME"):  # (rockets flown again after the first launch)
         world_rules.SPACE_PROGRAMME = False
+    if hasattr(world_rules, "CITY_GROWTH"):  # (bigger islands hold more; a town keeps its young)
+        world_rules.CITY_GROWTH = False
     if hasattr(actions, "ROOM_KEEPS_PLAN"):  # (the arms-full reflex keeps what the plan needs)
         actions.ROOM_KEEPS_PLAN = False
     from chits.brain import mind as mind_rules
