@@ -22,11 +22,13 @@ from . import terrain as T
 from .agent import TICKS_PER_DAY, Agent
 from .items import DESIGNS, HOME_STORES, STORES, hand_tool, normalize_design
 
-HOME_CAP: Dict[str, int] = {"hut": 3, "brick_house": 5, "longhouse": 6, "two_storey_house": 8, "apartment": 12}
+HOME_CAP: Dict[str, int] = {"hut": 3, "brick_house": 5, "longhouse": 6, "two_storey_house": 8, "apartment": 12,
+                             "tower_block": 24}
 HOMES: Tuple[str, ...] = tuple(HOME_CAP)
-WARM_HOMES = ("brick_house", "two_storey_house", "apartment")  # warm inside in any weather; a hut or longhouse not in a winter storm
+WARM_HOMES = ("brick_house", "two_storey_house", "apartment", "tower_block")  # warm inside in any weather; a hut or longhouse not in a winter storm
 UPGRADES: Dict[str, Tuple[str, ...]] = {"hut": ("longhouse", "brick_house"), "brick_house": ("two_storey_house",),
                                         "longhouse": ("two_storey_house",), "two_storey_house": ("apartment",),
+                                        "apartment": ("tower_block",),
                                         "stockpile": ("warehouse",)}  # a full village's store, rebuilt bigger in place
 UPGRADE_WORK = 0.6  # rebuilding over an old home takes this share of building the new one from scratch
 
@@ -44,22 +46,23 @@ BELL_RADIUS, BELL_TICK, BELL_MOOD = 20, 80, 8.0  # it rings at 8:00
 REUSE_WITHIN = {"well": 8, "granary": 12, "mill": 15, "smithy": 15, "watchtower": 12, "school": 15, "bell_tower": 25,
                 "steam_pump": 10, "sawmill": 15, "printing_press": 25, "power_station": 20, "street_lamp": 4,
                 "town_hall": 30, "plaza": 15, "tavern": 20, "bakery": 15, "healer": 20, "tailor": 20, "park": 10,
-                "university": 30, "theatre": 30, "harbour": 20, "palisade": 30}
+                "university": 30, "theatre": 30, "harbour": 20, "palisade": 30, "hospital": 30}
 _FX = ("well", "granary", "watchtower", "school", "smithy", "bell_tower", "great_library", "aqueduct", "lighthouse",
        "steam_pump", "sawmill", "printing_press", "power_station", "street_lamp", "town_hall", "plaza",
-       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade")
+       "tavern", "bakery", "healer", "tailor", "park", "university", "theatre", "harbour", "palisade", "hospital")
 PALISADE_RADIUS = 22  # a palisade keeps wolves out of this much of the town round its gate
-CITY_ONLY = ("university", "theatre")  # the build verb refuses them outside a city
+CITY_ONLY = ("university", "theatre", "tower_block")  # the build verb refuses them outside a city
 # town life: the build verb refuses these outside a town (a village of settlements.TOWN_POP with a working hall).
 # Knowing the idea of a town hall was all they asked, so a tavern could go up in a hamlet and rank meant nothing.
 # One already standing keeps working wherever it is, and a site already begun can be finished.
-TOWN_ONLY = ("tavern", "bakery", "healer", "tailor", "park", "plaza", "palisade", "apartment")
+TOWN_ONLY = ("tavern", "bakery", "healer", "tailor", "park", "plaza", "palisade", "apartment", "hospital")
 UNI_RADIUS, UNI_EVERY, UNI_P = 20, 30, 0.08
 THEATRE_RADIUS, THEATRE_TICK, THEATRE_MOOD = 15, 200, 8.0  # 20:00
 HARBOUR_RADIUS = 12
 TAVERN_RADIUS, TAVERN_TICK, TAVERN_MOOD, ALE_MOOD = 10, 190, 3.0, 6.0  # 19:00; with an ale, 3 + 6
 BAKED, BAKERY_MULT = ("bread", "loaf", "berry_tart"), 2
 HEALER_RADIUS, HEALER_MULT = 10, 3.0
+HOSPITAL_RADIUS, HOSPITAL_MULT, HOSPITAL_DAYS = 14, 4.0, 10  # (world.CITY_GROWTH)
 PARK_RADIUS = 6
 PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
 TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
@@ -81,7 +84,7 @@ LAMP_RADIUS = 6  # no wolf bites this near a street lamp
 # (brain/builder.py: NEED; on with NEED_SITING below); tests/test_review_step2a.py lists any still waiting for that.
 EFFECT_RADIUS = {"well": WELL_RADIUS, "granary": GRANARY_RADIUS, "watchtower": TOWER_RADIUS, "school": SCHOOL_RADIUS,
                  "bell_tower": BELL_RADIUS, "steam_pump": PUMP_RADIUS, "sawmill": SAW_RADIUS, "power_station": POWER_RADIUS,
-                 "street_lamp": LAMP_RADIUS, "plaza": PLAZA_RADIUS, "tavern": TAVERN_RADIUS, "healer": HEALER_RADIUS,
+                 "street_lamp": LAMP_RADIUS, "plaza": PLAZA_RADIUS, "tavern": TAVERN_RADIUS, "healer": HEALER_RADIUS, "hospital": HOSPITAL_RADIUS,
                  "park": PARK_RADIUS, "university": UNI_RADIUS, "theatre": THEATRE_RADIUS, "harbour": HARBOUR_RADIUS,
                  "palisade": PALISADE_RADIUS, "town_hall": 25}  # (town_hall: settlements.HALL_REACH, which imports this module)
 REUSE_CAPPED = ("town_hall", "palisade", "university", "theatre")
@@ -907,7 +910,18 @@ def bake_mult(world, a: Agent, key: str) -> int:
 
 
 def heal_mult(world, a: Agent) -> float:
+    if any(h.dist(a.x, a.y) <= HOSPITAL_RADIUS for h in fx(world)["hospital"]):
+        return HOSPITAL_MULT
     return HEALER_MULT if any(h.dist(a.x, a.y) <= HEALER_RADIUS for h in fx(world)["healer"]) else 1.0
+
+
+def life_bonus(world, a: Agent) -> int:
+    """Ticks of life a hospital near a chit's home adds to its lifespan."""
+    home = world.structures.get(a.home or "")
+    if home is None or not fx(world)["hospital"]:
+        return 0
+    cx, cy = home.center()
+    return HOSPITAL_DAYS * TICKS_PER_DAY if any(h.dist(cx, cy) <= HOSPITAL_RADIUS for h in fx(world)["hospital"]) else 0
 
 
 def _tavern(world) -> None:

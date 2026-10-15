@@ -443,6 +443,15 @@ DESIGNS: Dict[str, Design] = {
            (("design", "two_storey_house"), ("recipe", "iron"), ("design", "town_hall")), size=(2, 2),
            blurb="a tall brick block of flats: a home for up to 12 on the ground of one house (a crowded two-storey "
                  "house can be rebuilt as one)"),
+        # the modern town (world.CITY_GROWTH, issue #168): homes that stack people high, and medicine
+        _d("tower_block", "tower block", {"brick": 30, "steel": 6, "glass": 12, "lightbulb": 2}, 200,
+           (("design", "apartment"), ("recipe", "steel"), ("recipe", "lightbulb")), size=(2, 2),
+           blurb="a tower of flats with electric light on every floor: a home for up to 24 on the ground of one house "
+                 "(only a city builds them; a crowded apartment block can be rebuilt as one)"),
+        _d("hospital", "hospital", {"brick": 20, "glass": 6, "steel": 2, "pot": 4}, 160,
+           (("design", "healer"), ("recipe", "glass"), ("recipe", "steel")), size=(2, 2),
+           blurb="wards and nurses: the sick within 14 tiles heal four times as fast, and those whose home is that "
+                 "close live ten days longer"),
         # cities: what only a city can raise (the build itself checks), and a harbour for a town on the coast
         _d("university", "university", {"brick": 30, "stone": 20, "glass": 6, "paper": 8}, 160,
            (("design", "library"), ("recipe", "paper"), ("design", "town_hall")), size=(3, 3),

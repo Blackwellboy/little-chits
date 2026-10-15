@@ -4,6 +4,8 @@ world as a whole still holds POP_CAP, which is what limits births."""
 import math
 import random
 
+import pytest
+
 from chits.brain import pioneers as BP
 from chits.brain import prompt as P
 from chits.sim import pioneers as PI
@@ -194,3 +196,23 @@ def test_a_village_that_cant_talk_sends_no_pioneers():
     w.culture, w.flags = "stigmergy", {"say": False, "teach": False, "write": False}
     PI.daily(w)
     assert not w.civic.get("emigration")
+
+
+@pytest.mark.parametrize("growth", [True, False])
+def test_a_town_keeps_its_young_and_grows_towards_a_city(growth, monkeypatch):
+    """A Space Age island was a few villages of 40: every village sent its young away at 40, the size a city needs.
+    A town (a working hall and 20 people) keeps them until it is TOWN_KEEPS strong (world.CITY_GROWTH)."""
+    import chits.sim.world as W
+
+    monkeypatch.setattr(W, "CITY_GROWTH", growth)
+    w, v = _full_village()
+    a = w.agents[v.residents[0]]
+    hall = w.place_site("town_hall", *w.find_site("town_hall", int(v.x), int(v.y), 16, reach=(a.x, a.y)), a)
+    w.complete_structure(hall, a)
+    w.__dict__.pop("_villages", None)
+    [v] = PI.villages(w)
+    assert v.rank == "town" and len(v.residents) >= PI.VILLAGE_CAP
+    PI.daily(w)
+    assert bool(w.civic.get("emigration")) is not growth  # a village of 44 sends pioneers; a town of 44 grows on
+    rooms = PI.rooms(w)
+    assert {rooms[i] for i in v.residents} == {PI.TOWN_ROOM if growth else PI.VILLAGE_ROOM}

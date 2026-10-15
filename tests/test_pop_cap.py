@@ -84,9 +84,18 @@ def test_a_held_world_shrinks_to_its_limit_and_lives_on():
 
 def test_the_limit_never_raises_a_world_over_its_island():
     small, big = World("A", "A", 3, "direct", 64, 4), World("A", "A", 3, "direct", 256, 4)
-    assert (small.island_cap(), big.island_cap()) == (POP_CAP, POP_CAP_BIG)
+    assert (small.island_cap(), big.island_cap()) == (POP_CAP, 2 * POP_CAP)  # (world.CITY_GROWTH: by the island's side)
     small.cap = 500
     assert small.pop_cap() == POP_CAP
+    big.cap = 500
+    assert big.pop_cap() == big.island_cap()
+
+
+def test_without_city_growth_a_big_island_holds_the_old_number(monkeypatch):
+    import chits.sim.world as W
+
+    monkeypatch.setattr(W, "CITY_GROWTH", False)
+    assert World("A", "A", 3, "direct", 256, 4).island_cap() == POP_CAP_BIG
 
 
 def test_the_limit_is_saved_with_the_world_and_a_world_without_one_saves_as_before():

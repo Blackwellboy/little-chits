@@ -17,6 +17,8 @@ from .agent import TICKS_PER_DAY, Agent
 from .buildings import HOMES
 
 VILLAGE_CAP = 40  # a village this full sends pioneers out
+TOWN_KEEPS = 90  # ...but a town (a hall and 20 people) keeps its young until it is this big: it grows into a city
+TOWN_ROOM = 100  # ...and has its children until this full (world.CITY_GROWTH; a city needs 40 residents)
 VILLAGE_ROOM = 50  # ...and one this full has no more children while another village has room (World._births)
 PARTY = 6
 PARTY_AGE = 30  # pioneers are young: at 35 (of 50-70 days) the founders of all six daughter villages aged out
@@ -60,9 +62,10 @@ def daily(world) -> None:
         return
     if _day(world) < START_DAY or not vs:
         return
-    big = max(vs, key=lambda v: len(v.residents))
-    if len(big.residents) < VILLAGE_CAP:
+    full = [v for v in vs if len(v.residents) >= keeps(v)]
+    if not full:
         return
+    big = max(full, key=lambda v: len(v.residents))
     site = pick_site(world, big)
     if site is None:
         return
@@ -77,6 +80,22 @@ def daily(world) -> None:
     names = ", ".join(a.name for a in party[:-1]) + f" and {party[-1].name}"
     world.emit("pioneers", f"{big.name} is full: {names} set out to found a new village", 4, party[0].id, site[0], site[1],
                members=[a.id for a in party], mother=big.id)
+
+
+def _town(v) -> bool:
+    from .world import CITY_GROWTH
+
+    return CITY_GROWTH and v.rank in ("town", "city")
+
+
+def keeps(v) -> int:
+    """How many a village holds before it sends pioneers out: a town grows on towards a city (world.CITY_GROWTH)."""
+    return TOWN_KEEPS if _town(v) else VILLAGE_CAP
+
+
+def rooms(world) -> Dict[str, int]:
+    """How full each chit's village may be before its children are born in the others instead."""
+    return {i: (TOWN_ROOM if _town(v) else VILLAGE_ROOM) for v in villages(world) for i in v.residents}
 
 
 def village_sizes(world) -> Tuple[Dict[str, int], int]:

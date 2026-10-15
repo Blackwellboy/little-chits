@@ -55,7 +55,7 @@ LEGACY = ""  # the slot an older save's single project is loaded into, until the
 # what a village lacks, and how much it matters (before the leader's own leanings)
 LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace": 2.5, "library": 1.8, "forge": 2.2,
            "factory": 2.0, "market": 1.0, "pen": 0.8, "brick_house": 1.0, "monument": 1.0,
-           "great_library": 1.2, "aqueduct": 1.2, "lighthouse": 0.8,  # great works need many hands (min_pop)
+           "great_library": 1.2, "aqueduct": 1.2, "lighthouse": 0.8, "hospital": 1.3,  # great works need many hands (min_pop)
            # the later ages: a village works together to make the steel, gears and engine these need (on their own,
            # chits knew them but always had a project or a meal to see to first)
            "steam_pump": 1.6, "sawmill": 1.4, "printing_press": 1.8, "power_station": 2.0, "street_lamp": 0.8,

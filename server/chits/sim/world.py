@@ -152,6 +152,10 @@ POP_CAP_MIN = 6  # the fewest a game may hold a world to (World.cap): enough for
 # kept at half the limit; between that and the limit nobody is born; under the limit, births are as ever.
 YOUNG_DAYS = 20
 POP_CAP_BIG = 90  # ...and on an island of 256 or more: a 512 island held one village of 60 and its daughter villages died out
+# Cities (issue #168): an island bigger than 128 holds people in proportion to its side (192: 90, 256: 120, 512: 240;
+# 128 keeps 60), and a town keeps its young until it is a city's size (pioneers.TOWN_KEEPS). A Space Age island was
+# a few villages of 40 because every village sent its young away at 40, the size a city needs.
+CITY_GROWTH = True
 RUIN_DAYS = 6  # an unrepaired ruin crumbles away, freeing the land
 ASHES_DAYS = 3  # a campfire left cold this long is gone (World A had 200 cold stone rings; they looked like graves)
 
@@ -2040,8 +2044,8 @@ class World:
             a.mood = max(0.0, min(100.0, a.mood + MOOD_PER_POINT * joy))
         if a.health <= 0:
             self.kill(a, causes[0] if causes else "illness")
-        elif t - a.born > a.lifespan:
-            self.kill(a, "old age")
+        elif t - a.born > a.lifespan and not (CITY_GROWTH and t - a.born <= a.lifespan + BLD.life_bonus(self, a)):
+            self.kill(a, "old age")  # (a hospital near its home gives it more days: buildings.life_bonus)
 
     def kill(self, a: Agent, cause: str) -> None:
         a.alive = False
@@ -2107,10 +2111,15 @@ class World:
         self.history.append(self.stats())
 
     def island_cap(self) -> int:
+        if CITY_GROWTH and self.w * self.h > 128 * 128:
+            # room for a city: the island holds people in proportion to its side, not its area (a 512 island of
+            # 960 would be a crowd the models can't think for), and never fewer than before
+            return max(POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP,
+                       round(POP_CAP * math.sqrt(self.w * self.h / (128 * 128))))
         return POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP
 
     def pop_cap(self) -> int:
-        base = POP_CAP_BIG if self.w * self.h >= 256 * 256 else POP_CAP  # (the island's own; see island_cap)
+        base = World.island_cap(self)  # (the island's own)
         return min(base, self.cap) if getattr(self, "cap", None) else base
 
     def births_open(self) -> bool:
@@ -2130,6 +2139,7 @@ class World:
         from . import pioneers as PI
 
         size, n_villages = PI.village_sizes(self)
+        village_room = PI.rooms(self)
         adults = [a for a in self.agents.values() if not a.is_child(self.tick) and a.age(self.tick) < 40]
         # the smallest villages first: at the cap every free place went to the big village (its chits come first), and
         # all six daughter villages in the live worlds died out with their founders
@@ -2138,7 +2148,7 @@ class World:
         for a in adults:
             if a.id in used or self.tick - a.last_birth_tick < TICKS_PER_DAY * 5:
                 continue
-            if n_villages > 1 and size.get(a.id, 0) >= PI.VILLAGE_ROOM:
+            if n_villages > 1 and size.get(a.id, 0) >= village_room.get(a.id, PI.VILLAGE_ROOM):
                 continue  # a village this full has its children in the others (never when it is the only one)
             if a.hunger < 45 or a.health < 60:
                 continue

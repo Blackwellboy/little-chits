@@ -835,6 +835,37 @@ const apartment: Painter = (v) => {
   return c;
 };
 
+/** A tower block: a tall steel-and-glass tower, lit windows floor on floor, a lift house and an aerial on the roof. */
+const towerBlock: Painter = (v) => {
+  const [c, ctx] = canvas(32, 110);
+  px(ctx, "rgba(0,0,0,0.3)", 1, 107, 30, 3);
+  const wall = ["#7a8494", "#8a8478", "#6e7a86"][v % 3];
+  px(ctx, wall, 3, 14, 26, 94); px(ctx, shade(wall, -0.25), 25, 14, 4, 94);
+  px(ctx, "#4a4f5a", 2, 12, 28, 3);
+  px(ctx, "#5a5f6a", 8, 4, 10, 8); px(ctx, "#3a3f4a", 8, 4, 10, 1);
+  px(ctx, "#9aa0aa", 22, 0, 1, 12); px(ctx, "#e84a4a", 21, 0, 3, 1);
+  const r = rng(v * 13 + 7);
+  for (let floor = 0; floor < 11; floor++) for (const x of [5, 11, 17]) {
+    const y = 17 + floor * 8;
+    px(ctx, r() < 0.55 ? "#ffd86a" : "#8fb8d8", x, y, 5, 5); px(ctx, shade(wall, -0.35), x, y + 5, 5, 1);
+  }
+  px(ctx, "#2a2f3a", 12, 98, 8, 10); px(ctx, "#a8d0f0", 13, 99, 6, 4);
+  return c;
+};
+
+/** A hospital: a long white building with a red cross, rows of ward windows and an ambulance bay. */
+const hospital: Painter = () => {
+  const [c, ctx] = canvas(32, 56);
+  px(ctx, "rgba(0,0,0,0.28)", 1, 53, 30, 3);
+  px(ctx, "#f4f2ec", 2, 16, 28, 38); px(ctx, "#d6d2c6", 27, 16, 3, 38);
+  px(ctx, "#8a8f9a", 1, 14, 30, 3);
+  px(ctx, "#d83a3a", 13, 2, 6, 14); px(ctx, "#d83a3a", 9, 6, 14, 6); px(ctx, "#ffffff", 14, 3, 4, 1);
+  for (let row = 0; row < 3; row++) for (const x of [4, 10, 18, 24]) px(ctx, "#a8d0f0", x, 20 + row * 9, 4, 5);
+  px(ctx, "#3a6aa8", 12, 44, 8, 10); px(ctx, "#a8d0f0", 13, 45, 6, 4);
+  px(ctx, "#d83a3a", 3, 48, 7, 1);
+  return c;
+};
+
 /** A university: a grand stone hall with a dome, rows of arched windows and broad steps. */
 const university: Painter = () => {
   const [c, ctx] = canvas(48, 66);
@@ -904,6 +935,7 @@ export const PAINTERS: Record<string, Painter> = {
   longhouse, two_storey_house: twoStorey, bridge, well, granary, mill, smithy, watchtower, school, bell_tower: bellTower,
   forge, factory, market, shrine, pen, launch_pad: launchPad,
   steam_pump: steamPump, sawmill, printing_press: printingPress, power_station: powerStation, street_lamp: streetLamp,
+  tower_block: towerBlock, hospital,
 };
 
 /** Great works are seen going up: their site shows the building rising with the work. */

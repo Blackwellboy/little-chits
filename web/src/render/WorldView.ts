@@ -40,7 +40,7 @@ const MAP_ZOOM = 0.3;
 /** A moving thing's draw order, rounded so it only changes when it passes a static item's key (trees and
  *  signs sort at multiples of TS, building bottoms at one less): the layer is re-sorted whenever a key changes. */
 // buildings whose windows glow at night, and where their chimney smoke rises (tiles from the footprint's corner)
-const HOMELIT = new Set(["hut", "brick_house", "library", "longhouse", "two_storey_house", "school", "apartment"]);
+const HOMELIT = new Set(["hut", "brick_house", "library", "longhouse", "two_storey_house", "school", "apartment", "tower_block", "hospital"]);
 const CHIMNEY: Record<string, [number, number]> = { brick_house: [1.5, 1.4], two_storey_house: [1.55, 2.6], longhouse: [1.5, 1.1] };
 
 function sortKey(u: number): number {
@@ -1144,7 +1144,7 @@ export class WorldView {
       } else if (s.complete && !s.ruined && HOMELIT.has(s.design) && dark > 0.25) {
         // a home a power station reaches is lit by electricity: whiter and brighter than a hearth (eras.electrified)
         const lit = powered.length > 0 && electrified(s, powered);
-        addLight(s.x + s.w / 2, s.y + s.h * 0.6, (s.design === "two_storey_house" || s.design === "longhouse" || s.design === "apartment" ? 3 : 2.4) * (lit ? 1.25 : 1),
+        addLight(s.x + s.w / 2, s.y + s.h * 0.6, (s.design === "two_storey_house" || s.design === "longhouse" || s.design === "apartment" ? 3 : s.design === "tower_block" ? 4 : 2.4) * (lit ? 1.25 : 1),
           lit ? 0xeaf2ff : 0xffd080, lit ? 1 : 0.8);
         const chimney = CHIMNEY[s.design];
         if (chimney && now > v.smokeAt) { v.smokeAt = now + 900 + Math.random() * 800; this.puff(s.x + chimney[0], s.y - chimney[1], 0x8a8a8a, 1, -0.3); }
