@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import theme
@@ -61,7 +61,21 @@ TRAIT_WORDS = {
     "generosity": ("possessive", "generous"),
 }
 
-DEAD_MEMORIES, DEAD_BONDS, DEAD_LESSONS = 12, 5, 5  # what a dead chit's record keeps (Agent.obituary)
+DEAD_MEMORIES, DEAD_BONDS, DEAD_LESSONS = 5, 5, 5  # what a dead chit's record keeps (Agent.obituary)
+
+
+def _short_know(k: Dict[str, Any]) -> Dict[str, Any]:
+    """One piece of knowledge without what from_dict derives again: no source, the status its `how` gives, and
+    a worked_tick that is the tick it was learned (Agent.learn)."""
+    k = dict(k)
+    if "from" in k and k["from"] is None:
+        del k["from"]
+    implied = KNOW_STATUS.get(k.get("how", ""), "told")
+    if k.get("status") == implied:
+        del k["status"]
+        if implied == "worked" and "worked_tick" in k and k["worked_tick"] == k.get("tick", 0):
+            del k["worked_tick"]
+    return k
 
 
 @dataclass
@@ -329,6 +343,20 @@ class Agent:
         d["parents"] = list(self.parents)
         return d
 
+    def to_record(self) -> Dict[str, Any]:
+        """A dead chit as saved: to_dict without what loading gives back anyway. A field still at its default is left
+        out, and so is what a piece of knowledge's own `how` and `tick` already say (from_dict fills both back in), so
+        the chit loads exactly as it was. Every dead chit's whole knowledge was half of a late save (live, day 3,440:
+        23 of 50 MB for 4,427 dead), mostly "from": null, a status its `how` implies and a worked_tick equal to tick."""
+        d = self.to_dict()
+        for f in fields(self):
+            if f.default is not MISSING or f.default_factory is not MISSING:
+                if getattr(self, f.name) == (f.default if f.default_factory is MISSING else f.default_factory()):
+                    del d[f.name]
+        if "knows" in d:
+            d["knows"] = {key: _short_know(k) for key, k in self.knows.items()}
+        return d
+
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "Agent":
         d = dict(d)
@@ -339,6 +367,7 @@ class Agent:
         known = {k: d[k] for k in cls.__dataclass_fields__ if k in d}
         a = cls(**known)
         for k in a.knows.values():  # snapshots from before knowledge had a status
+            k.setdefault("from", None)  # (a dead chit's record leaves out what to_record can give back)
             if "status" not in k:
                 k["status"] = KNOW_STATUS.get(k.get("how", ""), "told")
             if k["status"] == "worked" and k.get("worked_tick") is None and KNOW_STATUS.get(k.get("how", "")) == "worked":
