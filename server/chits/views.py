@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .sim.actions import describe_step
 from .sim.agent import TICKS_PER_DAY, Agent
 from .sim import ideas as IDEAS
-from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name
+from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name, station_of
 from .sim.world import Structure, World
 
 
@@ -309,10 +309,11 @@ def encyclopedia(w: World, k: str) -> Optional[Dict[str, Any]]:
                               **({"from": inv["from"]} if inv.get("from") else {})} if inv else None)
         return out
     d = DESIGNS[key]
-    made_here = [rk for rk, rr in recipes.items() if d.station and rr.station == d.station]
+    st = station_of(d.key)  # (a launch pad is a station only with the space programme)
+    made_here = [rk for rk, rr in recipes.items() if st and rr.station == st]
     known_here = [rk for rk in made_here if discovered(w, f"recipe:{rk}")]
     out.update(icon="", blurb=d.blurb, materials=[named(m, n) for m, n in d.materials], size=list(d.size),
-               work=d.work, station=d.station, min_pop=d.min_pop,
+               work=d.work, station=st, min_pop=d.min_pop,
                made_here=[named(rk) for rk in known_here], undiscovered_uses=len(made_here) - len(known_here))
     return out
 
@@ -399,14 +400,14 @@ def progress(w: World, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         if lines:
             recent.append({"day": d, "lines": lines})
     st = w.stats()
-    from .sim import projects, research
+    from .sim import projects, research, space
     from .sim.wants import famous
 
     star = famous(w)
     civ = getattr(w, "civic", None) or {}
     road = projects.road(w)
     return {
-        "project": projects.view(w), "road": road, "milestones": milestones(w, road),
+        "project": projects.view(w), "road": road, "milestones": milestones(w, road), "space": space.view(w),
         "food_days": _food_days(w), "at_risk": _at_risk(w),
         "research": {"insight": round(civ.get("insight", 0.0), 1), "next_idea": research.threshold(w) if civ else 0,
                      "hints": [{"text": h["text"], "day": h["tick"] // 240 + 1, "by": h.get("by_name", ""),

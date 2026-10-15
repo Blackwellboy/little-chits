@@ -34,7 +34,7 @@ VERBS = (
     "write", "read", "inspect", "explore", "go", "refuel", "plant", "harvest", "repair", "rest", "wander", "warm_up",
     "drop", "mark", "shelter", "invent", "pray", "preach", "trade", "steal", "guard", "fight", "pickup", "sail", "hunt", "tame",
     "prospect",
-    "work", "study", "smelt",
+    "work", "study", "smelt", "launch",
 )
 
 VERB_ALIASES = {
@@ -58,6 +58,7 @@ VERB_ALIASES = {
     "take_cover": "shelter", "go_inside": "shelter", "hide": "shelter", "cover": "shelter",
     "operate": "work", "man": "work", "tend": "work", "run": "work",
     "melt": "smelt", "melt_down": "smelt", "recycle": "smelt", "scrap": "smelt", "mend": "repair", "resharpen": "repair",
+    "blast_off": "launch", "blast": "launch", "lift_off": "launch", "liftoff": "launch",  # (not "fly": tests/test_brain.py)
 }
 
 STOCKPILE_CAP = 240
@@ -1227,11 +1228,11 @@ KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 
 REPORT_EVERY = TICKS_PER_DAY // 2  # a station reports its work to the chronicle at most this often
 STATION_WORDS = {"campfire": "fire", "camp fire": "fire", "bonfire": "fire", "hearth": "fire", "fireplace": "fire",
                  "oven": "kiln", "smelter": "furnace", "bench": "workshop", "workbench": "workshop", "millstone": "mill", "windmill": "mill",
-                 "works": "factory"}
+                 "works": "factory", "pad": "pad", "launchpad": "pad", "spaceport": "pad"}
 WORK_EMOTE = {"fire": "🍳", "kiln": "🔥", "furnace": "🔥", "workshop": "🔨", "forge": "⚒", "factory": "⚙", "mill": "🌾"}
 COUNTABLE = {"brick", "pot", "basket", "clay_tablet", "sharp_stone", "berry_tart", "spear", "stone_axe", "stone_pick",
              "copper_axe", "copper_pick", "iron_axe", "iron_pick", "lantern", "cloak", "wheel", "cart", "gear", "engine", "loaf",
-             "magnet", "dynamo", "lightbulb", "rocket_part"}
+             "magnet", "dynamo", "lightbulb", "rocket_part", "rocket"}
 
 
 def _retarget(a: Agent, s) -> None:
@@ -1251,6 +1252,8 @@ def _plenty(world, key: str) -> int:
     it = world.item(key)
     if it is not None and (it.tool or it.carry_bonus):
         return 3
+    if key == "rocket":
+        return 1  # (one rocket waits for its launch: its sections and fuel are worth more than a second)
     return 30 if it is not None and it.food else 24
 
 
@@ -1436,11 +1439,14 @@ def plan_bill(world, a: Agent, kinds: Optional[Set[str]] = None, target=None, pr
                 continue
             # the goods need somewhere to go: kiln shifts into full stores left chits holding 22 charcoal, and some
             # starved beside the grain with no hand free to take it
-            n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
+            if r.key != "rocket":  # (a rocket is not stored for long: it waits in hand for its launch from the pad)
+                n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
             if n < 1:
                 full.append(world.item_name(r.key))
                 continue
             have = stock.get(r.key, 0)
+            if r.key == "rocket":  # (one waiting in someone's hands for its launch counts: brain/launches.py)
+                have += sum(o.inventory.get("rocket", 0) for o in world.agents.values())
             on = r.key in path
             if r.key == prefer:
                 return Bill(st, r.station or "workshop", r, n, max(0.0, 1 - have / _plenty(world, r.key)), on), ""
@@ -1477,11 +1483,14 @@ def _station_word(text: str) -> Tuple[Optional[str], Optional[str]]:
         if low.startswith(p):
             low = low[len(p):]
     kind = STATION_WORDS.get(low) or (low if low in STATIONS else None)
+    if kind == "pad" and not IT.station_of("launch_pad"):
+        kind = None  # (no pad to work at without the space programme)
     if kind:
         return kind, None
     d = normalize_design(low)
     if d:
-        return DESIGNS[d].station, (None if DESIGNS[d].station else DESIGNS[d].name)
+        st = IT.station_of(d)
+        return st, (None if st else DESIGNS[d].name)
     return None, None
 
 
@@ -1516,7 +1525,7 @@ def _work_place(world, step) -> Tuple[Optional[Set[str]], Any, Optional[str], st
         return None, None, None, f"'{r}' isn't a place to work: try a fire, kiln, furnace or workshop"
     if target is not None and not target.stations():
         nm = DESIGNS[target.design].name
-        return None, None, None, (f"the {nm} isn't working (unfinished, in ruins or gone cold)" if DESIGNS[target.design].station
+        return None, None, None, (f"the {nm} isn't working (unfinished, in ruins or gone cold)" if IT.station_of(target.design)
                                   else f"a {nm} isn't a place to work a shift")
     if prefer and not kinds and target is None:
         kinds = {world.recipe(prefer).station or "workshop"}
@@ -1919,6 +1928,48 @@ def _conceived(world, a: Agent, idea: Dict[str, Any], new: bool, s) -> str:
     a.bump("inventions")
     a.remember(world.tick, f"I thought up the {idea['name']}{kind}: it is built from {mats}", 5, "discovery")
     s["note"] = f"Thought up the {idea['name']}{kind}: build it from {mats}"
+    return DONE
+
+
+LAUNCH_WORK = 8  # ticks of readying at the pad before a rocket flies
+
+
+def _do_launch(world, a: Agent, step, s) -> str:
+    """Fly a rocket from a launch pad (the space programme, sim/space.py): the rocket is spent, and the launcher and
+    up to two grown-ups beside it fly the next mission."""
+    from . import space
+
+    if not space.on():
+        return "nobody here knows how to fly to the sky again"
+    if not a.has("rocket"):
+        return "I have no rocket to launch" + (" (put one together at a launch pad first)" if a.knows_recipe("rocket") else "")
+    ok = lambda x: x is not None and x.design == "launch_pad" and x.functional
+    pad = world.structures.get(s.get("pad") or "")
+    if not ok(pad):
+        ref = next((step.get(k) for k in ("target", "at", "site") if isinstance(step.get(k), str) and step.get(k)), None)
+        pad = world.structures.get(ref) if ref else None
+        if not ok(pad):
+            pad = next((x for x in world.structures_near(a.x, a.y, 40, "launch_pad") if ok(x) and world.same_land(a, x)), None)
+    if not ok(pad):
+        return "there is no working launch pad nearby"
+    if s.get("pad") != pad.id:
+        s["t"] = 0  # (readying starts again at another pad)
+        s.pop("goal_sig", None)
+        a.path = []
+    s["pad"] = pad.id
+    mv = _goto_structure(world, a, s, pad)
+    if mv == "blocked":
+        return "couldn't reach the launch pad"
+    if mv != "arrived":
+        return RUNNING
+    a.activity = "readying the rocket"
+    a.set_emote("🚀", world.tick, 4)
+    s["t"] = s.get("t", 0) + 1
+    if s["t"] < LAUNCH_WORK:
+        return RUNNING
+    a.remove("rocket", 1)
+    done = world.space_launch(a, pad)
+    s["note"] = f"Launched a rocket: {done['text']}"
     return DONE
 
 
@@ -2353,7 +2404,7 @@ def _experiment_hint(bag: Dict[str, int], stations: Set[str], recipes: Optional[
     """Physical feedback: the world 'feels' close without revealing recipes. `recipes`: this world's physics (the
     base recipes, then a content pack's)."""
     have = set(bag)
-    recipes = list(RECIPES.values()) if recipes is None else recipes
+    recipes = [r for r in (RECIPES.values() if recipes is None else recipes) if r.key not in IT.UNFOUND]
     for r in recipes:
         need = dict(r.inputs)
         if need == bag and r.station and r.station not in stations:

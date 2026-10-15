@@ -77,6 +77,8 @@ def main(argv):
     from chits.sim import world as world_rules
     if hasattr(world_rules, "ERA_BY_DEEDS"):  # (an age by what stands, not what is imagined)
         world_rules.ERA_BY_DEEDS = False
+    if hasattr(world_rules, "SPACE_PROGRAMME"):  # (rockets flown again after the first launch)
+        world_rules.SPACE_PROGRAMME = False
     if hasattr(actions, "ROOM_KEEPS_PLAN"):  # (the arms-full reflex keeps what the plan needs)
         actions.ROOM_KEEPS_PLAN = False
     from chits.brain import mind as mind_rules

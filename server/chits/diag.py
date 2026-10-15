@@ -217,7 +217,7 @@ def opportunities(world) -> Dict[str, Dict[str, int]]:
     """For everything not yet achieved, how close the world is: known? affordable? tried? ("why didn't this happen?")"""
     from .sim.actions import village_stores
     from .sim.buildings import UPGRADES
-    from .sim.items import DESIGNS, RECIPES
+    from .sim.items import DESIGNS, RECIPES, UNFOUND
 
     out: Dict[str, Dict[str, int]] = {}
     agents = list(world.agents.values())
@@ -247,7 +247,7 @@ def opportunities(world) -> Dict[str, Dict[str, int]]:
                                 "sites_abandoned": abandoned, "upgrades_started": len(ups),
                                 "upgrades_waiting_for": dict(sum((Counter(s.upgrade.get("needs", {})) for s in ups), Counter()))}
     for key, r in RECIPES.items():
-        if f"recipe:{key}" in world.first or key.startswith("inv_"):
+        if f"recipe:{key}" in world.first or key.startswith("inv_") or key in UNFOUND:
             continue
         inputs = {k for k, _ in r.inputs}
         handled = sum(1 for a in agents if inputs <= a.familiar)

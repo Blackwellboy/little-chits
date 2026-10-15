@@ -6,6 +6,7 @@ import * as A from "./art";
 import { flameFrames, GREAT_WORKS } from "./buildings";
 import { electrified, eraIndex, isLampTile, lampStyle, plazaSpots, roadStyle, statueTint, wireTargets, type Hero } from "./eras";
 import { signGlyph, villageLabelVisible, weatherProfile, type WeatherProfile } from "./fx";
+import { launchEvent } from "../ui/space";
 import type { AgentState, WorldData } from "../state/world";
 import type { StructureView, WorldEvent } from "../types";
 import { theme } from "../theme";
@@ -773,6 +774,18 @@ export class WorldView {
     }
   }
 
+  /** A rocket rising off the pad on a plume of smoke (the first launch and each mission after it). */
+  rocket(tx: number, ty: number) {
+    const r = new Text({ text: "🚀", style: EMOTE, resolution: 2 });
+    r.anchor.set(0.5);
+    r.rotation = -Math.PI / 4;  // (the glyph flies up and to the right: stand it up)
+    r.position.set(tx * TS, ty * TS - 12);
+    this.fx.addChild(r);
+    this.particles.push({ s: r as any, vx: 0, vy: -1.6, life: 150, max: 150, grow: 0, fade: true, world: true, g: -0.01 });
+    this.puff(tx, ty + 0.3, 0xd8d0c8, 14, -0.15);
+    this.burst(tx, ty + 0.2, 0xffb040, 18);
+  }
+
   floatText(tx: number, ty: number, text: string) {
     const t = new Text({ text, style: FLOAT, resolution: 2 });
     t.anchor.set(0.5, 1);
@@ -798,6 +811,8 @@ export class WorldView {
         this.burst(e.x + 0.5, e.y, 0x9ad0ff, 6);
       } else if (e.kind === "death") {
         this.puff(e.x + 0.5, e.y, 0xc8d0ff, 10, -0.5);
+      } else if (launchEvent(e.kind)) {
+        this.rocket(e.x + 0.5, e.y);
       }
     }
   }

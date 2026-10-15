@@ -138,6 +138,11 @@ ERA_BY_DEEDS = True  # (ON: the deeds2 + deeds2-250d A/Bs, issue #161 — truthf
 #       and a street lamp), the Space Age the launch itself (the pad's completion is the launch: _launch).
 #       deed_ages records each enabling deed: the provenance of the age.
 AGE_RULES = 2
+# The space programme (sim/space.py): after the first launch a rocket assembled at the launch pad flies again, each
+# launch the next mission (a satellite, the Moon, a station in orbit, then expeditions), and a village with a pad and
+# someone who knows the rocket takes on making the next one. Off: the pad's completion is the one launch, as before;
+# tests/identity_runner.py turns it off. Read at call time.
+SPACE_PROGRAMME = True
 CAPABILITY_AGES = ("recipe:engine", "recipe:dynamo", "design:launch_pad")  # earned by deeds, not the idea
 MACHINE_AGE_MACHINES = ("steam_pump", "sawmill", "factory")  # each costs an engine: one standing = machinery works
 POP_CAP_MIN = 6  # the fewest a game may hold a world to (World.cap): enough for families to go on
@@ -252,6 +257,8 @@ class Structure:
         if self.design == "kiln":
             return {"kiln", "fire"}
         st = DESIGNS[self.design].station
+        if st == "pad" and not SPACE_PROGRAMME:
+            return set()  # (no rocket is assembled at a pad without the programme)
         return {st} if st else set()
 
     def to_dict(self) -> Dict[str, Any]:
@@ -365,6 +372,7 @@ class World:
         self.age_rules = AGE_RULES if ERA_BY_DEEDS else 1  # (how far deeds go, if this world plays by them)
         self.built_designs: Dict[str, Dict[str, Any]] = {}  # design -> who first completed one here, and when
         self.deed_ages: Dict[str, Dict[str, Any]] = {}  # capability ages (age_rules 2): key -> the deed that earned it
+        self.space: Dict[str, Any] = {}  # the space programme (sim/space.py): launches, satellites, the Moon, a station
         self.trades: List[Dict[str, Any]] = []  # recent barter (T25)
         self.currency = ""  # whatever everyone ends up trading through; never declared
         self.leader = ""  # an authored institution (T26): an elected chief (A) or a recognised elder (B)
@@ -1571,6 +1579,9 @@ class World:
             self.first[f"design:{s.design}"] = {"tick": self.tick, "by": by.id, "name": by.name}
         if s.design == "launch_pad":
             self._launch(s)
+            from . import space
+
+            space.first_launch(self, s)  # (the programme: its crew and builders saw how the rocket went together)
         new_build = s.design not in self.built_designs
         if new_build:
             self.built_designs[s.design] = {"tick": self.tick, "by": by.id, "name": by.name}
@@ -1623,6 +1634,12 @@ class World:
         names = _join_names([c.name for c in crew]) or "Nobody"
         self.emit("launch", f"{names} rode the first rocket into the sky — {self.name}'s first astronauts!", 5,
                   crew[0].id if crew else None, *s.center(), crew=[c.id for c in crew])
+
+    def space_launch(self, a: Agent, pad: Structure) -> Dict[str, Any]:
+        """A rocket flies from the pad with `a` and up to two grown-ups beside it: the next mission (sim/space.py)."""
+        from . import space
+
+        return space.launch(self, a, pad)
 
     # ------------------------------------------------------------------ events
     TALLY_BY = ("design", "item", "recipe", "cause", "evidence")
@@ -2077,6 +2094,9 @@ class World:
         if day % DAYS_PER_SEASON == 0:
             self.emit("season", f"{self.season.capitalize()} of year {self.year} begins", 2, season=self.season)
         PROJECTS.new_day(self)
+        from . import space
+
+        space.daily(self)  # (a station in orbit lifts everyone a little)
         from . import lore
 
         lore.daily(self)  # an old chit is the last who knows how to make something: say so
@@ -2219,6 +2239,8 @@ class World:
             d["foreign"] = self.foreign
         if self.building_ideas:  # (likewise)
             d["building_ideas"] = self.building_ideas
+        if getattr(self, "space", None):  # (likewise: a world with no programme saves as it always did)
+            d["space"] = dict(self.space)
         return d
 
     def _to_dict(self) -> Dict[str, Any]:
@@ -2305,6 +2327,7 @@ class World:
         w.age_rules = int(d.get("age_rules", 1))  # (a world saved before "age_rules" played by 1: never reinterpreted)
         w.built_designs = {k: dict(v) for k, v in (d.get("built_designs") or {}).items()}
         w.deed_ages = {k: dict(v) for k, v in (d.get("deed_ages") or {}).items()}
+        w.space = dict(d["space"]) if isinstance(d.get("space"), dict) else {}
         w.trades = list(d.get("trades") or [])
         w.currency = d.get("currency", "") or ""
         w.leader = d.get("leader", "") or ""

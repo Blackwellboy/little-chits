@@ -19,11 +19,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .actions import STATION_REACH
+from .actions import COUNTABLE, STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
 from . import ideas as IDEAS
-from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design
+from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design, station_of
 from .pioneers import APART
 
 STALL_DAYS = 8  # a project nobody has moved for this long is given up on...
@@ -63,7 +63,8 @@ LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace
 NEXT_AGE = 4.0  # the next step on the road to the next age
 SITE_SIGHT = 12  # where chits can't talk, a building project is known by those who can see its site going up
 STATION_DESIGN = {"fire": "campfire", "kiln": "kiln", "workshop": "workshop", "furnace": "furnace", "forge": "forge",
-                  "factory": "factory", "loom": "tailor"}
+                  "factory": "factory", "loom": "tailor"}  # (the pad: only with the programme, items.station_of)
+ROCKET = 1.0  # the space programme's next rocket (sim/space.py): below what a village lacks, so it waits on them
 
 Step = Tuple[str, str, Dict[str, Any]]  # ("discover" | "build" | "make", key, {"n": .., "for": design} for "make")
 
@@ -254,7 +255,7 @@ def _usable(world, sc: Scope) -> List:
     if got is None:  # (where they stand is looked at once a tick; whether they work, every time: one may be finished this tick)
         own = set(sc.village.structures)
         land = _lands(world, [world.structures[i] for i in sc.village.structures[:3] if i in world.structures])
-        makes = lambda s: DESIGNS[s.design].station or s.design in STATION_DESIGN.values()
+        makes = lambda s: station_of(s.design) or s.design in STATION_DESIGN.values()
         got = sc.cache["usable"] = [
             s for s in world.structures.values()
             if s.id in own or _owns(world, sc, s)  # (a farm or pen it raised out beyond its houses is its own too)
@@ -730,13 +731,53 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
                 add(score, step[0], step[1], f"towards a {DESIGNS[d].name}, which the village has none of", step[2])
                 continue
         add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", extra)
+    step = _rocket_step(world, sc, recipes, have)
+    if step:
+        add(ROCKET, "make", step[0], "the space programme", step[1])
     return sorted(((s, k, key, why, ex) for (k, key), (s, why, ex) in out.items()), key=lambda c: (-c[0], c[1], c[2]))
+
+
+def _rocket_step(world, sc: Scope, recipes: set, have: set) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """The space programme's next rocket (sim/space.py), materials first as MAKE_FIRST does it: its fuel and its
+    sections, then the rocket at the pad. Only with a launch pad standing and someone in the village who knows the
+    rocket, and none while a rocket already waits for its launch. A section short of its own made parts (alloy, a
+    steam engine) is first those, as far down as the village can make them: "make 2 rocket sections" stalled for
+    want of the engines in a late-game probe, set aside every 8 days and picked again. None at all while a part it
+    is short of is one nobody here can make (no engine without the recipe and a forge): that project would stall."""
+    from . import space
+
+    if not space.on() or "launch_pad" not in have or "rocket" not in recipes or stock(world, "rocket", sc=sc) >= 1:
+        return None
+    for k, n in RECIPES["rocket"].inputs:
+        if stock(world, k, sc=sc) < n:
+            got = _short_of(world, sc, recipes, have, k, n)
+            return (got[0], {"n": got[1], "launch": 1}) if got else None
+    return "rocket", {"n": 1, "launch": 1}
+
+
+def _short_of(world, sc: Scope, recipes: set, have: set, key: str, n: int, depth: int = 0) -> Optional[Tuple[str, int]]:
+    """The first made part this village is short of for `n` of `key` (key itself when it is short of none); None when
+    that is one it cannot make: its recipe unknown here, its station missing, or too far down the road."""
+    if key not in recipes or _station_missing(have, RECIPES[key].station) or depth > 4:
+        return None  # (nobody here can make it now)
+    for k, q in RECIPES[key].inputs:
+        if k in RECIPES and stock(world, k, sc=sc) < q * n:
+            return _short_of(world, sc, recipes, have, k, q * n, depth + 1)
+    return key, n
+
+
+def _launch_words(p: Dict[str, Any]) -> str:
+    """"a rocket", "2 rocket sections", "2 rocket fuel"."""
+    k, n = p["key"], p["n"]
+    return f"a {item_name(k)}" if n == 1 else f"{n} {item_name(k)}{'s' if k in COUNTABLE else ''}"
 
 
 def title(p: Dict[str, Any]) -> str:
     """The project as the observer sees it (the real names)."""
     if p["kind"] == "build":
         return f"build a {DESIGNS[p['key']].name}"
+    if p["kind"] == "make" and p.get("launch"):
+        return f"make {_launch_words(p)} for the next launch"
     if p["kind"] == "make":
         if p.get("for") not in DESIGNS:  # (an ingredient to try for a discovery, not a building's material)
             return f"make {p['n']} {item_name(p['key'])} to try for something new"
@@ -1051,9 +1092,11 @@ def complete(world, structure, sc: Optional[Scope] = None) -> None:
         for aid in contrib:
             wants.add_renown(world, world.agents[aid], 1.0)
         names = [world.agents[aid].name for aid in sorted(contrib, key=lambda i: -made.get(i, 0))]
-        text = (f"Village project done: {p['n']} {item_name(p['key'])} are ready "
-                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "to try for something new")
-                + (f", made by {_join_names(names)}" if names else ""))
+        text = (f"Village project done: {_launch_words(p)} {'is' if p['n'] == 1 else 'are'} ready for the next launch"
+                if p.get("launch") else
+                f"Village project done: {p['n']} {item_name(p['key'])} are ready "
+                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "to try for something new"))
+        text += f", made by {_join_names(names)}" if names else ""
         actor = max(contrib, key=lambda i: made.get(i, 0)) if contrib else None
     elif p["kind"] == "find":
         finders = [a for a in imaginers(world, DESIGNS[p["for"]], sc) if p["key"] in a.familiar]

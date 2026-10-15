@@ -31,6 +31,7 @@ from . import voyages as VOY
 from . import prospect as PR
 from . import pioneers as PIO
 from . import ground as GR
+from . import launches as LAUNCH  # the space programme: fly the next rocket from the pad
 from . import surplus as SUR  # how much of a good is enough, and what to do with more (issue #7)
 from . import civic
 from . import inventor as INVENTOR  # the one "invent" option of a chit that chooses (never for an instinct-only chit)
@@ -1388,6 +1389,7 @@ class Instinct:
         opts += PR.options(world, a, sub_stream(rng, "prospect"))  # prospecting for what is gone from around home
         opts += PIO.options(world, a, sub_stream(rng, "pioneers"))  # pioneers founding a daughter village
         opts += GR.options(world, a, sub_stream(rng, "ground"))  # strange objects to study, loose goods to carry in
+        opts += LAUNCH.options(world, a)  # a rocket ready by a launch pad: fly it (sim/space.py)
         opts = civic.extend(self, world, a, sub_stream(rng, "civic"), opts)  # the village's project, study, hints, wants, the famous
         words = JOB_WORDS.get(a.job)
         if words:  # a job (T24) biases what a chit chooses to do, it never forbids anything
