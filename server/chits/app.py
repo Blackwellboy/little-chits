@@ -569,6 +569,19 @@ def progress(wid: str):
     return {**views.progress(w, evs), "thinking": _thinking(r, w)}
 
 
+@app.get("/api/worlds/{wid}/chits/{aid}/life")
+def chit_life(wid: str, aid: str):
+    """🕯 A chit's life story: its notable moments, born to died, from the events already recorded (views.life).
+    Works for the dead while their record is kept."""
+    w = world(wid)
+    a = w.agents.get(aid) or w.dead.get(aid)
+    if not a:
+        raise HTTPException(404, "no such chit")
+    r = R()
+    r._flush_events(w)
+    return views.life(a, r.store.life_events(w.id, aid, views.LIFE_KINDS, epoch=w.timeline()))
+
+
 @app.get("/api/worlds/{wid}/settlements")
 def settlements(wid: str):
     from .sim.settlements import detect

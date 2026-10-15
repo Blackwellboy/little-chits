@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, instinctChip, thinkingLine, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, instinctChip, lifeLines, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -68,5 +68,27 @@ describe("escapeClosesInspector", () => {
     expect(escapeClosesInspector({ ...base, godTool: true })).toBe(false);
     expect(escapeClosesInspector({ ...base, typing: true })).toBe(false);
     expect(escapeClosesInspector({ ...base, selected: false })).toBe(false);
+  });
+});
+
+describe("lifeLines", () => {
+  const e = (seq: number, kind: string, role: LifeEvent["role"] = "self"): LifeEvent => ({ seq, day: seq, kind, role, text: kind, importance: 3 });
+  it("puts a life in order, born to died, with an icon for each moment", () => {
+    const l = lifeLines([e(9, "death"), e(1, "birth"), e(5, "birth", "child"), e(3, "invention"), e(4, "mystery")]);
+    expect(l.map((x) => x.seq)).toEqual([1, 3, 4, 5, 9]);
+    expect(l.map((x) => x.icon)).toEqual(["🍼", "💡", "·", "👶", "🕯"]);
+  });
+});
+
+describe("lifeLines folding", () => {
+  const l = (seq: number, day: number, what?: string, kind = "learned"): LifeEvent => ({ seq, day, kind, role: "self", text: `${kind} ${what}`, importance: 2, what });
+  it("folds a day's learning into one line, and tells a newborn's birth first", () => {
+    const evs = [l(1, 3, "cord"), l(2, 3, "clay pot"), l(3, 3, undefined, "birth"), l(4, 3, "a"), l(5, 3, "b"), l(6, 3, "c"), l(7, 3, "d"),
+      l(8, 4, "brick"), l(9, 4, undefined, "invention"), l(10, 4, "kiln")];
+    const out = lifeLines(evs);
+    expect(out.map((x) => x.kind)).toEqual(["birth", "learned", "learned", "invention", "learned"]);
+    expect(out[1].text).toBe("Learned 6 things: cord, clay pot, a, b, c and 1 more");
+    expect(out[2].text).toBe("learned brick");  // (one thing stays as told)
+    expect(out[4].text).toBe("learned kiln");  // (another moment between breaks the run)
   });
 });

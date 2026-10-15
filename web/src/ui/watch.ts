@@ -58,3 +58,38 @@ export function holdOrder(held: string[] | null, ids: string[]): string[] {
 export function escapeClosesInspector(s: { selected: boolean; dialogOpen: boolean; godTool: boolean; typing: boolean }): boolean {
   return s.selected && !s.dialogOpen && !s.godTool && !s.typing;
 }
+
+/** One moment of a chit's life (server views.life): its own, or one it was part of (`role`). */
+export type LifeEvent = { seq: number; day: number; kind: string; role: "self" | "child" | "helped" | "fight"; text: string; importance: number;
+  what?: string };  // (what a "learned" moment learned)
+
+const LIFE_ICON: Record<string, string> = {
+  birth: "🍼", death: "🕯", discovery: "✦", first: "★", invention: "💡", learned: "📘", built: "🏠", job: "🧰",
+  election: "🗳", elder: "👑", belief: "🕯", convert: "🙏", fight: "💢", theft: "🫳", caught: "🛡", voyage: "⛵",
+  arrival: "🏝", wish: "🌟", project_done: "🏆", tablet: "📜", legacy: "📜", last_keeper: "⏳",
+};
+
+const LIFE_SHOW_NAMES = 5;
+// within a day its own birth comes first and its death last (a newborn learns from its parents before the birth is told)
+const lifeRank = (e: LifeEvent) => (e.role === "self" && e.kind === "birth" ? 0 : e.role === "self" && e.kind === "death" ? 2 : 1);
+
+/** The Life tab's lines, oldest first, an icon for each moment (a child's birth is "👶", whoever's event it is). A
+ *  day's learning is one line ("Learned 12 things: cord, clay pot, …"): a newborn learns dozens at once. */
+export function lifeLines(events: LifeEvent[]): (LifeEvent & { icon: string })[] {
+  const sorted = events.slice().sort((a, b) => a.day - b.day || lifeRank(a) - lifeRank(b) || a.seq - b.seq);
+  const out: (LifeEvent & { icon: string; _what?: string[] })[] = [];
+  for (const e of sorted) {
+    const last = out[out.length - 1];
+    if (e.kind === "learned" && e.what && last?.kind === "learned" && last._what && last.day === e.day) {
+      last._what.push(e.what);
+      last.importance = Math.max(last.importance, e.importance);
+      continue;
+    }
+    out.push({ ...e, icon: e.role === "child" ? "👶" : LIFE_ICON[e.kind] ?? "·", ...(e.kind === "learned" && e.what ? { _what: [e.what] } : {}) });
+  }
+  return out.map(({ _what, ...l }) => {
+    if (!_what || _what.length < 2) return l;
+    const more = _what.length - LIFE_SHOW_NAMES;
+    return { ...l, text: `Learned ${_what.length} things: ${_what.slice(0, LIFE_SHOW_NAMES).join(", ")}${more > 0 ? ` and ${more} more` : ""}` };
+  });
+}

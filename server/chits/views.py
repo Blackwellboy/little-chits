@@ -521,3 +521,48 @@ def thinking(recent_steps, brain_id: str) -> Dict[str, Any]:
     return {"brain": brain_id, "steps": n, "model_pct": share(PV.MODEL), "body_pct": share(("body_reflex",)),
             "routine_pct": share(("routine",)), "instinct_pct": share(("instinct_plan", "fallback", "filler")),
             "fallback_pct": share(("fallback",)), "on_instinct": bool(why), "why": why}
+
+
+# ---------------------------------------------------------------------------------------------- a chit's life story
+LIFE_KINDS = ("birth", "death", "discovery", "first", "invention", "learned", "built", "job", "election", "elder",
+              "belief", "convert", "fight", "theft", "caught", "voyage", "arrival", "wish", "project_done", "tablet",
+              "legacy", "last_keeper")
+LIFE_KEEP = ("birth", "death")  # never thinned out of a long life
+LIFE_LIMIT = 120
+
+
+def life(a: Agent, rows: List[Dict[str, Any]], limit: int = LIFE_LIMIT) -> Dict[str, Any]:
+    """🕯 A chit's notable moments, oldest first, from the events the world recorded about it (its own, the births of
+    its children, buildings it helped raise, fights it was in). A long life is thinned to `limit`, the least important
+    moments first ("learned" before the rest), never its birth or death."""
+    out = []
+    for e in rows:
+        kind, d = e["kind"], e.get("data") or {}
+        role = "self"
+        if e.get("actor") != a.id:
+            if kind == "birth" and a.id in (d.get("parents") or []):
+                role = "child"
+            elif kind == "built" and a.id in (d.get("builders") or []):
+                role = "helped"
+            elif kind == "fight" and a.id in (d.get("opponent"), d.get("winner")):
+                role = "fight"
+            else:
+                continue
+        elif kind == "learned" and d.get("how") == "instinct":
+            continue
+        row = {"seq": e["seq"], "day": e["tick"] // TICKS_PER_DAY + 1, "kind": kind, "role": role,
+               "text": e["text"], "importance": e["importance"]}
+        if kind == "learned" and d.get("knowledge"):  # (the UI folds a day's learning into one line)
+            try:
+                row["what"] = knowledge_name(d["knowledge"])
+            except (KeyError, ValueError):
+                row["what"] = str(d["knowledge"]).split(":", 1)[-1].replace("_", " ")
+        out.append(row)
+    thinned = len(out) > limit
+    if thinned:
+        rank = sorted(out, key=lambda x: (x["kind"] not in LIFE_KEEP, x["kind"] == "learned", -x["importance"], x["seq"]))
+        keep = {x["seq"] for x in rank[:limit]}
+        out = [x for x in out if x["seq"] in keep]
+    return {"id": a.id, "name": a.name, "alive": a.alive, "born_day": max(0, a.born) // TICKS_PER_DAY + 1,
+            "died_day": a.died // TICKS_PER_DAY + 1 if a.died >= 0 else None, "cause": a.cause_of_death or None,
+            "events": out, "thinned": thinned}

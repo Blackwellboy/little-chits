@@ -4,7 +4,7 @@ import { api } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
 import { Portrait } from "./Portrait";
-import { escapeClosesInspector } from "./watch";
+import { escapeClosesInspector, lifeLines, type LifeEvent } from "./watch";
 
 const HOW: Record<string, string> = {
   instinct: "born knowing", discovered: "discovered it", insight: "had the idea", taught: "was taught",
@@ -187,6 +187,7 @@ export function Inspector() {
 
       {tab === "life" && (
         <>
+          <LifeStory world={selected.world} id={a.id} alive={a.alive} />
           {a.relations.length > 0 && (
             <div className="card"><h4>Relationships</h4>
               {a.relations.map((r) => (
@@ -210,6 +211,31 @@ export function flyToAgent(world: string, id: string) {
   const w = worlds[world];
   const a = w?.agents.get(id);
   if (a) useUI.getState().set({ focus: { world, x: a.x + 0.5, y: a.y + 0.5, t: Date.now() }, selected: { world, id } });
+}
+
+type Life = { events: LifeEvent[]; thinned: boolean; born_day: number; died_day: number | null };
+
+/** 🕯 A chit's life, born to died: its notable moments from the events the world recorded (GET .../chits/{id}/life). */
+function LifeStory({ world, id, alive }: { world: string; id: string; alive: boolean }) {
+  const [life, setLife] = useState<Life | null>(null);
+  useEffect(() => {
+    let on = true;
+    const load = () => api<Life>(`/api/worlds/${world}/chits/${id}/life`).then((l) => on && setLife(l)).catch(() => on && setLife(null));
+    load();
+    const t = alive ? setInterval(load, 6000) : null;  // (a dead chit's story is finished)
+    return () => { on = false; if (t) clearInterval(t); };
+  }, [world, id, alive]);
+  if (!life) return null;
+  return (
+    <div className="card life-story"><h4>🕯 Life story</h4>
+      {life.events.length ? (
+        <ol className="life">{lifeLines(life.events).map((l) => (
+          <li key={l.seq} className={`imp${l.importance}`}><small>day {l.day}</small><span className="ico">{l.icon}</span><span>{l.text}</span></li>
+        ))}</ol>
+      ) : <p className="muted small">Nothing recorded yet.</p>}
+      {life.thinned && <small className="muted">A long life: the smaller moments are left out.</small>}
+    </div>
+  );
 }
 
 type Kin = { id: string; name: string; alive: boolean; born_day: number; died_day: number | null; cause: string | null };

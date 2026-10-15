@@ -248,6 +248,26 @@ class Store:
         out.reverse()
         return out
 
+    def life_events(self, world_id: str, aid: str, kinds, epoch: Any = None, limit: int = 2000) -> List[Dict[str, Any]]:
+        """The events of `kinds` about one chit, oldest first: its own (actor), and the ones that name it in their data
+        (a child's birth, a building it helped raise, a fight). Read-only and bounded (`limit`, the most recent)."""
+        kinds = list(kinds)
+        q = (f"SELECT seq, tick, kind, importance, actor, text, data FROM events WHERE world_id=? AND kind IN "
+             f"({','.join('?' * len(kinds))}) AND (actor=? OR (kind IN ('birth','built','fight') AND data LIKE ?))")
+        args: List[Any] = [world_id, *kinds, aid, f'%"{aid}"%']
+        if epoch:
+            clause, more = _epoch_clause(epoch)
+            q += clause
+            args += more
+        q += " ORDER BY seq DESC LIMIT ?"
+        args.append(max(1, int(limit)))
+        with self.lock:
+            rows = self.db.execute(q, args).fetchall()
+        out = [{"seq": r[0], "tick": r[1], "kind": r[2], "importance": r[3], "actor": r[4], "text": r[5],
+                "data": json.loads(r[6] or "{}")} for r in rows]
+        out.reverse()
+        return out
+
     def count_kinds(self, world_id: str, kinds, epoch: Any = None, unless: str = "") -> Dict[str, int]:
         """How many events of each kind a world's timeline holds (`unless`: not those whose data has that key)."""
         kinds = list(kinds)
