@@ -45,6 +45,10 @@ DEED_ROAD = True
 # A great work (min_pop) is the island's: the build verb counts everyone living here, but a village counted only its
 # own residents, and pioneers leave a village at 40, so no village ever took on a launch pad (min_pop 40) (#168).
 ISLAND_WORKS = True
+# A/B of both (2026-10-15, tools/harness/ab.py, 16 seeds x 200 days, 128 map, paired, only these differ): age reached
+# 9.31 > 9.81 (4 seeds a whole age further), discoveries 90.8 > 92.5, launches 0.75 > 1.06, structures 154 > 162,
+# stored 6915 > 7672, population 57.6 > 57.8. Starvations 1 > 4 (each a lone hunger-reflex death beside full stores,
+# none from a project; see #168). On.
 WORLD = "world"  # the slot of a world where no village stands yet
 LEGACY = ""  # the slot an older save's single project is loaded into, until the next look at the villages
 
