@@ -26,6 +26,11 @@ INSTINCT = "instinct"  # (brain.mind.INSTINCT: the brain id of a chit with no mo
 # invention option() drafts instead. A model stays the main inventor: it is offered the option every time it chooses.
 INSTINCT_INVENTS = True
 INSTINCT_INVENT = 0.08
+# A/B (2026-10-15, tools/harness/ab.py, paired, only this differs): 8 seeds x 200 days: discoveries 89.0 > 116.5 (8 of 8
+# up, about 32 inventions a world), structures 143 > 155, stored 6084 > 7385, population 56.1 > 57.4, starved 0 > 0;
+# age reached 9.00 > 8.62 and machines 6.5 > 5.0 (inventing takes some of the time the road to the next age had).
+# 24 seeds x 60 days: discoveries 77.1 > 88.1 (18 up, 5 down), age 8.08 > 7.88. On: a world without a model is no
+# longer frozen.
 PART_KINDS = 6  # how many kinds of carried things are tried as parts
 BAG_SIZES = (2, 3)  # an option is a small thing: two or three pieces
 LOW_HEALTH, LOW_MOOD = 80.0, 40.0  # below these a remedy, or something for joy, is worth offering
