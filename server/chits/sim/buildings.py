@@ -712,8 +712,12 @@ def lamp_near(world, x: int, y: int):
 
 
 def study_mult(world, a: Agent) -> float:
-    """Study near a great library goes twice as far."""
-    return STUDY_MULT if any(g.dist(a.x, a.y) <= LIBRARY_REACH for g in fx(world)["great_library"]) else 1.0
+    """Study near a great library goes twice as far, and further all over the island with a satellite and a station
+    in orbit (the space programme, sim/space.py)."""
+    from . import space
+
+    near = STUDY_MULT if any(g.dist(a.x, a.y) <= LIBRARY_REACH for g in fx(world)["great_library"]) else 1.0
+    return near * space.study_mult(world)
 
 
 def voyage_ticks(world) -> int:

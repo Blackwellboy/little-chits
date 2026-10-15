@@ -10,12 +10,13 @@ import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
 import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, stallLine, thinkingLine, type Thinking } from "./watch";
+import { spaceLines, type SpaceProgramme } from "./space";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
   speech: "💬", gift: "🎁", tablet: "📜", legacy: "📜", season: "🗓", ruin: "🏚", restored: "🔧", harvest: "🌾",
   reflection: "🪞", fire_out: "🔥", fire_lit: "🔥", crafted: "🛠", produced: "⚒", tool_broke: "🪓", note: "·",
-  invention: "💡", belief: "🕯", convert: "🙏", scripture: "📜", era: "🏛", launch: "🚀", job: "🧰", trade: "🤝",
+  invention: "💡", belief: "🕯", convert: "🙏", scripture: "📜", era: "🏛", launch: "🚀", space: "🛰", job: "🧰", trade: "🤝",
   money: "🪙", election: "🗳", elder: "👑", law: "📜", theft: "🫳", caught: "🛡", fight: "💢", militia: "🛡",
   miracle: "🪄", revelation: "👽", artifact: "✨", ambition: "🌟", objective: "🎯", sign: "🪧", settlement: "🏘",
   storm: "⛈", weather: "🌦", timeline: "⑂", voyage: "⛵", arrival: "🏝",
@@ -80,6 +81,7 @@ type ProgressData = {
   project?: { active: Project | null; done: { id: string; day: number; text: string }[]; villages?: VillageRow<Project>[] };
   road?: { age: string; steps: RoadStep[]; text: string } | null;
   milestones?: Checklist | null;
+  space?: SpaceProgramme | null;
   research?: { insight: number; next_idea: number; hints: { text: string; day: number; by: string; found: boolean }[] };
   famous?: { name: string; renown: number } | null;
   food_days?: number | null;
@@ -117,6 +119,7 @@ function Progress({ world, name }: { world: string; name: string }) {
           ? <small>Next: <b>{p.next.name}</b>, when someone works out how to make a <b>{p.next.needs}</b>.</small>
           : <small>🚀 They reached space!</small>}
         {p.next && stall && <small className="prog-stall" title="From the road to the next age and the Why slow? panel">⏳ {stall}</small>}
+        <SpaceLine sp={p.space} />
         {p.milestones && p.milestones.steps.length > 0 && <RoadChecklist c={p.milestones} />}
       </div>
       <div className="prog-ladder">
@@ -154,6 +157,18 @@ function Progress({ world, name }: { world: string; name: string }) {
         </div>
       ))}
       {!p.recent.length && <p className="small muted">Nothing new learned or built in the last two days yet.</p>}
+    </div>
+  );
+}
+
+/** 🚀 The space programme after the first launch: how many, what is up there, the next mission. */
+function SpaceLine({ sp }: { sp?: SpaceProgramme | null }) {
+  const l = spaceLines(sp);
+  if (!l) return null;
+  return (
+    <div className="prog-space" title="Each launch after the first does the next thing the island has never done in the sky">
+      <small>🚀 Space programme: <b>{l.head}</b>{l.done.length > 0 && <> · {l.done.join(" · ")}</>}</small>
+      {l.next && <div><small className="muted">{l.next}</small></div>}
     </div>
   );
 }

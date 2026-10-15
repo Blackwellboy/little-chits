@@ -62,8 +62,8 @@ INTERMEDIATES = {
     "wire": "part: magnets, dynamos, light bulbs, the power station and street lamps",
     "magnet": "part: the dynamo",
     "dynamo": "part: the power station and the launch pad",
-    "fuel": "the launch pad burns it",
-    "rocket_part": "the launch pad is built of them",
+    "fuel": "the launch pad burns it, and a rocket is fuelled with it",
+    "rocket_part": "the launch pad is built of them, and a rocket is put together from them",
     "flour": "ground at a mill to be baked into loaves",
     "wool": "shorn from tame sheep to be woven into cloth",
     "cloth": "woven to be sewn into a cloak",
@@ -86,6 +86,7 @@ PROOF = {
     "cord": "test_item_verbs.py::test_a_building_is_mended_with_the_plain_stuff_it_is_built_of",
     "brick": "test_item_verbs.py::test_a_building_is_mended_with_the_plain_stuff_it_is_built_of",
     "sharp_stone": "test_item_verbs.py::test_a_sharp_stone_in_hand_cuts_fiber_two_at_a_stroke",
+    "rocket": "test_space_programme.py::test_a_launch_spends_the_rocket_and_advances_the_ladder",
 }
 MAX_INTERMEDIATES = 19  # the allow-list may shrink, never grow: a new item needs a verb
 

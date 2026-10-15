@@ -399,14 +399,14 @@ def progress(w: World, events: List[Dict[str, Any]]) -> Dict[str, Any]:
         if lines:
             recent.append({"day": d, "lines": lines})
     st = w.stats()
-    from .sim import projects, research
+    from .sim import projects, research, space
     from .sim.wants import famous
 
     star = famous(w)
     civ = getattr(w, "civic", None) or {}
     road = projects.road(w)
     return {
-        "project": projects.view(w), "road": road, "milestones": milestones(w, road),
+        "project": projects.view(w), "road": road, "milestones": milestones(w, road), "space": space.view(w),
         "food_days": _food_days(w), "at_risk": _at_risk(w),
         "research": {"insight": round(civ.get("insight", 0.0), 1), "next_idea": research.threshold(w) if civ else 0,
                      "hints": [{"text": h["text"], "day": h["tick"] // 240 + 1, "by": h.get("by_name", ""),

@@ -55,7 +55,15 @@ def _level(v: float, words: Tuple[str, str, str, str], cuts: Tuple[int, int, int
     return words[3]
 
 
-def verb_guide(world) -> str:
+def _launch_line(world, a) -> bool:
+    """The launch verb is only told to a chit that knows the rocket, in a world with a launch pad standing (it names
+    nothing undiscovered: sim/space.py)."""
+    from ..sim import space
+
+    return a is not None and space.on() and a.knows_recipe("rocket") and bool(space.pads(world))
+
+
+def verb_guide(world, a: Optional[Agent] = None) -> str:
     lines = [
         '{"do":"gather","what":"wood|stone|fiber|berries|clay|sand|ore|iron ore|fish|seeds","qty":5}  (copper ore and iron ore need a pick, fish needs a spear)',
         '{"do":"eat"} or {"do":"eat","what":"berries"}' + ('  (cooked or baked food also lifts your spirits)' if IT.ITEM_USES else ''),
@@ -112,6 +120,10 @@ def verb_guide(world) -> str:
         '{"do":"repair","what":"<worn metal tool>"}  (re-haft it at a workshop with one wood: as good as new)  '
         '{"do":"smelt","what":"<metal tool>"}  (melt it back into its metal at a furnace)',
     ]
+    if _launch_line(world, a):  # (last of the verbs: the guide before it is the same for every chit, for prefix caching)
+        lines.append('{"do":"launch"}  (carry a rocket to the launch pad and fly it, with up to two grown-ups beside you: '
+                     'each launch does the next thing the island has never done in the sky; a rocket is put together '
+                     'at the pad: {"do":"work","at":"pad","what":"rocket"})')
     from ..sim.agent import JOBS
 
     lines.append(f'Your reply may also include "job":"<one of {", ".join(JOBS)}>" to take up (or change) a trade.')
@@ -142,7 +154,7 @@ Reply with ONE JSON object and nothing else:
 only when you've achieved or abandoned it. "goal" is just this plan.
 The plan has 2-6 steps carried out in order, covering the next few hours of your life. Think ahead:
 gather what a step needs before the step that needs it. Steps:
-{verb_guide(world)}
+{verb_guide(world, a)}
 
 You are {a.name}. Your nature: {a.personality()}."""
 
@@ -711,7 +723,7 @@ def compact_system_prompt(world, a: Agent) -> str:
     from ..sim.actions import VERBS
 
     verbs = [v for v in VERBS if not (v in _FORBIDDEN and not world.flags.get(_FORBIDDEN[v])) and v not in _REFLEX
-             and world.rules.allows_verb(v)]
+             and world.rules.allows_verb(v) and (v != "launch" or _launch_line(world, a))]
     talk = "" if world.flags.get("say") else " You cannot talk, teach or write: learn by watching and studying."
     invent_line = ("You can also INVENT a new thing from 2-4 carried items (give it a name and a purpose): what its parts "
                    "can do decides what it can be, and the purpose chooses among that.\n") if world.rules.invention else ""

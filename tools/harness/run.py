@@ -72,6 +72,7 @@ def metrics(w, low: int, starved: int) -> dict:
             "machines": sum(b.get(k, 0) for k in ("steam_pump", "sawmill", "factory")),
             "power_stations": b.get("power_station", 0), "street_lamps": b.get("street_lamp", 0),
             "launch_pads": b.get("launch_pad", 0), "launches": w.lifetime("launch"),
+            "missions": w.lifetime("space"),  # (the space programme's launches after the first: sim/space.py)
             "structures": len(w.structures), "stored": sum(store.values()),
             "settlements": len(getattr(w, "settlements", {}) or {}),
             **ages}

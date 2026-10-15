@@ -34,7 +34,7 @@ VERBS = (
     "write", "read", "inspect", "explore", "go", "refuel", "plant", "harvest", "repair", "rest", "wander", "warm_up",
     "drop", "mark", "shelter", "invent", "pray", "preach", "trade", "steal", "guard", "fight", "pickup", "sail", "hunt", "tame",
     "prospect",
-    "work", "study", "smelt",
+    "work", "study", "smelt", "launch",
 )
 
 VERB_ALIASES = {
@@ -58,6 +58,7 @@ VERB_ALIASES = {
     "take_cover": "shelter", "go_inside": "shelter", "hide": "shelter", "cover": "shelter",
     "operate": "work", "man": "work", "tend": "work", "run": "work",
     "melt": "smelt", "melt_down": "smelt", "recycle": "smelt", "scrap": "smelt", "mend": "repair", "resharpen": "repair",
+    "blast_off": "launch", "blast": "launch", "lift_off": "launch", "liftoff": "launch",  # (not "fly": tests/test_brain.py)
 }
 
 STOCKPILE_CAP = 240
@@ -1227,11 +1228,11 @@ KEEP_STOCK = {"wood": 10, "stone": 8, "fiber": 6, "clay": 12, "sand": 6, "ore": 
 REPORT_EVERY = TICKS_PER_DAY // 2  # a station reports its work to the chronicle at most this often
 STATION_WORDS = {"campfire": "fire", "camp fire": "fire", "bonfire": "fire", "hearth": "fire", "fireplace": "fire",
                  "oven": "kiln", "smelter": "furnace", "bench": "workshop", "workbench": "workshop", "millstone": "mill", "windmill": "mill",
-                 "works": "factory"}
+                 "works": "factory", "pad": "pad", "launchpad": "pad", "spaceport": "pad"}
 WORK_EMOTE = {"fire": "🍳", "kiln": "🔥", "furnace": "🔥", "workshop": "🔨", "forge": "⚒", "factory": "⚙", "mill": "🌾"}
 COUNTABLE = {"brick", "pot", "basket", "clay_tablet", "sharp_stone", "berry_tart", "spear", "stone_axe", "stone_pick",
              "copper_axe", "copper_pick", "iron_axe", "iron_pick", "lantern", "cloak", "wheel", "cart", "gear", "engine", "loaf",
-             "magnet", "dynamo", "lightbulb", "rocket_part"}
+             "magnet", "dynamo", "lightbulb", "rocket_part", "rocket"}
 
 
 def _retarget(a: Agent, s) -> None:
@@ -1251,6 +1252,8 @@ def _plenty(world, key: str) -> int:
     it = world.item(key)
     if it is not None and (it.tool or it.carry_bonus):
         return 3
+    if key == "rocket":
+        return 1  # (one rocket waits for its launch: its sections and fuel are worth more than a second)
     return 30 if it is not None and it.food else 24
 
 
@@ -1919,6 +1922,43 @@ def _conceived(world, a: Agent, idea: Dict[str, Any], new: bool, s) -> str:
     a.bump("inventions")
     a.remember(world.tick, f"I thought up the {idea['name']}{kind}: it is built from {mats}", 5, "discovery")
     s["note"] = f"Thought up the {idea['name']}{kind}: build it from {mats}"
+    return DONE
+
+
+LAUNCH_WORK = 8  # ticks of readying at the pad before a rocket flies
+
+
+def _do_launch(world, a: Agent, step, s) -> str:
+    """Fly a rocket from a launch pad (the space programme, sim/space.py): the rocket is spent, and the launcher and
+    up to two grown-ups beside it fly the next mission."""
+    from . import space
+
+    if not space.on():
+        return "nobody here knows how to fly to the sky again"
+    if not a.has("rocket"):
+        return "I have no rocket to launch" + (" (put one together at a launch pad first)" if a.knows_recipe("rocket") else "")
+    pad = world.structures.get(s.get("pad") or "")
+    if pad is None:
+        ref = next((step.get(k) for k in ("target", "at", "site") if isinstance(step.get(k), str) and step.get(k)), None)
+        pad = world.structures.get(ref) if ref else None
+        if pad is None or pad.design != "launch_pad":
+            pad = next((x for x in world.structures_near(a.x, a.y, 40, "launch_pad") if x.functional and world.same_land(a, x)), None)
+    if pad is None or pad.design != "launch_pad" or not pad.functional:
+        return "there is no working launch pad nearby"
+    s["pad"] = pad.id
+    mv = _goto_structure(world, a, s, pad)
+    if mv == "blocked":
+        return "couldn't reach the launch pad"
+    if mv != "arrived":
+        return RUNNING
+    a.activity = "readying the rocket"
+    a.set_emote("🚀", world.tick, 4)
+    s["t"] = s.get("t", 0) + 1
+    if s["t"] < LAUNCH_WORK:
+        return RUNNING
+    a.remove("rocket", 1)
+    done = world.space_launch(a, pad)
+    s["note"] = f"Launched a rocket: {done['text']}"
     return DONE
 
 

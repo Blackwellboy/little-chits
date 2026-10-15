@@ -85,6 +85,8 @@ ITEMS: Dict[str, Item] = {
         Item("fuel", "rocket fuel", ("volatile", "burns violently"), icon="🛢️"),
         Item("alloy", "alloy", ("light", "strong", "heat-proof", "metal"), icon="🪙"),
         Item("rocket_part", "rocket section", ("huge", "shaped", "heat-proof"), weight=4, icon="🚀"),
+        # the space programme (sim/space.py): put together at a launch pad and flown from one
+        Item("rocket", "rocket", ("huge", "shaped", "flies", "heat-proof"), weight=6, icon="🚀"),
         # a mill's work (sim/buildings.py)
         Item("flour", "flour", ("fine", "powdery", "can be baked"), icon="🥣"),
         Item("loaf", "loaf", ("edible", "baked", "soft", "very filling"), food=75, icon="🥖"),
@@ -130,6 +132,8 @@ def described_as(function: str) -> List[str]:
 
 
 STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "loom")
+# (and "pad", the launch pad, where nothing is tried: a rocket is put together there by those who saw one fly)
+STATION_NAME = {"pad": "launch pad"}  # a station said otherwise than its key, in a recipe's words
 # the ores (issue #4): one kind of deposit tile, whose metal is fixed by its place and the world's seed (World.ore_item)
 ORE_KINDS = ("ore", "iron_ore")
 IRON_ORE_SHARE = 65  # percent of deposits that are iron: iron is the commoner ore
@@ -155,7 +159,7 @@ class Recipe:
 
     def describe(self) -> str:
         parts = " + ".join(f"{n} {ITEMS[k].name}" if n > 1 else ITEMS[k].name for k, n in self.inputs)
-        at = f" at a {self.station}" if self.station else ""
+        at = f" at a {STATION_NAME.get(self.station, self.station)}" if self.station else ""
         return f"{parts}{at} -> {ITEMS[self.key].name}"
 
 
@@ -206,6 +210,8 @@ RECIPES: Dict[str, Recipe] = {
         _r("fuel", {"charcoal": 2, "pot": 1}, station="factory", work=10),
         _r("alloy", {"steel": 1, "copper": 1}, station="factory", work=12),
         _r("rocket_part", {"alloy": 2, "engine": 1}, station="factory", work=24),
+        # (two sections, not three: a chit carries 12 and a section weighs 4, and a shift fetches its inputs in one trip)
+        _r("rocket", {"rocket_part": 2, "fuel": 2}, station="pad", work=30),
         _r("flour", {"grain": 1}, station="mill", work=4),
         _r("loaf", {"flour": 2}, station="fire", work=6),
         _r("ale", {"grain": 2, "berries": 1}, station="workshop", qty=2, work=6),
@@ -236,6 +242,7 @@ ACTION_USES: Dict[str, str] = {
     "cord": "mend what is built with it (re-lash a stockpile, a bridge, a pen)",
     "brick": "mend what is built of it",
     "sharp_stone": "carry it while gathering plant fiber: it cuts two at a stroke",
+    "rocket": "launch it from a launch pad: the next mission of the space programme",
 }
 # ...of which these are a second use of something gathered or made for something else: no reason for a station to make
 # it in bulk before anything needs it (actions._useful; a kiln would turn the wood into charcoal before copper is known)
@@ -327,7 +334,7 @@ DESIGNS: Dict[str, Design] = {
         _d("factory", "factory", {"brick": 20, "steel": 8, "engine": 2}, 150, (("recipe", "engine"),), size=(3, 3),
            station="factory", blurb="machines that make machines", decay=1.0, min_pop=20),
         _d("launch_pad", "launch pad", {"brick": 40, "steel": 20, "rocket_part": 6, "fuel": 10, "dynamo": 2}, 400,
-           (("recipe", "rocket_part"), ("recipe", "fuel"), ("recipe", "dynamo")), size=(3, 3),
+           (("recipe", "rocket_part"), ("recipe", "fuel"), ("recipe", "dynamo")), size=(3, 3), station="pad",
            blurb="a tower and a rocket: the island's reach for the sky", decay=0.3, min_pop=40),
         _d("pen", "pen", {"wood": 6, "cord": 2}, 20, (("recipe", "cord"),), size=(2, 2),
            blurb="a fenced pen for tame animals"),
@@ -557,7 +564,7 @@ class Catalog:
 
     def describe(self, r: Recipe) -> str:
         parts = " + ".join(f"{n} {item_name(k, self)}" if n > 1 else item_name(k, self) for k, n in r.inputs)
-        at = f" at a {r.station}" if r.station else ""
+        at = f" at a {STATION_NAME.get(r.station, r.station)}" if r.station else ""
         return f"{parts}{at} -> {item_name(r.key, self)}"
 
 

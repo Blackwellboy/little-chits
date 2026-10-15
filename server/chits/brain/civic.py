@@ -171,7 +171,7 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     site = next((s for s in world.structures_near(a.x, a.y, 30, target) if not s.complete and s.needs.get(key)
                  and _reachable(world, a, s)), None) if target in DESIGNS else None
     pile = next((s for s in world.structures_near(a.x, a.y, 25, "stockpile") if s.functional), None)
-    what, where = item_name(key), DESIGNS[target].name if target in DESIGNS else "village"
+    what, where = item_name(key), DESIGNS[target].name if target in DESIGNS else "next launch" if p.get("launch") else "village"
     if a.knows_recipe(key):
         steps = production_steps(world, a, key, 1 if left <= 2 or (world.item(key) and world.item(key).weight > 1) else 2)
         if not steps or len(steps) > 5:

@@ -63,7 +63,8 @@ LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace
 NEXT_AGE = 4.0  # the next step on the road to the next age
 SITE_SIGHT = 12  # where chits can't talk, a building project is known by those who can see its site going up
 STATION_DESIGN = {"fire": "campfire", "kiln": "kiln", "workshop": "workshop", "furnace": "furnace", "forge": "forge",
-                  "factory": "factory", "loom": "tailor"}
+                  "factory": "factory", "loom": "tailor", "pad": "launch_pad"}
+ROCKET = 1.0  # the space programme's next rocket (sim/space.py): below what a village lacks, so it waits on them
 
 Step = Tuple[str, str, Dict[str, Any]]  # ("discover" | "build" | "make", key, {"n": .., "for": design} for "make")
 
@@ -730,13 +731,36 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
                 add(score, step[0], step[1], f"towards a {DESIGNS[d].name}, which the village has none of", step[2])
                 continue
         add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", extra)
+    step = _rocket_step(world, sc, recipes, have)
+    if step:
+        add(ROCKET, "make", step[0], "for the next launch of the space programme", step[1])
     return sorted(((s, k, key, why, ex) for (k, key), (s, why, ex) in out.items()), key=lambda c: (-c[0], c[1], c[2]))
+
+
+def _rocket_step(world, sc: Scope, recipes: set, have: set) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """The space programme's next rocket (sim/space.py), materials first as MAKE_FIRST does it: its fuel and its
+    sections, then the rocket at the pad. Only with a launch pad standing and someone in the village who knows the
+    rocket, and none while a rocket already waits for its launch."""
+    from . import space
+
+    if not space.on() or "launch_pad" not in have or "rocket" not in recipes or stock(world, "rocket", sc=sc) >= 1:
+        return None
+    r = RECIPES["rocket"]
+    for k, n in r.inputs:
+        if stock(world, k, sc=sc) < n:
+            if k not in recipes or _station_missing(have, RECIPES[k].station):
+                return None  # (nobody here can make it now)
+            return k, {"n": n, "launch": 1}
+    return "rocket", {"n": 1, "launch": 1}
 
 
 def title(p: Dict[str, Any]) -> str:
     """The project as the observer sees it (the real names)."""
     if p["kind"] == "build":
         return f"build a {DESIGNS[p['key']].name}"
+    if p["kind"] == "make" and p.get("launch"):
+        what = f"a {item_name(p['key'])}" if p["n"] == 1 else f"{p['n']} {item_name(p['key'])}"
+        return f"make {what} for the next launch"
     if p["kind"] == "make":
         if p.get("for") not in DESIGNS:  # (an ingredient to try for a discovery, not a building's material)
             return f"make {p['n']} {item_name(p['key'])} to try for something new"
@@ -1052,7 +1076,8 @@ def complete(world, structure, sc: Optional[Scope] = None) -> None:
             wants.add_renown(world, world.agents[aid], 1.0)
         names = [world.agents[aid].name for aid in sorted(contrib, key=lambda i: -made.get(i, 0))]
         text = (f"Village project done: {p['n']} {item_name(p['key'])} are ready "
-                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "to try for something new")
+                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "for the next launch"
+                   if p.get("launch") else "to try for something new")
                 + (f", made by {_join_names(names)}" if names else ""))
         actor = max(contrib, key=lambda i: made.get(i, 0)) if contrib else None
     elif p["kind"] == "find":
