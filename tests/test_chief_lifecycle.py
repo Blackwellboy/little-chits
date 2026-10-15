@@ -3,11 +3,26 @@ run most projects fell to need ("never asked", "didn't answer", "chief changed")
 
 import asyncio
 
+import pytest
+
 from chits import diag
 from chits.brain.mind import Mind
 from chits.sim import projects as PJ
 from chits.sim.agent import TICKS_PER_DAY
 from chits.sim.world import World
+
+
+_TAKEN = []  # every consult the stand-in spawner below took, for the test's end
+
+
+@pytest.fixture(autouse=True)
+def _drop_unanswered():
+    """A consult a test leaves "sent, never answered" is closed when the test ends, as Mind.close would cancel it. Left
+    for the garbage collector it warned "coroutine Mind._ask_chief.<locals>.run was never awaited" in whichever test
+    ran next (test_choice_repair): no consult was dropped by the game, only by this file's spawner."""
+    yield
+    while _TAKEN:
+        _TAKEN.pop().close()  # (a coroutine a test ran to its end closes as a no-op)
 
 
 def setup(monkeypatch=None):
@@ -22,7 +37,7 @@ def setup(monkeypatch=None):
     m.upsert({"id": "chief", "model": "fake", "base_url": "http://127.0.0.1:9/v1"})
     m.assign(w, "chief")
     spawned = []
-    m._spawn = lambda coro: spawned.append(coro)
+    m._spawn = lambda coro: spawned.append(coro) or _TAKEN.append(coro)
     m._ask = lambda world, agent, brain: None
     if monkeypatch is not None:
         monkeypatch.setattr(PJ, "candidates", lambda world, sc=None: [(1.0, "build", "stockpile", "why", {}),
