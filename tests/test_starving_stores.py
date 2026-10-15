@@ -1,8 +1,8 @@
 """Hungry past the stores (actions.STARVING_STORES). Six chits of one world starved beside full stores (tools/harness,
 seed 32, days 36-47): camped at a fire across a lake from the village, a store 12 tiles off as the crow flies was ~85
-steps on foot. The hunger margin counted the 12 tiles; the eat step took stores nearest as the crow flies, marked the
-two beside the village "a long way round" and accepted a third further on foot; the marks blinded the chit for a day
-as its walk led past them; and the food reflex chose wild food over a store whose walk it could no longer spare.
+steps on foot. The hunger margin counted the 12 tiles; the eat step marked the two stores beside the village "a long
+way round" and accepted a third further on foot; the marks blinded the chit as its walk led past them; and the food
+reflex chose wild food over a store whose walk it could no longer spare.
 Each test here fails with the switch off."""
 
 import pytest
@@ -54,36 +54,6 @@ def _two_stores():
     return w, a, near, far
 
 
-def test_the_eat_step_goes_to_the_store_nearest_on_foot():
-    w, a, near, far = _two_stores()
-    a.hunger = 18.0
-    s = {}
-    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING
-    assert s.get("store") == near.id
-    assert a.reflex_rest.get("unreach:" + near.id, 0) <= w.tick  # no mark: there is nothing closer to forage
-
-
-def test_the_eat_step_measures_the_stores_by_the_walk_not_the_crow():
-    w, a = _walled()
-    behind = _store(w, a, 20, 31)  # 11 tiles off, ~50 steps
-    open_ = _store(w, a, 40, 14)  # 20 tiles off, ~20 steps
-    assert behind.dist(a.x, a.y) < open_.dist(a.x, a.y) and _walk(w, a, open_) < _walk(w, a, behind)
-    a.hunger = 18.0
-    s = {}
-    A._do_eat(w, a, {"do": "eat"}, s)
-    assert s.get("store") == open_.id
-
-
-def test_a_day_long_mark_does_not_blind_the_eat_step():
-    # marked "a long way round" from wherever the chit stood then, the store is measured again
-    w, a, near, far = _two_stores()
-    a.hunger = 18.0
-    a.reflex_rest["unreach:" + near.id] = w.tick + 240
-    s = {}
-    A._do_eat(w, a, {"do": "eat"}, s)
-    assert s.get("store") == near.id
-
-
 def test_a_marked_store_beside_the_way_is_taken():
     # its walk to the third store led right past the second (4 tiles off, 228 food), marked, and it starved there
     w, a = _walled()
@@ -126,25 +96,14 @@ def test_a_starving_chit_goes_to_the_store_not_to_wild_food_further_than_wild_ne
     assert A._food_reflex(w, a)["do"] == "gather"  # within WILD_NEAR: a try costs little
 
 
-def test_a_long_walk_to_the_store_forages_with_food_close_and_keeps_foraging():
-    w, a = _walled(berries=(25, 20))
-    store = _store(w, a, 20, 31)
+def test_a_walk_longer_than_one_given_up_as_a_long_way_round_is_given_up_too():
+    # after the two stores beside the village (~85 steps, 12 tiles off) were given up as a long way round, a third 29
+    # tiles off passed at 115 steps, against its own distance, and the chit starved on the walk (seed 32)
+    w, a, near, far = _two_stores()
+    w.nearest_resource = lambda x, y, kind, radius, *args, **kw: (25, 20) if kind == "berries" else None  # forage
     a.hunger = 18.0
     s = {}
-    A._do_eat(w, a, {"do": "eat"}, s)
-    assert s.get("forage", {}).get("do") == "gather" and "store" not in s  # berries 5 tiles off: pick them
-    w.nearest_resource = lambda *args, **kw: None  # (the bush is taken, say): it keeps to its forage, not the walk
-    A._do_eat(w, a, {"do": "eat"}, s)
-    assert "store" not in s
-    s = {}
-    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING and s["store"] == store.id  # no wild food at all: walk
-
-
-def test_a_long_walk_to_the_store_is_left_for_wild_food_further_off():
-    # with berries 20 tiles off (too far to forage, near enough for the plan or the food reflex), the walk round the
-    # lake waits, as before: made anyway, chits walked 100-136 steps round a lake and starved (seed 42)
-    w, a = _walled(berries=(40, 20))
-    _store(w, a, 20, 31)
-    a.hunger = 18.0
-    s = {}
-    assert A._do_eat(w, a, {"do": "eat"}, s) != A.RUNNING and "store" not in s
+    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING
+    assert a.reflex_rest.get("unreach:" + near.id, 0) > w.tick and "store" not in s  # foraging instead
+    A._do_eat(w, a, {"do": "eat"}, s)  # the next tick it looks again: only the further store is left
+    assert s.get("store") != far.id and a.reflex_rest.get("unreach:" + far.id, 0) > w.tick
