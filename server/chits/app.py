@@ -764,8 +764,11 @@ def scorecard():
     return diag.scorecard(R())
 
 
+# The diagnostics walk every world's chits and buildings. A plain `def` endpoint runs in a worker thread while the loop
+# steps the worlds, and a building put up mid-walk ended /api/why in "dictionary changed size during iteration" (live,
+# 2026-10-15). As `async def` they run on the loop itself, between steps, where nothing moves under them.
 @app.get("/api/diagnostics")
-def diagnostics_json():
+async def diagnostics_json():
     """Is the model keeping up, are plans working, is anyone stuck? (see diag.py)"""
     from . import diag
 
@@ -773,7 +776,7 @@ def diagnostics_json():
 
 
 @app.get("/api/diagnostics.txt")
-def diagnostics_txt():
+async def diagnostics_txt():
     from fastapi.responses import PlainTextResponse
     from . import diag
 
@@ -781,7 +784,7 @@ def diagnostics_txt():
 
 
 @app.get("/api/why")
-def why_slow():
+async def why_slow():
     """"Why is nothing happening?": the diagnostics as a few plain sentences per world (diag.why_slow)."""
     from . import diag
 
