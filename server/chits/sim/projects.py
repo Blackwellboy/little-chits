@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from .actions import COUNTABLE, STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
+from . import buildings as BLD
 from . import ideas as IDEAS
 from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design, station_of
 from .pioneers import APART
@@ -713,6 +714,8 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
             continue
         if d == "pen" and not any(x["kind"] == "sheep" for x in getattr(world, "animals", {}).values()):
             continue
+        if d in BLD.MODERN and not BLD._growth():
+            continue  # (the modern town's buildings: world.CITY_GROWTH)
         if (d == "market" and pop < 10) or (d == "monument" and pop < 12):
             continue
         extra: Dict[str, Any] = {}

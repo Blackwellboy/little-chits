@@ -63,6 +63,25 @@ TAVERN_RADIUS, TAVERN_TICK, TAVERN_MOOD, ALE_MOOD = 10, 190, 3.0, 6.0  # 19:00; 
 BAKED, BAKERY_MULT = ("bread", "loaf", "berry_tart"), 2
 HEALER_RADIUS, HEALER_MULT = 10, 3.0
 HOSPITAL_RADIUS, HOSPITAL_MULT, HOSPITAL_DAYS = 14, 4.0, 10  # (world.CITY_GROWTH)
+MODERN = ("tower_block", "hospital")  # the modern town's buildings: only with world.CITY_GROWTH
+
+
+def _growth() -> bool:
+    from . import world as W
+
+    return W.CITY_GROWTH
+
+
+def not_here(world, key: str, x: int, y: int) -> Optional[str]:
+    """Why a building can't go up at (x, y), by what the place is (None: it can): a modern building without
+    CITY_GROWTH, a city's building outside a city, a town's outside a town. The build verb, a rebuild in place and the
+    instinct builder all ask this (a tower block went up by rebuilding an apartment in a hamlet)."""
+    if key in MODERN and not _growth():
+        return f"nobody here builds a {DESIGNS[key].name}"
+    if key in CITY_ONLY and city_of(world, x, y) is None:
+        return (f"only a city can build a {DESIGNS[key].name}: a town of 40 or more with five kinds of public building "
+                f"around its hall and paved streets")
+    return town_only(world, key, x, y)
 PARK_RADIUS = 6
 PLAZA_RADIUS, PLAZA_TICK, PLAZA_MOOD = 12, 180, 4.0  # the evening gathering on a town square, at 18:00
 TOWN_CENTRE = ("market", "library", "school", "bell_tower", "great_library", "monument", "plaza", "printing_press",
@@ -253,8 +272,8 @@ def upgrade_instead(world, a: Agent, key: str, step: Dict[str, Any]) -> Optional
     home = world.structures.get(a.home or "")
     if home is None or not home.functional or key not in UPGRADES.get(home.design, ()):
         return None
-    if home.dist(a.x, a.y) > 8 or upgrade_spot(world, home, key) is None:
-        return None
+    if home.dist(a.x, a.y) > 8 or upgrade_spot(world, home, key) is None or not_here(world, key, home.x, home.y):
+        return None  # (where it can't stand, the build verb says why)
     return {"do": "upgrade", "to": key, "target": home.id}
 
 
@@ -283,7 +302,7 @@ def do_upgrade(world, a: Agent, step: Dict[str, Any], s: Dict[str, Any]) -> str:
         key, why = upgrade_target(world, a, st, step.get("to") or step.get("what"))
         if key is None:
             return why
-        why = town_only(world, key, st.x, st.y)  # (an apartment block; one already being rebuilt carries on, above)
+        why = not_here(world, key, st.x, st.y)  # (an apartment or tower block; one being rebuilt carries on, above)
         if why:
             return why
         if upgrade_spot(world, st, key) is None:
@@ -910,7 +929,7 @@ def bake_mult(world, a: Agent, key: str) -> int:
 
 
 def heal_mult(world, a: Agent) -> float:
-    if any(h.dist(a.x, a.y) <= HOSPITAL_RADIUS for h in fx(world)["hospital"]):
+    if _growth() and any(h.dist(a.x, a.y) <= HOSPITAL_RADIUS for h in fx(world)["hospital"]):
         return HOSPITAL_MULT
     return HEALER_MULT if any(h.dist(a.x, a.y) <= HEALER_RADIUS for h in fx(world)["healer"]) else 1.0
 

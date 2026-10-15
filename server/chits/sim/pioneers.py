@@ -18,6 +18,8 @@ from .buildings import HOMES
 
 VILLAGE_CAP = 40  # a village this full sends pioneers out
 TOWN_KEEPS = 90  # ...but a town (a hall and 20 people) keeps its young until it is this big: it grows into a city
+# (on a 128 island, held to 60, a town now never sends pioneers: it grows into the island's one city. Intended: the
+# 128 A/B had more discoveries and people, one fewer daughter village in four.)
 TOWN_ROOM = 100  # ...and has its children until this full (world.CITY_GROWTH; a city needs 40 residents)
 VILLAGE_ROOM = 50  # ...and one this full has no more children while another village has room (World._births)
 PARTY = 6

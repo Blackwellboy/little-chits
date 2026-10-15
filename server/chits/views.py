@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from .sim.actions import describe_step
 from .sim.agent import TICKS_PER_DAY, Agent
+from .sim import buildings as BLD
 from .sim import ideas as IDEAS
 from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name, station_of
 from .sim.world import Structure, World
@@ -188,7 +189,7 @@ def _at_risk(w: World) -> List[Dict[str, Any]]:
     from .sim import lore
 
     return [{"what": w.item_name(k.split(":", 1)[1]), "keeper": a.name, "keeper_id": a.id, "old": lore.old(w, a),
-             "age": round(a.age(w.tick)), "lifespan": round(a.lifespan / TICKS_PER_DAY)}
+             "age": round(a.age(w.tick)), "lifespan": round((a.lifespan + BLD.life_bonus(w, a)) / TICKS_PER_DAY)}
             for k, a in lore.at_risk(w)[:8]]
 
 

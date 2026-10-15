@@ -59,3 +59,35 @@ def test_the_sick_heal_four_times_as_fast_by_a_hospital():
     put(w, "hospital", a)
     w.__dict__.pop("_bfx", None)
     assert BLD.heal_mult(w, a) == BLD.HOSPITAL_MULT == 4.0
+
+
+def test_outside_a_city_an_apartment_is_not_rebuilt_as_a_tower_block():
+    """The rebuild-in-place path went round the city check: a tower block went up in a hamlet."""
+    w, (a, _) = village()
+    flat = put(w, "apartment", a)
+    a.home = flat.id
+    a.learn("design:tower_block", "taught", w.tick)
+    a.inventory.update({k: n for k, n in DESIGNS["tower_block"].materials})
+    assert BLD.upgrade_instead(w, a, "tower_block", {"do": "build", "what": "tower_block"}) is None
+    msg = actions.advance(w, a, {"do": "build", "what": "tower_block"})
+    assert "only a city" in msg and not flat.upgrade
+    assert "only a city" in actions.advance(w, a, {"do": "upgrade", "target": flat.id, "to": "tower_block"})
+
+
+def test_switched_off_the_modern_town_is_neither_built_nor_felt(monkeypatch):
+    from chits.sim import projects
+    monkeypatch.setattr(W, "CITY_GROWTH", False)
+    w, (a, _) = village()
+    a.learn("design:hospital", "taught", w.tick)
+    a.inventory.update({k: n for k, n in DESIGNS["hospital"].materials})
+    assert "nobody here builds" in actions.advance(w, a, {"do": "build", "what": "hospital"})
+    real = projects.next_step
+    monkeypatch.setattr(projects, "next_step", lambda world, d, r, h, kind, key, *args, **kw: ("build", key, {})
+                        if key == "hospital" else real(world, d, r, h, kind, key, *args, **kw))  # (it could be built)
+    assert not any(c[2] == "hospital" for c in projects.candidates(w))
+    monkeypatch.setattr(W, "CITY_GROWTH", True)
+    assert any(c[2] == "hospital" for c in projects.candidates(w))  # (the gate, not the village, keeps it out)
+    monkeypatch.setattr(W, "CITY_GROWTH", False)
+    put(w, "hospital", a)  # (one standing anyway, from a save made with the switch on)
+    w.__dict__.pop("_bfx", None)
+    assert BLD.heal_mult(w, a) == 1.0  # (as on main: no hospital effect)
