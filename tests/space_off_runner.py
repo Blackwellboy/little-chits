@@ -22,6 +22,17 @@ def main(argv):
 
     if hasattr(W, "SPACE_PROGRAMME"):
         W.SPACE_PROGRAMME = False
+    # (the switches that came after the base tree, off too: this compares the programme's off path, not theirs)
+    from chits.sim import actions
+    for mod, name in ((actions, "STARVING_STORES"), (actions, "TRANSPORT"), (W, "CITY_GROWTH")):
+        if hasattr(mod, name):
+            setattr(mod, name, False)
+    try:
+        from chits.brain import inventor
+    except ImportError:
+        inventor = None
+    if hasattr(inventor, "INSTINCT_INVENTS"):
+        inventor.INSTINCT_INVENTS = False
     w = World("A", "A", seed, "direct", 128, 18)
     ins = Instinct()
 
