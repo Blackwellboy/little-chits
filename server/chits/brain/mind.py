@@ -54,6 +54,9 @@ STALE_TICKS = 120  # a model plan older than this (in world ticks) is out of dat
 QUEUE_PER_SLOT = 3  # plan requests waiting per parallel slot before more are shed to instinct
 TICKS_PER_SEC = 2.0  # the world's pace at 1x (speed_scale stretches it)
 SLOW_TICKS = 12  # a model whose reply takes this many world ticks or more is asked two steps before a plan runs out
+# a world's model that has answered nothing for this long is said to be down, once, in the world's own events (and
+# again when it answers): live, World A's model stopped at day 806 and the chits ran ~1,100 days on instinct unseen
+DOWN_AFTER_TICKS = TICKS_PER_DAY
 ROUTINE = frozenset({"eat", "sleep", "rest", "shelter", "store", "drop", "refuel"})  # (and "go", with one of these)
 
 
@@ -160,6 +163,7 @@ class Mind:
         self.adopted: Counter = Counter()  # world id -> plan decisions adopted this match (the scorecard's denominator)
         self.match = 0  # bumped by new_match(): replies to an older match are dropped
         self.on_decision: Optional[Callable[[Dict[str, Any]], None]] = None
+        self.down: Dict[str, Dict[str, Any]] = {}  # world id -> {"brain", "since" (tick), "told"}: its model not answering
         self.load()
 
     # ------------------------------------------------------------ config
@@ -467,6 +471,35 @@ class Mind:
                       for a in world.agents.values() if a.brain != INSTINCT)
         diag.model_led_from(world, dropped)
         return dropped
+
+    def watch(self, world) -> None:
+        """Once a tick, after the world steps: is its model answering? A brain whose every request since its last
+        failure has failed (or was skipped while it cooled down) is failing; one that has failed for DOWN_AFTER_TICKS
+        is down, and the world's events say so, once, and again when it answers. A switched-off brain isn't down."""
+        b = self.brains.get(self.world_brain.get(world.id, INSTINCT))
+        st = self.down.get(world.id)
+        failing = b is not None and b.cfg.enabled and b.stats.consecutive_fail > 0
+        if st is not None and (not failing or st["brain"] != b.id or world.tick < st["since"]):
+            del self.down[world.id]  # (answering again, another brain now, or the world went back in time)
+            if st["told"] and b is not None and b.id == st["brain"] and b.cfg.enabled and not failing:
+                world.emit("mind", f"World {world.id}'s mind {b.label} is answering again", 4, brain=b.id,
+                           down_days=round((world.tick - st["since"]) / TICKS_PER_DAY, 1))
+            st = None
+        if not failing:
+            return
+        if st is None:
+            st = self.down[world.id] = {"brain": b.id, "since": world.tick, "told": False}
+        if not st["told"] and world.tick - st["since"] >= DOWN_AFTER_TICKS:
+            st["told"] = True
+            then = "the chits wait for it" if self.no_stand_in() else "the chits are running on instinct"
+            world.emit("mind", f"World {world.id}'s mind {b.label} has stopped answering; {then}", 4, brain=b.id,
+                       error=(b.stats.last_error or "")[:120])
+
+    def down_state(self, world_id: str) -> Dict[str, Any]:
+        """For the brain status the UI shows: is this world's model down (failing for DOWN_AFTER_TICKS), and since
+        which tick it has been failing."""
+        st = self.down.get(world_id)
+        return {"down": bool(st and st["told"]), "failing_since": st["since"] if st else None}
 
     def no_stand_in(self) -> bool:
         """No instinct plan for a model's chit, ever: the experiment contract, or a model-only diagnostic run."""

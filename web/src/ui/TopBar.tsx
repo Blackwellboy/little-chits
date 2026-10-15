@@ -9,6 +9,7 @@ import { themeFor } from "../theme";
 import { BrandMark } from "./BrandMark";
 import { SkipControl } from "./SkipControl";
 import { instinctChip, type Thinking } from "./watch";
+import { mindDown, mindLabel } from "./mindState";
 
 const SEASON_ICON: Record<string, string> = { spring: "🌱", summer: "☀️", autumn: "🍂", winter: "❄️" };
 const WEATHER_ICON: Record<string, string> = { rain: "🌧", storm: "⛈", drought: "🔥", snow: "❄" };
@@ -162,9 +163,9 @@ export function TopBar() {
         {metas.map((w) => {
           const b = brains[w.id];
           return (
-            <span key={w.id} className={`bp ${b && !b.healthy ? "bad" : ""}`}>
+            <span key={w.id} className={`bp ${b && (!b.healthy || mindDown(b)) ? "bad" : ""}`}>
               <i className={`dot ${w.culture}`} />
-              <b>{b?.label ?? "…"}</b>
+              <b>{mindLabel(b)}</b>
               {b && b.id !== "instinct" && <em>{b.thinking > 0 ? `💭${b.thinking}` : ""} {b.tok_s ? `${Math.round(b.tok_s)} t/s` : ""}</em>}
             </span>
           );

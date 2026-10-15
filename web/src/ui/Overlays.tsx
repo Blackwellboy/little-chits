@@ -5,8 +5,9 @@ import { useUI, worlds } from "../state/store";
 import { theme } from "../theme";
 import { cameras, views } from "./WorldCanvas";
 import { bannerDriver, type Shown } from "./banner";
+import { mindsDown } from "./mindState";
 
-const ICON: Record<string, string> = { error: "⚠", discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
+const ICON: Record<string, string> = { mind: "🧠", error: "⚠", discovery: "✦", first: "★", built: "🏠", birth: "🍼", death: "🕯", legacy: "📜", learned: "💡" };
 const worldLabel = (id: string) => (id === "A" ? "World A" : "World B");
 
 export function Toasts() {
@@ -73,6 +74,19 @@ export function LoopError() {
       <b>The game stopped on an error and is paused.</b> {control.loop_error}
       <small>{control.invalid_reason ? "This experiment run is no longer valid: start a new one."
         : "Press play to try again. If it stops again, the same step is failing: see the server log."}</small>
+    </div>
+  );
+}
+
+/** A world's model has stopped answering: kept up while it is down, so a run on instinct is never mistaken for the
+ *  model's (live, ~1,100 days went by unseen). */
+export function MindDown() {
+  const brains = useUI((s) => s.brains);
+  const lines = mindsDown(brains);
+  if (!lines.length) return null;
+  return (
+    <div className="mind-down" role="status" title="Open ⚙ Brains to test or change the model" onClick={() => useUI.getState().set({ brainsOpen: true })}>
+      {lines.map((l) => <div key={l}>🧠 {l}</div>)}
     </div>
   );
 }
