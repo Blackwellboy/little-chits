@@ -96,11 +96,12 @@ function Progress({ world, name }: { world: string; name: string }) {
   const p = usePoll(() => api<ProgressData>(`/api/worlds/${world}/progress`), 8000, [world]);
   const brain = useUI((s) => s.brains[world]?.label);
   const brainId = useUI((s) => s.brains[world]?.id);
+  const chitsWait = useUI((s) => !!s.brains[world]?.chits_wait);
   // a long stall asks "Why slow?" for its biggest reason (only then: the diagnostics are not free)
   const stalled = !!p && stallLine(p.day, p.ladder, null, null) != null;
   const why = usePoll(() => (stalled ? api<WhyData>("/api/why") : Promise.resolve(null)), 20000, [world, stalled]);
   if (!p) return <p className="muted">Loading…</p>;
-  const chip = instinctChip(p.who_thinks, brainId);
+  const chip = instinctChip(p.who_thinks, brainId, chitsWait);
   const on = p.milestones ? p.milestones.steps[nextStep(p.milestones)] : undefined;
   const stall = stallLine(p.day, p.ladder, on ? stepLabel(on) : null, why ? why.worlds?.[world]?.reasons : null);
   const pct = Math.round((p.era.index / p.era.of) * 100);

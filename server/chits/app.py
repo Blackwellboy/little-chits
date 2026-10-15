@@ -138,7 +138,11 @@ def _thinking(r, w) -> Dict[str, Any]:
             continue
     bid = r.mind.world_brain.get(w.id, INSTINCT)
     waiting = round(100 * d.waiting_ticks / d.model_ticks, 1) if d.model_ticks else None
-    return views.thinking(recent, bid, bid == INSTINCT or model_up(r.mind.brains.get(bid)), waiting)
+    # "model down" is the watchdog's (Mind.watch: a game day, a minute and three failures in a row), so this line,
+    # the brain pill and the 🧠 chip agree; a brain that no longer exists answers nothing
+    b = r.mind.brains.get(bid)
+    up = bid == INSTINCT or (b is not None and not r.mind.down_state(w.id)["down"])
+    return views.thinking(recent, bid, up, waiting)
 
 
 @app.get("/api/worlds")

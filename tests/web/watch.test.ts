@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, lifeLines, stallLine, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, lifeLines, stallLine, thinkingLine, topBarChips, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -124,5 +124,21 @@ describe("stallLine", () => {
   });
   it("counts from day 1 before any age is reached", () => {
     expect(stallLine(15, [{ reached: true, day: null }, { reached: false, day: null }], null, null)).toBe("No new age for 14 days.");
+  });
+});
+
+// one outage, one chip: the 🧠 chip tells a down model, so the top bar's instinct chip stands aside for it; and where
+// nothing stands in for the model (model-led, model-only, experiment) the chits are said to wait, not to run on instinct
+describe("topBarChips", () => {
+  const down = t({ on_instinct: true, why: "model_down" });
+  it("leaves a world whose model is down to the 🧠 chip", () => {
+    expect(topBarChips(["A"], { A: down }, { A: { id: "m1", down: true } })).toEqual([]);
+    expect(topBarChips(["A"], { A: down }, { A: { id: "m1", down: false } })[0].text).toBe("⚙ running on instinct");
+    expect(topBarChips(["A", "B"], { A: t({ brain: "instinct", on_instinct: true, why: "no_model" }) },
+      { A: { id: "instinct" }, B: { id: "m1" } }).map((c) => c.id)).toEqual(["A"]);
+  });
+  it("says the chits wait where nothing stands in for the model", () => {
+    expect(instinctChip(down, "m1", true)!.text).toBe("⏳ waiting for the model");
+    expect(topBarChips(["A"], { A: down }, { A: { id: "m1", chits_wait: true } })[0].text).toBe("⏳ waiting for the model");
   });
 });

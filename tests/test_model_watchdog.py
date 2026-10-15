@@ -186,3 +186,27 @@ def test_where_no_instinct_stands_in_the_status_says_the_chits_wait(tmp_path):
     assert mind.down_state("A")["down"] and mind.down_state("A")["chits_wait"] is True
     mind.model_led = False
     assert mind.down_state("A")["chits_wait"] is False
+
+
+def test_who_thinks_calls_a_model_down_when_the_watchdog_does(tmp_path):
+    """/api/health and /progress's who_thinks (the ⚙ chip, the Progress line) and the 🧠 chip tell one outage the
+    same way: "model down" is the watchdog's, not three failures in a row on their own."""
+    from chits import app as APP
+
+    rt = Runtime(tmp_path)
+    w = next(iter(rt.worlds.values()))
+    b = rt.mind.upsert({"id": "env", "label": "env", "base_url": "http://127.0.0.1:9/v1"})
+    rt.mind.assign(w, "env")
+    rt.mind.clock = Clock()
+    b.stats.consecutive_fail = 5
+    rt.mind.watch(w)
+    assert APP._thinking(rt, w)["why"] != "model_down"  # failing, but not yet down: a hiccup is not an outage
+    for _ in range(M.DOWN_AFTER_TICKS + 1):
+        w.tick += 1
+        rt.mind.watch(w)
+    assert rt.mind.down_state(w.id)["down"] and APP._thinking(rt, w)["why"] == "model_down"
+    b.stats.consecutive_fail = 0
+    rt.mind.watch(w)
+    assert APP._thinking(rt, w)["why"] != "model_down"
+    rt.store.db.close()
+    asyncio.run(rt.mind.close())
