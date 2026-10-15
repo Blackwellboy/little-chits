@@ -272,12 +272,15 @@ PASSING_STORE = 3  # an eat step on its way to one store takes food from another
 # there. (4) The food reflex took wild food nearer as the crow flies (berries 41 steps off, fish that never came)
 # over a store whose walk it could no longer spare. With it: stores are measured by the walk (A* to the nearest few,
 # max of that and the crow), for the margin, the food reflex and the eat step, which takes the nearest on foot and
-# ignores the day-long marks (it measures again; a store it passes beside is taken, marked or not); a long walk sends
-# it foraging only when there is food close to forage, and it keeps foraging once it has chosen to; and a reflex
-# whose margin to the store is short goes to the store unless the wild food is within WILD_NEAR.
+# ignores the day-long marks (it measures again; a store it passes beside is taken, marked or not); the nearest on
+# foot a long way round sends it to wild food as before (every other store is further), and the walk is made only
+# with no wild food in reach; it keeps foraging once it has chosen to; and a starving reflex whose margin to the
+# store is short goes to the store unless the wild food is within WILD_NEAR.
 # (False: as before; tests/identity_runner.py keeps it off)
 STARVING_STORES = False
 WILD_NEAR = 6  # wild food this close (as the crow flies) is still worth a try when the store's walk can't be spared
+WILD_BELOW = 16  # ...and above this hunger wild food is never a gamble (from 40, a store preferred whenever its walk
+# was short sent chits from fish and berries close by on long walks to the stores: fish 117 > 46, seed 1)
 WALK_LOOK = 4  # stores measured on foot, nearest as the crow flies first
 WALK_RECHECK = 60  # ticks a step reuses its walk to the stores while the chit stands where it measured it
 
@@ -481,7 +484,8 @@ def _pick_food(world, a: Agent, opts: List[Tuple[float, Dict[str, Any]]]):
     """The food option the food reflex goes for: the nearest; with STARVING_STORES, the store instead of wild food
     (berries, fish: a fetch that may come to nothing) beyond WILD_NEAR once the walk to the store can't be spared."""
     best = min(opts, key=lambda o: o[0], default=None)
-    if STARVING_STORES and best is not None and best[1].get("do") == "gather" and best[0] > WILD_NEAR:
+    if STARVING_STORES and a.hunger < WILD_BELOW and best is not None and best[1].get("do") == "gather" \
+            and best[0] > WILD_NEAR:
         store = next((o for o in opts if o[1].get("do") == "eat"), None)
         if store is not None and _short(world, a, store[0]):
             return store
@@ -1115,9 +1119,12 @@ def _eat_by_walk(world, a: Agent, s) -> str:
         if got is None:
             return _forage(world, a, s)
         st, path, _ = got
-        if len(path) > max(40, LONG_WAY * _crow(a, st.x, st.y)) and _forage_near(world, a) is not None:
-            a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY  # (for the plans: forage, as below)
-            return _forage(world, a, s)  # a long way round, and food close by to forage instead
+        if len(path) > max(40, LONG_WAY * _crow(a, st.x, st.y)) and _wild_food(world, a):
+            # a long way round (the nearest on foot: every other store is further): forage, or fail and let the plan
+            # fetch wild food further off, as before. Only with no wild food in reach at all does it make the walk
+            # (made anyway, chits walked 100-136 steps round a lake: 11 starved in one 60-day world, seed 42)
+            a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY
+            return _forage(world, a, s)
         s["store"] = st.id
         a.path = list(path)
         s["goal_sig"] = hash(frozenset(list(_structure_goals(world, st))[:30]))
@@ -1130,10 +1137,17 @@ def _eat_by_walk(world, a: Agent, s) -> str:
         a.reflex_rest["unreach:" + st.id] = world.tick + TICKS_PER_DAY
         s.pop("store", None)
         a.path = []
-        return _forage(world, a, s) if _forage_near(world, a) is not None else "couldn't reach the stockpile"
+        return _forage(world, a, s)
     if mv != "arrived":
         return RUNNING
     return _take_meal(world, a, s, st)
+
+
+def _wild_food(world, a: Agent) -> bool:
+    """Any wild food the food reflex or the hunger plan could fetch: food lying close by, berries within 34, fish within
+    20 for a spear (_food_reflex's reach)."""
+    return _forage_near(world, a) is not None or bool(world.nearest_resource(a.x, a.y, "berries", 34)) \
+        or bool(a.best_tool("spear") and world.nearest_resource(a.x, a.y, "fish", 20))
 
 
 def _home_for(world, a: Agent):

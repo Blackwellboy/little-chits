@@ -27,7 +27,8 @@ def _walled(berries=None):
     w.rebuild_block()
     a.x, a.y = 20, 20
     b.x, b.y = 60, 2
-    w.nearest_resource = lambda x, y, kind, *args, **kw: berries if kind == "berries" else None
+    w.nearest_resource = lambda x, y, kind, radius, *args, **kw: berries if kind == "berries" and berries and max(
+        abs(berries[0] - x), abs(berries[1] - y)) <= radius else None
     w.piles_near = lambda *args, **kw: iter(())
     return w, a
 
@@ -118,11 +119,14 @@ def test_a_starving_chit_goes_to_the_store_not_to_wild_food_further_than_wild_ne
     assert A._crow(a, *store.center()) > 9 + 2  # (berries +2: picking takes a moment)
     a.hunger = 12.0
     assert A._food_reflex(w, a)["do"] == "eat"
+    a.hunger = 20.0  # not yet starving (WILD_BELOW): wild food is no gamble
+    assert A._food_reflex(w, a)["do"] == "gather"
+    a.hunger = 12.0
     w.nearest_resource = lambda x, y, kind, *args, **kw: (23, 20) if kind == "berries" else None
     assert A._food_reflex(w, a)["do"] == "gather"  # within WILD_NEAR: a try costs little
 
 
-def test_a_long_walk_to_the_store_forages_only_with_food_close_and_keeps_foraging():
+def test_a_long_walk_to_the_store_forages_with_food_close_and_keeps_foraging():
     w, a = _walled(berries=(25, 20))
     store = _store(w, a, 20, 31)
     a.hunger = 18.0
@@ -133,4 +137,14 @@ def test_a_long_walk_to_the_store_forages_only_with_food_close_and_keeps_foragin
     A._do_eat(w, a, {"do": "eat"}, s)
     assert "store" not in s
     s = {}
-    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING and s["store"] == store.id  # nothing to forage: walk
+    assert A._do_eat(w, a, {"do": "eat"}, s) == A.RUNNING and s["store"] == store.id  # no wild food at all: walk
+
+
+def test_a_long_walk_to_the_store_is_left_for_wild_food_further_off():
+    # with berries 20 tiles off (too far to forage, near enough for the plan or the food reflex), the walk round the
+    # lake waits, as before: made anyway, chits walked 100-136 steps round a lake and starved (seed 42)
+    w, a = _walled(berries=(40, 20))
+    _store(w, a, 20, 31)
+    a.hunger = 18.0
+    s = {}
+    assert A._do_eat(w, a, {"do": "eat"}, s) != A.RUNNING and "store" not in s
