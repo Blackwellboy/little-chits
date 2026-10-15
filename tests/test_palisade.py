@@ -1,4 +1,4 @@
-"""Walls for wolves (F28; docs/UPGRADE_PLAN.md: "walls and a watchtower (for wolves)"). A palisade round a town: no
+"""Walls for wolves (F28; docs/history/UPGRADE_PLAN.md: "walls and a watchtower (for wolves)"). A palisade round a town: no
 wolf bites anywhere within 22 tiles of its gate, and a town with wolves about builds one."""
 
 from chits.brain import builder as BI

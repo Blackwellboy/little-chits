@@ -381,7 +381,7 @@ Principles kept from the original design:
 - The world runs without the browser.
 
 The design history (phases A–R, the Foundry roadmap, Astra audits) lives on the older branches. See
-[`docs/OVERHAUL_PLAN.md`](docs/OVERHAUL_PLAN.md) for what changed and why.
+[`docs/history/OVERHAUL_PLAN.md`](docs/history/OVERHAUL_PLAN.md) for what changed and why.
 
 ```bash
 make test     # 30 tests, ~10 s

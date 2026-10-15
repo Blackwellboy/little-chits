@@ -26,7 +26,7 @@ identity. The live game on the owner's PC runs `main`.
 - Python: `tests/` + `plan/acceptance` pass on `main`; the web build (tsc + vite) and vitest (18 tests) pass. CI runs on
   every push and PR.
 - `plan/PROGRESS.md`: **41/41 tasks done**, and the frozen plan stays read-only.
-- Manual real-GPU checks (2026-09-30, RTX 3090 only, see `docs/MANUAL_CHECKS_2026-09-30.md`): T01, T17, T18 and
+- Manual real-GPU checks (2026-09-30, RTX 3090 only, see `docs/history/MANUAL_CHECKS_2026-09-30.md`): T01, T17, T18 and
   T19 pass; T04 ran (the bench's spread is noted there); T15 is partial (3090 vs 3090); **T03 is open** (needs the
   5090). Don't mark T03 or the 5090 arm of T15 as passed until they are run.
 - World rules (docs/WORLD_RULES.md):
@@ -39,8 +39,8 @@ identity. The live game on the owner's PC runs `main`.
 
 ## Upgrade status
 
-The evidence audit of `docs/UPGRADE_PLAN.md` is in
-[docs/UPGRADE_STATUS_2026-09-29.md](docs/UPGRADE_STATUS_2026-09-29.md).
+The evidence audit of `docs/history/UPGRADE_PLAN.md` is in
+[docs/history/UPGRADE_STATUS_2026-09-29.md](docs/history/UPGRADE_STATUS_2026-09-29.md).
 
 - **DONE:** production buildings (#1), village projects (#2), research (#3), wants and renown (#6), visible eras
   (#7), outposts (#8), the storyteller (#9), the JEV cascade and the Mind panel.

@@ -8,7 +8,7 @@ Read in order:
 4. `README.md`
 5. `docs/FIXES_2026-09-30.md` (the open fixes, in order) and `docs/RESEARCH_PLAN_2026-09-30.md` (the roadmap)
 6. `plan/PROGRESS.md` (status only; **41/41 are done**)
-7. `docs/UPGRADE_PLAN.md`, then `docs/UPGRADE_STATUS_2026-09-29.md` (what of it is really done)
+7. `docs/history/UPGRADE_PLAN.md`, then `docs/history/UPGRADE_STATUS_2026-09-29.md` (what of it is really done)
 8. recent commits on `main`
 9. the tests covering any subsystem you intend to change
 
@@ -37,7 +37,8 @@ been merged. The `wip/*` branches on the remote stay as history; nothing on them
 
 ## Remote continuation point
 
-Continue from `origin/main`. (Until 2026-09-30 this said `claude/dazzling-dijkstra-5nv6xh` at `d386a1d` and "never
+Continue from `origin/main`. The current plan is the umbrella issue #168 ("Road to really good"): fixes, a
+growing world, watchability. (Until 2026-09-30 this said `claude/dazzling-dijkstra-5nv6xh` at `d386a1d` and "never
 `main`": that was before v2 merged. It no longer applies.)
 
 ## Plan from here (owner-approved 2026-10-05)
@@ -137,8 +138,8 @@ This section lets anyone, person or agent, pick up the current queue from GitHub
 | #104 | **Item uses (F35) on** (`items.ITEM_USES = True`) |
 | #105 | The hunger margin applies to a chit with no plan (issue #101) |
 | #106 | **Hoarding (F33) on** (`actions.PLENTY = True`), with the grain reserve at 4 days (`surplus.GRAIN_DAYS`) |
-| #159 | Paired statistics: the Lab report's Wilcoxon signed-rank (exact to 20 non-zero pairs) and sign test replace the unpaired Mann-Whitney; the frozen JevK5-vs-Gemma p-values (0.15625 / 1.0 / 0.03125) are a regression test |
-| #161 | **Age capability (age_rules 2) ON** (`ERA_BY_DEEDS = True`, flipped after the deeds2 + deeds2-250d A/Bs): a deeds world's Machine Age needs a machine-driven building, the Electric Age generation AND a real electrical load, the Space Age the launch itself; `deed_ages` records each enabling deed as provenance; worlds saved before `age_rules` play by the old rules. Plus the morphology baseline: `tools/harness/morphology.py` (what the world physically IS, next to its age label). A/B evidence: 60d (32 seeds) — no performance regression, 13/32 control "Space Age" worlds had ZERO pads; 250d (8 seeds) — treatment healthier (starved 4→1, stored +1063), innovations equal, 3/8 Space by deeds with launches == pads exactly. Debt for the Space-programme phase: pad completion still auto-fires `_launch` — construction and launch mission should become separate physical stages. |
+| #162 (issue #159) | Paired statistics: the Lab report's Wilcoxon signed-rank (exact to 20 non-zero pairs) and sign test replace the unpaired Mann-Whitney; the frozen JevK5-vs-Gemma p-values (0.15625 / 1.0 / 0.03125) are a regression test |
+| #163-#167 (issue #161) | **Age capability (age_rules 2) ON** (`ERA_BY_DEEDS = True`, flipped after the deeds2 + deeds2-250d A/Bs): a deeds world's Machine Age needs a machine-driven building, the Electric Age generation AND a real electrical load, the Space Age the launch itself; `deed_ages` records each enabling deed as provenance; worlds saved before `age_rules` play by the old rules. Plus the morphology baseline: `tools/harness/morphology.py` (what the world physically IS, next to its age label). A/B evidence: 60d (32 seeds) — no performance regression, 13/32 control "Space Age" worlds had ZERO pads; 250d (8 seeds) — treatment healthier (starved 4→1, stored +1063), innovations equal, 3/8 Space by deeds with launches == pads exactly. Debt for the Space-programme phase: pad completion still auto-fires `_launch` — construction and launch mission should become separate physical stages. #166: the Electric Age needs generation and load standing now, not in history. #167: population diagnostics (`tools/harness/popdiag.py`, `perfbench.py`). |
 | #108 | "Plan from here" above |
 | #109 | Research readiness audit, gates A-L (`docs/RESEARCH_READINESS.md`) |
 | #110 | The Lab runs model-vs-model studies |
@@ -328,7 +329,7 @@ Results that matter for the next person:
 ## Manual validation debt
 
 Don't call v2 fully hardware-qualified until the real-GPU checks marked 🖐 in `plan/PROGRESS.md` (T01, T03, T04,
-T15, T17, T18, T19) are run and recorded. The 3090-only results are in `docs/MANUAL_CHECKS_2026-09-30.md`: T03
+T15, T17, T18, T19) are run and recorded. The 3090-only results are in `docs/history/MANUAL_CHECKS_2026-09-30.md`: T03
 and the 5090 arm of T15 are still open. A coding continuation can prepare those checks, but must not fabricate
 their outcome, and must not start or retune the 3090 or 5090 serving lanes for them without the owner's go-ahead.
 

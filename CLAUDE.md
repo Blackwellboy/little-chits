@@ -8,7 +8,7 @@ Read, in order:
 2. [HANDOFF.md](HANDOFF.md)
 3. [AGENTS.md](AGENTS.md)
 4. [plan/PROGRESS.md](plan/PROGRESS.md)
-5. [docs/UPGRADE_PLAN.md](docs/UPGRADE_PLAN.md), then [docs/UPGRADE_STATUS_2026-09-29.md](docs/UPGRADE_STATUS_2026-09-29.md)
+5. [docs/history/UPGRADE_PLAN.md](docs/history/UPGRADE_PLAN.md), then [docs/history/UPGRADE_STATUS_2026-09-29.md](docs/history/UPGRADE_STATUS_2026-09-29.md)
 
 The frozen build plan is complete (41/41), and `plan/` stays read-only. Post-plan continuation is governed by
 CURRENT and HANDOFF plus the existing invariants.
