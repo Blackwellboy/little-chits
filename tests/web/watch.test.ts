@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { instinctChip, thinkingLine, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, instinctChip, thinkingLine, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -30,5 +30,19 @@ describe("thinkingLine", () => {
   it("has nothing to share before any step is finished", () => {
     expect(thinkingLine(null)).toBe("No steps finished yet.");
     expect(thinkingLine(t({ steps: 0 }))).toBe("No steps finished yet.");
+  });
+});
+
+describe("dropRepeatedIdeas", () => {
+  const ev = (seq: number, kind: string, knowledge?: string, how?: string) =>
+    ({ seq, kind, data: knowledge ? { knowledge, how } : {} });
+  it("tells each idea once per world, a first discovery counting as its telling", () => {
+    const evs = [ev(1, "discovery", "design:forge", "insight"), ev(2, "learned", "design:forge", "insight"), ev(3, "birth"),
+      ev(4, "learned", "design:kiln", "insight"), ev(5, "learned", "design:kiln", "insight"), ev(6, "learned", "design:forge", "insight")];
+    expect(dropRepeatedIdeas(evs).map((e) => e.seq)).toEqual([1, 3, 4]);
+  });
+  it("leaves other learning alone", () => {
+    const evs = [ev(1, "learned", "recipe:cord", "taught"), ev(2, "learned", "recipe:cord", "taught"), ev(3, "learned", "recipe:cord", "insight")];
+    expect(dropRepeatedIdeas(evs).map((e) => e.seq)).toEqual([1, 2, 3]);
   });
 });

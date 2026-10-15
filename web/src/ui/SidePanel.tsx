@@ -9,7 +9,7 @@ import { rowClicked } from "./listPosition";
 import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
-import { instinctChip, thinkingLine, type Thinking } from "./watch";
+import { dropRepeatedIdeas, instinctChip, thinkingLine, type Thinking } from "./watch";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -255,7 +255,9 @@ function Chronicle({ world }: { world: string }) {
   const weeks = usePoll(() => (mode === "weeks" ? api<any[]>(`/api/worlds/${world}/sagas`) : Promise.resolve(null)), 15000, [world, mode]);
   const [min, setMin] = useState(2);
   const days = usePoll(() => (mode === "days" ? api(`/api/worlds/${world}/chronicle`) : Promise.resolve(null)), 8000, [world, mode]);
-  const evs = (worlds[world]?.events || []).filter((e) => e.importance >= min).slice(-120).reverse();
+  // (Notable and up: each idea once, not again from every chit that comes up with it after the first)
+  const kept = (worlds[world]?.events || []).filter((e) => e.importance >= min);
+  const evs = (min >= 2 ? dropRepeatedIdeas(kept) : kept).slice(-120).reverse();
   return (
     <div className="chron">
       <div className="panel-head">

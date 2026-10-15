@@ -608,3 +608,9 @@ button.link { background: none; border: none; padding: 0; color: inherit; text-d
   background: rgba(255,200,90,0.1); border: 1px solid rgba(255,200,90,0.35); border-radius: 999px; padding: 2px 9px; cursor: help; }
 .panel-head .instinct-chip { margin-left: auto; }
 .prog-thinking { margin: 6px 0 0; color: var(--muted); }
+/* a burst of toasts folds into one chip; a banner never covers an open dialog */
+.toast-fold { pointer-events: auto; align-self: center; display: inline-flex; align-items: center; gap: 6px; padding: 5px 14px; border-radius: 999px;
+  background: rgba(20,16,8,0.85); border: 1px solid rgba(255,209,102,0.55); color: #ffd166; font-size: 12px; backdrop-filter: blur(10px); cursor: pointer; }
+.toast-fold .ico { font-size: 14px; }
+.toast-fold:hover { background: rgba(40,32,14,0.92); }
+body:has(.modal-bg) .banner { display: none; }

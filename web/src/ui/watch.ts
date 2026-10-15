@@ -28,3 +28,17 @@ export function thinkingLine(t: Thinking | null | undefined): string {
   const head = t.brain === "instinct" ? "No model: " : t.why === "model_down" ? "Model not deciding: " : "";
   return `${head}${parts.join(" · ")} of the last ${t.steps} steps`;
 }
+
+/** "X came up with the idea of a forge" from every chit that gets there after the first: once per idea per world.
+ *  A first discovery of the same thing counts as its first telling. Order is kept. */
+export function dropRepeatedIdeas<E extends { kind: string; data?: Record<string, any> | null }>(events: E[]): E[] {
+  const seen = new Set<string>();
+  return events.filter((e) => {
+    const k = e.data?.knowledge;
+    if (!k) return true;
+    const idea = e.kind === "learned" && e.data?.how === "insight";
+    if (idea && seen.has(k)) return false;
+    if (idea || e.kind === "discovery") seen.add(k);
+    return true;
+  });
+}
