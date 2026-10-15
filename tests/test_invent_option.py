@@ -3,6 +3,8 @@ never is."""
 
 import json
 
+import pytest
+
 from chits.brain import inventor as IV, prompt as P
 from chits.brain.instinct import Instinct
 from chits.sim import invent as INV
@@ -139,3 +141,29 @@ def test_an_option_drafted_at_a_station_says_so_and_a_taught_foreign_recipe_is_n
     b.learn(f"recipe:{key}", "taught", w2.tick)
     opt = IV.option(w2, b)
     assert opt is None or opt["steps"][0]["purpose"] != "to catch fish", opt
+
+
+class _Low:
+    """A random stream that always says yes."""
+
+    def random(self):
+        return 0.0
+
+    def choice(self, xs):
+        return xs[0]
+
+    def randint(self, a, b):
+        return a
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_now_and_then_instinct_invents_too(on, monkeypatch):
+    """A world without a model made nothing new for 1,100 days: only a model could invent (#168)."""
+    monkeypatch.setattr(IV, "INSTINCT_INVENTS", on)
+    w, a = _world(brain="instinct")
+    a.inventory.update({"fiber": 2, "wood": 1})
+    plan = Instinct()._experiment(w, a, _Low())
+    assert bool(plan and any(s.get("do") == "invent" for s in plan["steps"])) is on
+    if on:
+        run(w, a, plan)
+        assert any(inv.get("by") == a.id or inv.get("inventor") == a.id for inv in w.inventions.values()) or w.inventions

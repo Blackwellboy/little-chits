@@ -83,6 +83,9 @@ def main(argv):
         world_rules.CITY_GROWTH = False
     if hasattr(actions, "ROOM_KEEPS_PLAN"):  # (the arms-full reflex keeps what the plan needs)
         actions.ROOM_KEEPS_PLAN = False
+    from chits.brain import inventor as inventor_rules
+    if hasattr(inventor_rules, "INSTINCT_INVENTS"):  # (instinct invents now and then)
+        inventor_rules.INSTINCT_INVENTS = False
     from chits.brain import mind as mind_rules
     if hasattr(mind_rules, "CHOICE_REPAIR"):  # (a choosing model told why its last choice failed)
         mind_rules.CHOICE_REPAIR = False
