@@ -19,6 +19,17 @@ def _free_port() -> int:
     return port
 
 
+class Clock:
+    """The watch's wall clock, by hand: `step` seconds pass each time it is read (one read per failing tick)."""
+
+    def __init__(self, step=1.0):
+        self.t, self.step = 1000.0, step
+
+    def __call__(self):
+        self.t += self.step
+        return self.t
+
+
 def _said(w):
     return [e.text for e in w.events if e.kind == "mind"]
 
@@ -28,6 +39,7 @@ async def test_a_model_that_stops_answering_is_told_once_and_again_when_it_answe
     b = mind.upsert({"id": "env", "label": "env", "base_url": f"http://127.0.0.1:{_free_port()}/v1", "timeout": 1})
     w = World("A", "A", 22, "direct", 96, 6)
     mind.assign(w, "env")
+    mind.clock = Clock()  # (a second a tick: a day of failing is minutes of it)
     for _ in range(M.DOWN_AFTER_TICKS + 40):
         w.step(mind.hook)
         mind.watch(w)
@@ -50,6 +62,7 @@ def test_a_short_outage_a_switched_off_brain_or_another_brain_is_not_news(tmp_pa
     mind.upsert({"id": "n", "label": "n", "base_url": "http://127.0.0.1:9/v1"})
     w = World("A", "A", 3, "direct", 64, 3)
     mind.assign(w, "m")
+    mind.clock = Clock()
 
     def run(ticks):
         for _ in range(ticks):
@@ -78,6 +91,7 @@ def test_the_brain_status_says_a_world_is_on_instinct_because_its_model_is_down(
     w = next(iter(rt.worlds.values()))
     b = rt.mind.upsert({"id": "env", "label": "env", "base_url": "http://127.0.0.1:9/v1"})
     rt.mind.assign(w, "env")
+    rt.mind.clock = Clock()
     assert rt.brain_summary()[w.id]["down"] is False
     b.stats.consecutive_fail = 5
     for _ in range(M.DOWN_AFTER_TICKS + 1):
@@ -97,3 +111,34 @@ def test_the_runtime_watches_every_world_as_it_steps(tmp_path, monkeypatch):
     assert sorted(seen) == sorted(list(rt.worlds) * 2)
     rt.store.db.close()
     asyncio.run(rt.mind.close())
+
+
+def test_a_hiccup_at_high_speed_is_not_news(tmp_path):
+    """At 100x a game day is 0.6 s: one timeout, then a slow good reply, said "stopped answering" and "answering
+    again". Down takes a game day AND DOWN_AFTER_S of wall time AND DOWN_AFTER_FAILS failed requests in a row."""
+    mind = Mind(tmp_path / "brains.json")
+    b = mind.upsert({"id": "m", "label": "m", "base_url": "http://127.0.0.1:9/v1"})
+    w = World("A", "A", 3, "direct", 64, 3)
+    mind.assign(w, "m")
+
+    def outage(ticks, seconds, fails):
+        mind.clock = Clock(seconds / ticks)
+        b.stats.consecutive_fail = fails
+        for _ in range(ticks):
+            w.tick += 1
+            mind.watch(w)
+        down = mind.down_state("A")["down"]
+        b.stats.consecutive_fail = 0  # (it answered)
+        w.tick += 1
+        mind.watch(w)
+        return down
+
+    day = M.DOWN_AFTER_TICKS + 10
+    assert not outage(day, 0.6, 1)  # one timeout, at 100x
+    assert not outage(day, 0.6, 5)  # five, but over less than a second
+    assert not outage(day, 2 * M.DOWN_AFTER_S, M.DOWN_AFTER_FAILS - 1)  # long enough, but too few requests failed
+    assert not outage(M.DOWN_AFTER_TICKS // 2, 2 * M.DOWN_AFTER_S, 9)  # long and many, but under a game day
+    assert _said(w) == []
+    assert outage(day, 2 * M.DOWN_AFTER_S, M.DOWN_AFTER_FAILS)  # all three: down
+    assert _said(w) == ["World A's mind m has stopped answering; the chits are running on instinct",
+                        "World A's mind m is answering again"]

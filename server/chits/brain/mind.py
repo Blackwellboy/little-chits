@@ -57,6 +57,10 @@ SLOW_TICKS = 12  # a model whose reply takes this many world ticks or more is as
 # a world's model that has answered nothing for this long is said to be down, once, in the world's own events (and
 # again when it answers): live, World A's model stopped at day 806 and the chits ran ~1,100 days on instinct unseen
 DOWN_AFTER_TICKS = TICKS_PER_DAY
+# ... and for at least this long on the wall clock, over at least this many failed requests in a row: at 100x a day
+# is 0.6 s, so one timeout before a slow good reply said "stopped answering" and then "answering again"
+DOWN_AFTER_S = 60.0
+DOWN_AFTER_FAILS = 3
 ROUTINE = frozenset({"eat", "sleep", "rest", "shelter", "store", "drop", "refuel"})  # (and "go", with one of these)
 
 
@@ -163,7 +167,8 @@ class Mind:
         self.adopted: Counter = Counter()  # world id -> plan decisions adopted this match (the scorecard's denominator)
         self.match = 0  # bumped by new_match(): replies to an older match are dropped
         self.on_decision: Optional[Callable[[Dict[str, Any]], None]] = None
-        self.down: Dict[str, Dict[str, Any]] = {}  # world id -> {"brain", "since" (tick), "told"}: its model not answering
+        self.down: Dict[str, Dict[str, Any]] = {}  # world id -> {"brain", "since" (tick), "since_s", "told"}: not answering
+        self.clock: Callable[[], float] = time.monotonic  # (the watch's wall clock: a test gives it a fake one)
         self.load()
 
     # ------------------------------------------------------------ config
@@ -475,7 +480,8 @@ class Mind:
     def watch(self, world) -> None:
         """Once a tick, after the world steps: is its model answering? A brain whose every request since its last
         failure has failed (or was skipped while it cooled down) is failing; one that has failed for DOWN_AFTER_TICKS
-        is down, and the world's events say so, once, and again when it answers. A switched-off brain isn't down."""
+        of game time, DOWN_AFTER_S of wall time and DOWN_AFTER_FAILS requests in a row is down, and the world's events
+        say so, once, and again when it answers. A switched-off brain isn't down."""
         b = self.brains.get(self.world_brain.get(world.id, INSTINCT))
         st = self.down.get(world.id)
         failing = b is not None and b.cfg.enabled and b.stats.consecutive_fail > 0
@@ -487,9 +493,11 @@ class Mind:
             st = None
         if not failing:
             return
+        now = self.clock()
         if st is None:
-            st = self.down[world.id] = {"brain": b.id, "since": world.tick, "told": False}
-        if not st["told"] and world.tick - st["since"] >= DOWN_AFTER_TICKS:
+            st = self.down[world.id] = {"brain": b.id, "since": world.tick, "since_s": now, "told": False}
+        if not st["told"] and world.tick - st["since"] >= DOWN_AFTER_TICKS and now - st["since_s"] >= DOWN_AFTER_S \
+                and b.stats.consecutive_fail >= DOWN_AFTER_FAILS:
             st["told"] = True
             then = "the chits wait for it" if self.no_stand_in() else "the chits are running on instinct"
             world.emit("mind", f"World {world.id}'s mind {b.label} has stopped answering; {then}", 4, brain=b.id,
