@@ -639,3 +639,4 @@ body:has(.modal-bg) .banner { display: none; }
 .life li { display: grid; grid-template-columns: 48px 20px 1fr; gap: 4px; align-items: baseline; padding: 3px 0 3px 6px; font-size: 12px; line-height: 1.35; }
 .life li small { color: var(--muted); font-variant-numeric: tabular-nums; }
 .life li.imp4, .life li.imp5 { color: #fff3c4; font-weight: 600; }
+.prog-stall { display: block; margin-top: 4px; color: #ffc85a; line-height: 1.4; }

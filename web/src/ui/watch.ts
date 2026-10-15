@@ -93,3 +93,29 @@ export function lifeLines(events: LifeEvent[]): (LifeEvent & { icon: string })[]
     return { ...l, text: `Learned ${_what.length} things: ${_what.slice(0, LIFE_SHOW_NAMES).join(", ")}${more > 0 ? ` and ${more} more` : ""}` };
   });
 }
+
+/** The scholars' insight towards their next idea. Insight keeps piling up while the village already has as many open
+ *  ideas as it can hold (or none is left to give): the panel said "1094.8/24". Over the mark it says why it waits. */
+export function insightLabel(insight: number, next: number): { text: string; title: string } {
+  if (!next) return { text: `${Math.floor(insight)} insight`, title: "Insight the scholars have gathered" };
+  if (insight < next) return { text: `${Math.floor(insight)}/${Math.round(next)} insight to the next`, title: `${insight} of ${next} insight` };
+  return { text: "next idea ready: waits for an open one to come true",
+    title: `The scholars have ${Math.round(insight)} insight, more than the ${Math.round(next)} a new idea takes. One comes once an open idea comes true (or once there is something left to hint at).` };
+}
+
+export const STALL_DAYS = 10;
+
+/** When the next age hasn't come for a long while: how long, the step the village is on, and the biggest reason the
+ *  "Why slow?" panel gives for this world. Null while things move (under STALL_DAYS since the current age began). */
+export function stallLine(day: number, ladder: { reached: boolean; day: number | null }[], nextStepLabel: string | null,
+  reasons: { kind: string; text: string }[] | null | undefined, minDays = STALL_DAYS): string | null {
+  const since = Math.max(1, ...ladder.filter((r) => r.reached && r.day != null).map((r) => r.day as number));
+  const stalled = day - since;
+  if (stalled < minDays) return null;
+  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const parts = [`No new age for ${stalled} days.`];
+  if (nextStepLabel) parts.push(`They are on: ${lower(nextStepLabel)}.`);
+  const top = (reasons ?? []).find((r) => !["paused", "pacing", "save", "invalid"].includes(r.kind));
+  if (top) parts.push(`Biggest holdup: ${lower(top.text)}`);
+  return parts.join(" ");
+}

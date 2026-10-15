@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, instinctChip, lifeLines, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, insightLabel, instinctChip, lifeLines, stallLine, thinkingLine, type LifeEvent, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -90,5 +90,38 @@ describe("lifeLines folding", () => {
     expect(out[1].text).toBe("Learned 6 things: cord, clay pot, a, b, c and 1 more");
     expect(out[2].text).toBe("learned brick");  // (one thing stays as told)
     expect(out[4].text).toBe("learned kiln");  // (another moment between breaks the run)
+  });
+});
+
+// 📚 the counter read "1094.8/24": insight piles up while the village holds as many open ideas as it can
+describe("insightLabel", () => {
+  it("counts towards the next idea", () => {
+    expect(insightLabel(7.6, 24).text).toBe("7/24 insight to the next");
+  });
+  it("says the idea waits once the mark is passed, instead of a count over it", () => {
+    const l = insightLabel(1094.8, 24);
+    expect(l.text).toBe("next idea ready: waits for an open one to come true");
+    expect(l.text).not.toContain("1094");
+    expect(l.title).toContain("1095");
+    expect(insightLabel(24, 24).text).toContain("ready");
+  });
+  it("has no mark to count to in a world without scholars' ideas", () => {
+    expect(insightLabel(3.2, 0).text).toBe("3 insight");
+  });
+});
+
+describe("stallLine", () => {
+  const ladder = [{ reached: true, day: null }, { reached: true, day: 5 }, { reached: true, day: 12 }, { reached: false, day: null }];
+  const reasons = [{ kind: "paused", text: "The game is paused." }, { kind: "failure", text: "No sand near home: 35 failed tries so far." }];
+  it("stays quiet while the age is young", () => {
+    expect(stallLine(21, ladder, "Make brick", reasons)).toBeNull();
+  });
+  it("says how long, the step they are on and the biggest holdup", () => {
+    expect(stallLine(52, ladder, "Make brick (4 of 10 for the kiln)", reasons))
+      .toBe("No new age for 40 days. They are on: make brick (4 of 10 for the kiln). Biggest holdup: no sand near home: 35 failed tries so far.");
+    expect(stallLine(22, ladder, null, null)).toBe("No new age for 10 days.");
+  });
+  it("counts from day 1 before any age is reached", () => {
+    expect(stallLine(15, [{ reached: true, day: null }, { reached: false, day: null }], null, null)).toBe("No new age for 14 days.");
   });
 });

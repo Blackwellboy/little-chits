@@ -9,7 +9,7 @@ import { rowClicked } from "./listPosition";
 import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
-import { dropRepeatedIdeas, holdOrder, instinctChip, thinkingLine, type Thinking } from "./watch";
+import { dropRepeatedIdeas, holdOrder, insightLabel, instinctChip, stallLine, thinkingLine, type Thinking } from "./watch";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -96,8 +96,13 @@ function Progress({ world, name }: { world: string; name: string }) {
   const p = usePoll(() => api<ProgressData>(`/api/worlds/${world}/progress`), 8000, [world]);
   const brain = useUI((s) => s.brains[world]?.label);
   const brainId = useUI((s) => s.brains[world]?.id);
+  // a long stall asks "Why slow?" for its biggest reason (only then: the diagnostics are not free)
+  const stalled = !!p && stallLine(p.day, p.ladder, null, null) != null;
+  const why = usePoll(() => (stalled ? api<WhyData>("/api/why") : Promise.resolve(null)), 20000, [world, stalled]);
   if (!p) return <p className="muted">Loading…</p>;
   const chip = instinctChip(p.thinking, brainId);
+  const on = p.milestones ? p.milestones.steps[nextStep(p.milestones)] : undefined;
+  const stall = stallLine(p.day, p.ladder, on ? stepLabel(on) : null, why ? why.worlds?.[world]?.reasons : null);
   const pct = Math.round((p.era.index / p.era.of) * 100);
   const plain = (s: string) => s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*(.+?)\*/g, "$1").replace(/ ?\(#\d+\)/g, "");
   return (
@@ -110,6 +115,7 @@ function Progress({ world, name }: { world: string; name: string }) {
         {p.next
           ? <small>Next: <b>{p.next.name}</b>, when someone works out how to make a <b>{p.next.needs}</b>.</small>
           : <small>🚀 They reached space!</small>}
+        {p.next && stall && <small className="prog-stall" title="From the road to the next age and the Why slow? panel">⏳ {stall}</small>}
         {p.milestones && p.milestones.steps.length > 0 && <RoadChecklist c={p.milestones} />}
       </div>
       <div className="prog-ladder">
@@ -188,6 +194,7 @@ function VillageProject({ p, plain, world }: { p: ProgressData; plain: (s: strin
   const rows = villageOrder(p.project?.villages ?? [], focus && focus.world === world ? focus : null);
   const many = rows.length > 1;
   if (!cur && !done.length && !hints.length && !p.famous && !rows.some((r) => r.active)) return null;
+  const insight = insightLabel(p.research?.insight ?? 0, p.research?.next_idea ?? 0);
   const go = (r: VillageRow<Project>) => r.x != null && r.y != null && useUI.getState().set({ focus: { world, x: r.x + 0.5, y: r.y + 0.5, t: Date.now() } });
   return (
     <div className="prog-project">
@@ -203,7 +210,7 @@ function VillageProject({ p, plain, world }: { p: ProgressData; plain: (s: strin
       ) : cur ? <ProjectLine cur={cur} /> : <p className="small muted">No project right now.</p>}
       {done.length > 0 && <ul className="prog-list">{done.slice(0, 3).map((d) => <li key={d.id}>day {d.day}: {plain(d.text)}</li>)}</ul>}
       {hints.length > 0 && (<>
-        <h4>📚 Scholars' ideas <small className="muted">{p.research!.insight}/{p.research!.next_idea} insight to the next</small></h4>
+        <h4>📚 Scholars' ideas <small className="muted" title={insight.title}>{insight.text}</small></h4>
         <ul className="prog-list">{hints.map((h, i) => <li key={i} className={h.found ? "muted" : ""}>day {h.day}{h.by ? ` (${h.by})` : ""}: {h.text}{h.found ? " ✔ came true" : ""}</li>)}</ul>
       </>)}
       {p.famous && <p className="small">⭐ Most renowned: <b>{p.famous.name}</b> <span className="muted">(renown {p.famous.renown}; chits near them follow their lead)</span></p>}
