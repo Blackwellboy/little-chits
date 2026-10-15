@@ -283,7 +283,12 @@ PASSING_STORE = 3  # an eat step on its way to one store takes food from another
 # **On.** A/B against main 8a12b11, 24 seeds x 60 days: discoveries 77.1 > 77.6, era 8.08 > 8.00, pop 58.4 > 57.6,
 # starved 0 > 0 (main starves rarely by day 60), machine age reached 19 > 19 seeds, electric 8 > 7. On the instinct-invents
 # branch's seed 32 (the six deaths above), 60 days: starved 6 (all preventable) > 0, discoveries 80 > 84, era 7 > 8,
-# pop 56 > 60. (False: as before; tests/identity_runner.py keeps it off)
+# pop 56 > 60. After the review fixes (passing store, afford rule, bounded and shared walk lookup), against main
+# 12832a9, 24 x 60: discoveries 77.0 > 75.3, era 7.92 > 7.92, pop 59.7 > 59.0, starved 0 > 0, machine age 19 > 17
+# seeds, electric 5 > 7; cost on a 256 world, 15 days (profiled): the lookups +4.3 s of 127 (3.4%); reflexes for
+# 61 plan-less hungry chits 8.19 > 8.19 ms a tick (they were 17.8 before the fix). (Taking the eat step to the store
+# nearest on foot, too, gave 6 starvations > 0 and seed 42 fish 205 > 45: dropped.)
+# (False: as before; tests/identity_runner.py keeps it off)
 STARVING_STORES = True
 WILD_NEAR = 6  # wild food this close (as the crow flies) is still worth a try when the store's walk can't be spared
 WILD_BELOW = 16  # ...and only a starving chit (the reflex's own threshold) treats wild food as a gamble
