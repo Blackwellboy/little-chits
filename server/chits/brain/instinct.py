@@ -543,8 +543,10 @@ class _Hands:
                         self._use("seeds", 2)
                         self.sown.add(st.id)
             elif kind in ("site", "join", "redirect", "new"):
-                key = site.design if site is not None else normalize_design(s.get("what"))
-                for x, m in ((site.needs if site is not None else DESIGNS[key].material_map) if key else {}).items():
+                idea = IDEAS.by_name(w, s.get("what")) if site is None else None  # (an idea costs its own materials)
+                key = site.design if site is not None else idea["base"] if idea else normalize_design(s.get("what"))
+                mats = idea["materials"] if idea else DESIGNS[key].material_map if key else {}
+                for x, m in (site.needs if site is not None else mats).items():
                     self._use(x, m)
         return True
 
@@ -934,9 +936,10 @@ class Instinct:
                 home = None  # proposing a move must not change an unselected chit's home
         if home and home.functional:
             if home.durability < 40 and rng.random() < 0.6:
-                mat = DESIGNS[home.design].materials[0][0]
+                plan = IDEAS.plan_of(world, home)  # (an invented home is mended with its own materials)
+                mat = plan[0][0]
                 # (anything in hand that mends it will do: fiber for a hut's thatch, stone for a longhouse)
-                pre = [{"do": "gather", "what": mat, "qty": 1}] if mend_material(a, home.design) is None else []
+                pre = [{"do": "gather", "what": mat, "qty": 1}] if mend_material(a, home.design, plan) is None else []
                 return {"goal": "repair my home", "thought": "My home is falling apart.",
                         "steps": pre + [{"do": "repair", "target": home.id}]}
             return None
@@ -984,9 +987,10 @@ class Instinct:
                 "longhouse": 1, "two_storey_house": 1, "bridge": 1, "well": 1, "granary": 1}
         worn.sort(key=lambda s: (s.durability > 0, rank.get(s.design, 3), s.durability))
         st = worn[0]
-        mat = DESIGNS[st.design].materials[0][0]
+        plan = IDEAS.plan_of(world, st)
+        mat = plan[0][0]
         pre = []
-        if mend_material(a, st.design) is None:  # (cord, stone or brick in hand mends what is built with it)
+        if mend_material(a, st.design, plan) is None:  # (cord, stone or brick in hand mends what is built with it)
             if mat in RECIPES:
                 if not a.knows_recipe(mat):
                     return None
@@ -1090,7 +1094,8 @@ class Instinct:
         # culture: teach a friend (world A)
         if world.flags.get("teach") and rng.random() < 0.05 + 0.12 * a.traits["sociability"]:
             for o in world.agents_near(a.x, a.y, 8, exclude=a.id):
-                gaps = [k for k in a.knows if k not in o.knows and a.knows[k]["how"] != "instinct"]
+                gaps = [k for k in a.knows if k not in o.knows and a.knows[k]["how"] != "instinct"
+                        and IDEAS.teachable(world, k)]  # (not an idea from over the sea: nobody here could find it)
                 if gaps:
                     # what fewest others know first: chosen at random, a chit who knew 80 things almost never taught
                     # the one only it and a friend knew, and live worlds forgot the engine, magnet and gear that way
@@ -1099,7 +1104,8 @@ class Instinct:
                     k = rng.choice(sorted(g for g in gaps if n.get(g, 0) == low))
                     kind, key = k.split(":", 1)
                     # the world's own name ("Berry-Wick"), not the key: chits said "Now you know how to make a inv b 4!"
-                    what = world.item_name(key) if kind == "recipe" else DESIGNS[key].name if key in DESIGNS else key.replace("_", " ")
+                    what = world.item_name(key) if kind == "recipe" else DESIGNS[key].name if key in DESIGNS else \
+                        IDEAS.by_name(world, k)["name"] if kind == "idea" else key.replace("_", " ")
                     art = "an" if what[:1].lower() in "aeiou" else "a"
                     line = rng.choice((f"Now you know how to make {art} {what}!", f"Watch closely: that's how {art} {what} is made.",
                                        f"There. Next time, you make the {what}.", f"Easy once you see it. Go make {art} {what}!"))
@@ -1113,7 +1119,8 @@ class Instinct:
                         "steps": [{"do": "say", "to": "all", "text": line}]}
         if world.flags.get("write") and a.has("clay_tablet") and rng.random() < 0.3:
             written = {t.knowledge for t in world.tablets.values()}
-            best = [k for k, v in a.knows.items() if v["how"] in ("discovered", "insight", "inspected") and k not in written]
+            best = [k for k, v in a.knows.items() if v["how"] in ("discovered", "insight", "inspected")
+                    and k not in written and IDEAS.teachable(world, k)]
             if best:
                 return {"goal": "record knowledge", "thought": "This should be written down so it isn't lost.",
                         "steps": [{"do": "write", "what": rng.choice(best)}]}

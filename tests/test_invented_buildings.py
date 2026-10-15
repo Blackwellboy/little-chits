@@ -52,27 +52,27 @@ def test_a_building_idea_is_a_named_variant_built_from_its_own_materials():
     idea = _hall(w, a)
     assert idea["base"] == "hut" and idea["purpose"] == "shelter" and idea["by_name"] == a.name
     # the parts say what it is built from, scaled up until it takes at least what a hut does
-    assert idea["materials"] == {"wood": 9, "fiber": 3}
+    assert idea["materials"] == {"wood": 9, "fiber": 4}  # (and never less of any of a hut's own: 4 fiber, not 3)
     assert sum(idea["materials"].values()) >= sum(n for _, n in DESIGNS["hut"].materials)
     assert a.inventory == {"wood": 3, "fiber": 1}  # (the parts were only the model of it)
     assert f"idea:{idea['key']}" in a.knows and DESIGNS == designs and "Wind Hall" not in str(list(DESIGNS))
     ev = [e for e in w.events if e.kind == "invention"][-1]
     assert ev.data["building"] and ev.data["base"] == "hut" and "Wind Hall" in ev.text
     # built by its name: a hut, so every rule for huts holds for it, but with its own name and materials
-    a.inventory.update({"wood": 9, "fiber": 3})
+    a.inventory.update({"wood": 9, "fiber": 4})
     run(w, a, {"do": "build", "what": "the wind hall"})
     st = next(s for s in w.structures.values() if s.idea == idea["key"])
     site = [e for e in w.events if e.kind == "site"][-1]
-    assert "Wind Hall (needs 3 plant fiber, 9 wood)" in site.text
+    assert "Wind Hall (needs 9 wood, 4 plant fiber)" in site.text
     assert st.design == "hut" and st.title == "Wind Hall" and st.complete, a.last_result
-    assert a.inventory == {}  # (it took all twelve pieces)
+    assert a.inventory == {}  # (it took all thirteen pieces)
     built = [e for e in w.events if e.kind == "built"][-1]
     assert built.text == f"{a.name} built the first Wind Hall, {a.name}'s idea"
     assert built.data["idea"] == idea["key"] and built.data["design"] == "hut"
     assert a.home == st.id  # (it is a home, as a hut is)
     # the next one is just one more
     b.learn(f"idea:{idea['key']}", "taught", w.tick)
-    b.inventory.update({"wood": 9, "fiber": 3})
+    b.inventory.update({"wood": 9, "fiber": 4})
     run(w, b, {"do": "build", "what": "Wind Hall", "near": f"{a.x + 8},{a.y}"})
     assert [e for e in w.events if e.kind == "built"][-1].text == f"{b.name} finished a Wind Hall", b.last_result
     # what the observer sees
@@ -85,7 +85,7 @@ def test_a_building_idea_is_a_named_variant_built_from_its_own_materials():
 def test_it_is_saved_with_the_world_and_an_old_save_still_loads():
     w, a, _ = _world()
     idea = _hall(w, a)
-    a.inventory.update({"wood": 9, "fiber": 3})
+    a.inventory.update({"wood": 9, "fiber": 4})
     run(w, a, {"do": "build", "what": "Wind Hall"})
     d = json.loads(json.dumps(w.to_dict()))
     w2 = World.from_dict(d)
@@ -111,7 +111,7 @@ def test_only_who_knows_it_can_build_it_and_it_is_taught_written_and_read():
     w, a, b = _world()
     idea = _hall(w, a)
     kk = f"idea:{idea['key']}"
-    b.inventory.update({"wood": 9, "fiber": 3})
+    b.inventory.update({"wood": 9, "fiber": 4})
     assert run(w, b, {"do": "build", "what": "Wind Hall"}).endswith("I don't know how to build a Wind Hall yet")
     run(w, a, {"do": "teach", "what": "Wind Hall", "to": b.name})
     assert b.knows[kk]["how"] == "taught" and b.knows[kk]["status"] == "told", a.last_result
@@ -170,7 +170,10 @@ def test_an_idea_is_never_cheaper_than_its_base(base):
         mats = IDEAS.materials(bag, base)
         assert sum(mats.values()) >= sum(n for _, n in DESIGNS[base].materials)
         assert all(m in mats for m in bag)  # (built from its parts)
-        assert all(m in mats for m, _ in DESIGNS[base].materials)  # (and still from what the base can't do without)
+        # (and never less of any of the base's own materials: its bricks or glass can't be swapped for wood)
+        assert all(mats.get(m, 0) >= n for m, n in DESIGNS[base].materials), (bag, mats)
+    # the reviewer's case: a two-storey house of wood and one brick still takes its 16 bricks and 4 glass
+    assert IDEAS.materials({"wood": 27, "brick": 1}, "two_storey_house") == {"wood": 27, "brick": 16, "glass": 4}
 
 
 def test_a_model_is_told_the_ideas_it_knows_by_name_and_builds_one_by_name():
@@ -179,13 +182,13 @@ def test_a_model_is_told_the_ideas_it_knows_by_name_and_builds_one_by_name():
     w, a, b = _world()
     _hall(w, a)
     seen = P.scene(w, a)
-    assert "Wind Hall (" + a.name + "'s idea: a kind of hut; 3 plant fiber, 9 wood)" in seen
+    assert "Wind Hall (" + a.name + "'s idea: a kind of hut; 9 wood, 4 plant fiber)" in seen
     assert "Wind Hall" not in P.scene(w, b) and "Wind Hall" in P.compact_scene(w, a)
     # the stand-in reads the line it knows how to build, and writes the plan a model would
     line = next(l for l in seen.splitlines() if l.startswith("YOU KNOW HOW TO BUILD:"))
     name = re.search(r"; ([^;(]+) \([^()]*'s idea", line).group(1)
     plan = parse_plan(json.dumps({"goal": "build my own hall", "steps": [{"do": "build", "what": name}]}))
-    a.inventory.update({"wood": 9, "fiber": 3})
+    a.inventory.update({"wood": 9, "fiber": 4})
     a.plan = plan["steps"]
     for _ in range(2000):
         w.step()
@@ -222,3 +225,150 @@ def test_with_the_switch_off_a_building_named_invention_is_an_item_as_before(mon
     a.inventory.update({"wood": 3, "fiber": 1})
     run(w, a, HALL)
     assert not w.building_ideas and not any(k.startswith("idea:") for k in a.knows)
+
+
+def test_a_name_with_an_article_is_found_however_it_is_written():
+    w, a, b = _world()
+    a.inventory.update({"wood": 3, "fiber": 1})
+    run(w, a, dict(HALL, name="The Wind Hall"))
+    idea = next(iter(w.building_ideas.values()))
+    for said in ("The Wind Hall", "the wind hall", "Wind Hall", "a  wind hall", f"idea:{idea['key']}"):
+        assert IDEAS.by_name(w, said) is idea, said
+    a.inventory.update({"wood": 3, "fiber": 1})
+    assert "already taken" in run(w, a, dict(HALL, name="Wind Hall", purpose="a toy for joy"))  # (one name, written two ways)
+    run(w, a, {"do": "teach", "what": "the Wind Hall", "to": b.name})
+    assert f"idea:{idea['key']}" in b.knows, a.last_result
+    b.inventory.update({"wood": 9, "fiber": 4, "stone": 0})
+    swapped = next(IDEAS.instead(w, b, [{"do": "build", "what": "hut"}]) for w.tick in range(w.tick, w.tick + 40)
+                   if IDEAS.instead(w, b, [{"do": "build", "what": "hut"}])[0]["what"] != "hut")
+    b.inventory = {"wood": 9, "fiber": 4}
+    run(w, b, swapped[0])  # (instinct's swap writes the idea's own name, article and all)
+    assert any(s.idea == idea["key"] and s.complete for s in w.structures.values()), b.last_result
+
+
+def test_a_new_idea_never_takes_the_key_of_one_a_save_left_out():
+    w, a, b = _world()
+    _hall(w, a)
+    a.inventory.update({"wood": 3, "stone": 1})
+    run(w, a, {"do": "invent", "with": ["wood", "wood", "wood", "stone"], "name": "Rain Hut", "purpose": "a hut"})
+    first, second = list(w.building_ideas)
+    a.inventory = {"wood": 9, "fiber": 4}
+    run(w, a, {"do": "build", "what": "Wind Hall"})
+    d = json.loads(json.dumps(w.to_dict()))
+    d["building_ideas"][first]["materials"] = {}  # (broken: left out on load, while a structure was built as it)
+    w2 = World.from_dict(d)
+    assert list(w2.building_ideas) == [second]
+    a2 = w2.agents[a.id]
+    a2.inventory = {"stone": 3, "fiber": 1}
+    run(w2, a2, {"do": "invent", "with": ["stone", "stone", "stone", "fiber"], "name": "Stone Lodge", "purpose": "a lodge"})
+    assert len(w2.building_ideas) == 2 and w2.building_ideas[second]["name"] == "Rain Hut", a2.last_result
+    new = [k for k in w2.building_ideas if k != second][0]
+    assert new not in (first, second)  # (nor the key the standing Wind Hall still carries)
+    assert w2.counters["idea"] == int(new.rsplit("_", 1)[1])
+    # and a world without ideas saves no counter for them
+    w3, _, _ = _world()
+    assert "idea" not in w3.to_dict()["counters"]
+
+
+def test_an_idea_is_one_invention_event_and_counts_as_a_first_as_an_item_invention_does():
+    from chits.runtime import Runtime
+
+    w, a, _ = _world()
+    seq = w.seq
+    idea = _hall(w, a)
+    kk = f"idea:{idea['key']}"
+    new = [e for e in w.events if e.seq > seq and e.kind not in ("site",)]
+    assert [e.kind for e in new if e.kind in ("invention", "discovery", "learned")] == ["invention"]
+    assert kk in w.first  # (as an item invention's recipe is: one more thing this world was the first to have)
+    assert Runtime._first_text(w, kk, seq).startswith(f"{a.name} thought up the Wind Hall")
+    a.inventory.update({"fiber": 1, "wood": 1})
+    run(w, a, {"do": "invent", "with": ["fiber", "wood"], "name": "Reed Net", "purpose": "to catch fish"})
+    assert any(k.startswith("recipe:inv_") for k in w.first)
+
+
+def test_village_stock_counts_what_an_idea_site_was_really_given():
+    from chits.sim import projects
+
+    w, a, _ = _world()
+    _hall(w, a)
+    a.inventory = {"wood": 3}
+    run(w, a, {"do": "build", "what": "Wind Hall"})
+    st = next(s for s in w.structures.values() if s.idea)
+    assert st.needs == {"wood": 6, "fiber": 4} and not st.complete, a.last_result
+    assert projects.stock(w, "wood", "hut") == 3 and projects.stock(w, "fiber", "hut") == 0
+
+
+def test_an_idea_from_over_the_sea_is_not_taught_or_named_by_its_key():
+    from chits.brain.instinct import Instinct
+
+    w, a, b = _world()
+    kk = "idea:idea_b_1"
+    a.knows[kk] = {"how": "discovered", "tick": 0, "from": None, "status": "worked", "worked_tick": 0}
+    assert not IDEAS.teachable(w, kk) and IDEAS.teachable(w, "design:hut")
+    assert views.knowledge_name(kk, w) == "an idea from over the sea"
+    a.traits["sociability"] = 1.0
+    a.inventory["clay_tablet"] = 1
+    ins = Instinct()
+    for t in range(240, 240 * 4, 7):
+        w.tick = t
+        steps = ins.plan(w, a)["steps"]
+        assert not any(s.get("what") == kk for s in steps if s.get("do") in ("teach", "write")), steps
+
+
+def test_instinct_counts_an_idea_build_by_the_ideas_own_materials():
+    from chits.brain.instinct import _Hands
+
+    w, a, _ = _world()
+    _hall(w, a)
+    a.inventory = {"wood": 9, "fiber": 4}
+    h = _Hands(w, a)
+    h.run({"do": "build", "what": "Wind Hall"})
+    assert h.held.get("wood", 0) == 0 and h.held.get("fiber", 0) == 0
+
+
+def test_an_invented_building_is_mended_with_its_own_materials():
+    w, a, _ = _world()
+    a.inventory = {"stone": 2, "wood": 2}
+    run(w, a, {"do": "invent", "with": ["stone", "stone", "wood", "wood"], "name": "Stone Hut", "purpose": "a hut"})
+    idea = next(iter(w.building_ideas.values()))
+    assert list(idea["materials"]) == ["stone", "wood", "fiber"]
+    a.inventory = dict(idea["materials"])
+    run(w, a, {"do": "build", "what": "Stone Hut"})
+    st = next(s for s in w.structures.values() if s.idea)
+    st.durability = 30.0
+    a.inventory = {"stone": 1}  # (a stone hut is patched with stone; a plain hut is not)
+    run(w, a, {"do": "repair", "target": st.id})
+    assert st.durability > 30 and not a.inventory.get("stone"), a.last_result
+
+
+def test_the_observer_and_others_see_its_name_and_with_the_switch_off_just_its_base(monkeypatch):
+    w, a, b = _world()
+    _hall(w, a)
+    a.inventory = {"wood": 9, "fiber": 4}
+    run(w, a, {"do": "build", "what": "Wind Hall"})
+    st = next(s for s in w.structures.values() if s.idea)
+    assert views.agent_detail(w, a)["home"]["name"] == "Wind Hall"
+    monkeypatch.setattr(IDEAS, "INVENTED_BUILDINGS", False)
+    assert views.structure_view(st, w)["name"] == "hut" and "title" not in views.structure_view(st, w)
+    seen = P.scene(w, b)
+    line = next(l for l in seen.splitlines() if f" {st.id} " in l)
+    assert "Wind Hall" not in line and "you don't know how to build this" not in line, line
+
+
+def test_a_planned_home_upgrade_is_not_turned_into_a_new_invented_building():
+    from chits.sim import buildings as BLD
+
+    w, a, b = _world()
+    a.inventory = {"wood": 8, "fiber": 4}
+    run(w, a, {"do": "build", "what": "hut"})
+    assert a.home
+    b.learn("design:brick_house", "insight", w.tick)
+    a.learn("design:brick_house", "insight", w.tick)
+    a.inventory = {"brick": 2, "wood": 2}
+    run(w, a, {"do": "invent", "with": ["brick", "brick", "wood", "wood"], "name": "Clay Hall", "purpose": "a hall"})
+    idea = next(iter(w.building_ideas.values()))
+    assert idea["base"] == "brick_house", a.last_result
+    a.inventory = {"brick": 12, "wood": 8}
+    step = {"do": "build", "what": "brick house"}
+    assert BLD.upgrade_instead(w, a, "brick_house", step)
+    assert all(IDEAS.instead(w, a, [step])[0]["what"] == "brick house" for w.tick in range(w.tick, w.tick + 60))

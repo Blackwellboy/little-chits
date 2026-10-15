@@ -9,9 +9,9 @@ so twin worlds never share one.
 How an invention becomes one (`conceive`, from sim.actions._do_invent): the thing itself is a building (its name ends
 in one, "Wind Hall", or its purpose starts with one, "a granary for..."), the words of both choose what the building is
 for (the one they say most about), and that chooses the base: the most advanced design of that kind somebody in this
-world already knows. Its parts must be building materials; they say what it is built from, scaled up until it takes at
-least as much as the base does (and a base material none of them is, like a brick house's bricks, is still needed):
-never cheaper.
+world already knows. Its parts must be building materials; they say what it is built from, scaled up until they are as
+many pieces as the base takes, and it never takes less of any of the base's own materials than the base does (a brick
+house's bricks stay): never cheaper, in any material.
 
 The inventor learns "idea:<key>", which is taught, written and read like any other knowledge (and whoever helps build
 one learns it), and `build` takes the idea's name for whoever knows it.
@@ -25,6 +25,7 @@ import zlib
 from typing import Any, Dict, List, Optional, Tuple
 
 from .invent import _mention
+from . import buildings as BLD
 from .items import DESIGNS, normalize_design
 
 INVENTED_BUILDINGS = True  # (off in tests/identity_runner.py: a world where nobody invents is unchanged either way)
@@ -107,14 +108,24 @@ def archetype(world, name: str, purpose_text: str) -> Optional[Tuple[str, str]]:
 
 
 def materials(bag: Dict[str, int], base: str) -> Dict[str, int]:
-    """What the building takes: the base's own materials that none of the parts is, and the parts, scaled up until the
-    whole is at least the base's."""
-    own = {m: n for m, n in DESIGNS[base].materials if m not in bag}
-    need = sum(n for _, n in DESIGNS[base].materials) - sum(own.values())
-    scale = max(1, math.ceil(need / max(1, sum(bag.values()))))
-    out = {k: n * scale for k, n in sorted(bag.items())}
-    out.update(own)
+    """What the building takes: the parts, scaled up until they alone are as many pieces as the base takes, and never
+    less of any of the base's own materials than the base needs (scaling only adds: its bricks or glass can't be
+    swapped for wood). The parts come first, the most of them first (what it is mended with), then the base's rest."""
+    base_mats = DESIGNS[base].material_map
+    scale = max(1, math.ceil(sum(base_mats.values()) / max(1, sum(bag.values()))))
+    out = {k: max(n * scale, base_mats.get(k, 0)) for k, n in sorted(bag.items(), key=lambda kv: (-kv[1], kv[0]))}
+    for m, n in DESIGNS[base].materials:
+        out.setdefault(m, n)
     return out
+
+
+def plain(name: Any) -> str:
+    """A name as it is compared: lower case, single spaces, a leading "a", "an" or "the" left off."""
+    low = " ".join(str(name or "").lower().split())
+    for p in ("a ", "an ", "the "):
+        if low.startswith(p) and low[len(p):]:
+            return low[len(p):]
+    return low
 
 
 def by_name(world, text: Any) -> Optional[Dict[str, Any]]:
@@ -127,11 +138,8 @@ def by_name(world, text: Any) -> Optional[Dict[str, Any]]:
         s = s[5:]
     if s in ideas:
         return ideas[s]
-    low = s.lower()
-    for p in ("a ", "an ", "the "):
-        if low.startswith(p) and low[len(p):]:
-            low = low[len(p):]
-    return next((i for i in ideas.values() if i["name"].lower() == low), None)
+    low = plain(s)  # (both sides alike: "The Wind Hall" is found as "wind hall", "a wind hall" or itself)
+    return next((i for i in ideas.values() if plain(i["name"]) == low), None)
 
 
 def conceive(world, a, bag: Dict[str, int], name: str, purpose_text: str):
@@ -148,11 +156,25 @@ def conceive(world, a, bag: Dict[str, int], name: str, purpose_text: str):
     same = next((i for i in world.building_ideas.values() if i["base"] == base and i["inputs"] == bag), None)
     if same is not None:
         return same, False
-    key = f"idea_{world.id.lower()}_{len(world.building_ideas) + 1}"
+    key = _new_key(world)
     rec = {"key": key, "name": name, "base": base, "purpose": kind, "purpose_text": purpose_text,
            "inputs": dict(bag), "materials": materials(bag, base), "by": a.id, "by_name": a.name, "tick": world.tick}
     world.building_ideas[key] = rec
     return rec, True
+
+
+def _new_key(world) -> str:
+    """A key no idea of this world has had: from the world's own counter (saved with its counters), past every key
+    still in use by an idea or a structure (a save from before the counter, or one whose idea was left out on load:
+    a structure built as it must never be renamed by a new idea)."""
+    prefix = f"idea_{world.id.lower()}_"
+    used = set(world.building_ideas) | {st.idea for st in world.structures.values() if st.idea}
+    seen = [int(k[len(prefix):]) for k in used if k.startswith(prefix) and k[len(prefix):].isdigit()]
+    n = max([world.counters.get("idea", 0)] + seen) + 1
+    while f"{prefix}{n}" in used:
+        n += 1
+    world.counters["idea"] = n
+    return f"{prefix}{n}"
 
 
 def load(raw: Any) -> Dict[str, Dict[str, Any]]:
@@ -178,15 +200,37 @@ def mark(world, st, idea: Dict[str, Any]) -> None:
     world.dirty_struct.add(st.id)
 
 
+def title_of(st) -> str:
+    """An invented building's own name, or "" (also with the switch off: it is then simply its base)."""
+    return st.title if INVENTED_BUILDINGS else ""
+
+
+def idea_of(world, st) -> Optional[Dict[str, Any]]:
+    """The idea a structure was built as, if it is one of this world's and the switch is on."""
+    return world.building_ideas.get(st.idea) if INVENTED_BUILDINGS and st.idea else None
+
+
 def name_of(st) -> str:
     """What a structure is called: its own name for an invented one, else its design's."""
-    return st.title or DESIGNS[st.design].name
+    return title_of(st) or DESIGNS[st.design].name
+
+
+def plan_of(world, st) -> List[Tuple[str, int]]:
+    """What a structure is built (and mended) from: its idea's materials, else its design's."""
+    idea = idea_of(world, st)
+    return list(idea["materials"].items()) if idea else list(DESIGNS[st.design].materials)
+
+
+def teachable(world, k: str) -> bool:
+    """Can this knowledge be taught or written here? An idea only when it is one of this world's (one a chit brought
+    over the sea names a building nobody here could find)."""
+    return not k.startswith("idea:") or by_name(world, k) is not None
 
 
 def built(world, st, who: str) -> Optional[Tuple[str, bool]]:
     """An invented building's completion: its text ("Ash built the first Wind Hall, Rible's idea") and whether it is
     the first of that idea; None for a structure that is not one."""
-    idea = world.building_ideas.get(st.idea) if st.idea else None
+    idea = idea_of(world, st)
     if idea is None:
         return None
     first = "built" not in idea
@@ -226,6 +270,8 @@ def instead(world, a, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         what = s.get("what") if s.get("do") == "build" and not s.get("site") else None
         base = normalize_design(what) if isinstance(what, str) else None
         pick = next((i for i in mine if i["base"] == base), None) if base else None
+        if pick and BLD.upgrade_instead(world, a, base, s):  # (a planned upgrade of its home stays one)
+            pick = None
         if pick and _affords(a, DESIGNS[base].material_map) and _affords(a, pick["materials"]) \
                 and zlib.crc32(f"{a.id}:{world.tick}:{pick['key']}".encode()) % INSTINCT_SHARE == 0:
             s = dict(s, what=pick["name"])

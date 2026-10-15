@@ -7,14 +7,15 @@ from typing import Any, Dict, List, Optional
 
 from .sim.actions import describe_step
 from .sim.agent import TICKS_PER_DAY, Agent
+from .sim import ideas as IDEAS
 from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name
 from .sim.world import Structure, World
 
 
 def knowledge_name(k: str, w: Optional[World] = None) -> str:
     kind, key = k.split(":", 1)
-    if kind == "idea":  # a building idea (sim/ideas.py): its own name (one from another world: its key)
-        return ((w.building_ideas.get(key) if w else None) or {}).get("name", key)
+    if kind == "idea":  # a building idea (sim/ideas.py): its own name (one brought from another world has none here)
+        return ((w.building_ideas.get(key) if w else None) or {}).get("name", "an idea from over the sea")
     return item_name(key, w.catalog if w else None) if kind == "recipe" else DESIGNS[key].name
 
 
@@ -49,12 +50,12 @@ def structure_view(s: Structure, w: World) -> Dict[str, Any]:
     d = DESIGNS[s.design]
     founder = w.agents.get(s.founder) or w.dead.get(s.founder)
     # an invented building (sim/ideas.py): its own name, what it is a kind of, and whose idea it was
-    idea = w.building_ideas.get(s.idea) if s.idea else None
-    own = {"title": s.title, "idea": s.idea, "base_name": d.name,
-           "inventor": idea["by_name"] if idea else None} if s.title else {}
+    idea, title = IDEAS.idea_of(w, s), IDEAS.title_of(s)
+    own = {"title": title, "idea": s.idea, "base_name": d.name,
+           "inventor": idea["by_name"] if idea else None} if title else {}
     return {
         **own,
-        "id": s.id, "design": s.design, "name": s.title or d.name, "x": s.x, "y": s.y, "w": s.w, "h": s.h,
+        "id": s.id, "design": s.design, "name": title or d.name, "x": s.x, "y": s.y, "w": s.w, "h": s.h,
         "complete": s.complete, "progress": round(min(1.0, s.work_done / max(1.0, s.work_total)), 3),
         "needs": s.needs, "durability": round(s.durability, 1), "lit": s.lit, "fuel": round(s.fuel),
         "planted": s.planted, "growth": round(s.growth, 2), "stored": sum(s.storage.values()),
@@ -173,7 +174,7 @@ def agent_detail(w: World, a: Agent, brain_label: str = "") -> Dict[str, Any]:
         "last_choice": a.last_choice if a.last_choice and t - a.last_choice.get("tick", -10 ** 9) < 480 else None,
         "plan_state": [{"desc": describe_step(s), "reflex": bool(s.get("_reflex")), "filler": bool(s.get("_filler"))} for s in a.plan],
         "plan_source": a.plan_source, "plan_id": a.plan_id, "objective": a.objective, "objective_since": a.objective_since, "ambition": a.ambition, "last_result": a.last_result, "brain_label": brain_label or a.brain,
-        "home": {"id": home.id, "name": DESIGNS[home.design].name, "x": home.x, "y": home.y} if home else None,
+        "home": {"id": home.id, "name": IDEAS.name_of(home), "x": home.x, "y": home.y} if home else None,
         "stats": a.stats, "decisions": a.decisions, "job": a.job, "job_source": a.job_source,
         "leader": a.id == w.leader, "origin": a.origin, "leader_title": ("chief" if w.flags.get("say") else "elder") if a.id == w.leader else "",
         "belief": ({"id": a.belief, "name": w.beliefs[a.belief]["name"], "tenet": w.beliefs[a.belief]["tenet"]}

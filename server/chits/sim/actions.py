@@ -1905,13 +1905,17 @@ def _conceived(world, a: Agent, idea: Dict[str, Any], new: bool, s) -> str:
     mats = ", ".join(f"{n} {world.item_name(m)}" for m, n in idea["materials"].items())
     base = DESIGNS[idea["base"]].name
     kind = f" (a kind of {base})" if a.knows_design(idea["base"]) else ""  # (the chit is told only what it knows)
-    world.learned(a, kk, "discovered")
     if not new:
+        world.learned(a, kk, "discovered")  # (one "learned" event: the world had it first from someone else)
         s["note"] = f"Thought up the {idea['name']}{kind} (someone here had the same idea): build it from {mats}"
         return DONE
+    # a first, counted as an item invention is (world.first), told by one event: the invention, not a discovery too
+    a.learn(kk, "discovered", world.tick)
+    a.bump_rev(f"it thought up the {idea['name']}")
+    world.first.setdefault(kk, {"tick": world.tick, "by": a.id, "name": a.name})
     world.emit("invention", f"{a.name} thought up the {idea['name']}, a {base} of their own design, built from {mats}",
                5, a.id, a.x, a.y, key=idea["key"], name=idea["name"], purpose=idea["purpose"], base=idea["base"],
-               building=True)
+               building=True, knowledge=kk)
     a.bump("inventions")
     a.remember(world.tick, f"I thought up the {idea['name']}{kind}: it is built from {mats}", 5, "discovery")
     s["note"] = f"Thought up the {idea['name']}{kind}: build it from {mats}"
@@ -3707,19 +3711,20 @@ def _do_smelt(world, a: Agent, step, s) -> str:
     return DONE
 
 
-def mend_materials(design: str) -> List[str]:
+def mend_materials(design: str, plan=None) -> List[str]:
     """What a building can be mended with: its first material (as ever), then any other of its materials that is
     plain building stuff (MEND_WITH). A stockpile is re-lashed with cord, a furnace patched with stone as well as
-    brick; nobody mends a factory with a steam engine."""
-    mats = [m for m, _ in DESIGNS[design].materials]
+    brick; nobody mends a factory with a steam engine. `plan`: what this one was built from (ideas.plan_of: an
+    invented building is mended with its own materials, not its base's)."""
+    mats = [m for m, _ in (plan if plan is not None else DESIGNS[design].materials)]
     if not IT.ITEM_USES:
         return mats[:1]
     return mats[:1] + [m for m in mats[1:] if m in MEND_WITH]
 
 
-def mend_material(a: Agent, design: str) -> Optional[str]:
+def mend_material(a: Agent, design: str, plan=None) -> Optional[str]:
     """The first of those the chit is carrying."""
-    return next((m for m in mend_materials(design) if a.has(m)), None)
+    return next((m for m in mend_materials(design, plan) if a.has(m)), None)
 
 
 def _do_repair(world, a: Agent, step, s) -> str:
@@ -3730,10 +3735,11 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not st:
         return "nothing nearby needs repair"
     d = DESIGNS[st.design]
-    mat = mend_material(a, st.design)
+    plan = IDEAS.plan_of(world, st)
+    mat = mend_material(a, st.design, plan)
     if mat is None:
-        first = d.materials[0][0]
-        others = [world.item_name(m) for m in mend_materials(st.design) if m != first]
+        first = plan[0][0]
+        others = [world.item_name(m) for m in mend_materials(st.design, plan) if m != first]
         return f"I need {world.item_name(first)}" + (f" (or {', '.join(others)})" if others else "") + f" to repair the {d.name}"
     mv = _goto_structure(world, a, s, st)
     if mv == "blocked":
@@ -3746,7 +3752,7 @@ def _do_repair(world, a: Agent, step, s) -> str:
     if not _work(a, a.skill_speed("building"), 6.0):
         return RUNNING
     a.remove(mat, 1)
-    if mat != d.materials[0][0]:
+    if mat != plan[0][0]:
         a.bump(f"mended_with_{mat}")
     was_ruin = st.durability <= 0
     st.durability = min(100.0, st.durability + 45)

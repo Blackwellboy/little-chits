@@ -491,7 +491,8 @@ def scene(world, a: Agent) -> str:
     sts = [s for s in near if s.design != "campfire" or s in fires][:10]
     for s in sts:
         d = DESIGNS[s.design]
-        nm = f"{s.title} (a {d.name})" if s.title else d.name  # (an invented building: its own name, and what it is)
+        title = IDEAS.title_of(s)
+        nm = f"{title} (a {d.name})" if title else d.name  # (an invented building: its own name, and what it is)
         who = world.agents.get(s.founder) or world.dead.get(s.founder)
         by = f" by {who.name}" if who else ""
         if not s.complete:
@@ -518,9 +519,9 @@ def scene(world, a: Agent) -> str:
         if s.id == a.home:
             state.append("your home")
         state += BLD.state_words(world, s, a)
-        knows = f"idea:{s.idea}" in a.knows if s.idea else a.knows_design(s.design)
+        knows = f"idea:{s.idea}" in a.knows if IDEAS.idea_of(world, s) else a.knows_design(s.design)
         known = "" if knows else " (you don't know how to build this)"
-        lines.append(f"- {nm if s.title else d.name.capitalize()} {s.id}{by}, {_where(a, *s.center())}{': ' + ', '.join(state) if state else ''}{known}")
+        lines.append(f"- {nm if title else d.name.capitalize()} {s.id}{by}, {_where(a, *s.center())}{': ' + ', '.join(state) if state else ''}{known}")
     signs = sorted((g for g in getattr(world, "signs", {}).values() if max(abs(g["x"] - a.x), abs(g["y"] - a.y)) <= SIGHT),
                    key=lambda g: max(abs(g["x"] - a.x), abs(g["y"] - a.y)))[:5]
     if signs:

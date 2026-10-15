@@ -15,20 +15,25 @@ worship, defence, trade, making, light), and that chooses its **base**: the most
 somebody in this world already knows (shelter: two-storey house, brick house, longhouse, then hut; a shrine only where
 the world has religion). If no kind it names has a known base, it is judged as an item, as before.
 
-- Its parts must be building materials. They say what it is built from, scaled up until it takes at least as many
-  pieces as the base; a base material none of them is (a brick house's bricks) is still needed. Never cheaper.
+- Its parts must be building materials. They say what it is built from, scaled up until they are as many pieces as
+  the base takes, and it never takes less of any of the base's own materials than the base does (a two-storey house
+  of wood still needs its 16 bricks and 4 glass). Never cheaper, in any material; it is mended with its own.
 - The inventor learns `idea:<key>`. Teaching, writing and reading pass it on like any other knowledge, and whoever
-  helps build one learns it. The parts are kept: they were only the model of it.
+  helps build one learns it (an idea a voyager brought from another world is not taught or written: nobody here could
+  find it). The parts are kept: they were only the model of it. A new idea is one `invention` event and one entry in
+  `world.first`, as an item invention's recipe is; its key comes from a saved counter, so it never reuses one.
 - `build` takes the idea's name (or key) from a chit that knows it. The structure it puts up has the **base's**
   design, so every rule keyed by a design's name (homes, stores, stations, radii, upkeep, ages) treats it as that
   building, unchanged. Two optional structure fields, `idea` and `title`, say what it is; the site needs the idea's
   materials. Its completion says "Ash built the first Wind Hall, Rible's idea".
 - Model prompts list the ideas a chit knows among what it can build, by name (what it is a kind of only when the chit
   knows that building too). Instinct never invents, but a chit that knows an idea builds it in place of its base one
-  time in two when it carries enough for both (`ideas.INSTINCT_SHARE`, by a hash: nothing random is drawn).
+  time in two when it carries enough for both (`ideas.INSTINCT_SHARE`, by a hash: nothing random is drawn), never
+  when the build is a planned upgrade of its home.
 - The map draws the base's sprite a shade warmer with a pennant on the roof, its name on hover and in the inspector;
   the Knowledge panel lists each world's building ideas with their inventors.
-- `ideas.INVENTED_BUILDINGS` switches it off (`tests/identity_runner.py` does). Nothing is ever added to `DESIGNS`.
+- `ideas.INVENTED_BUILDINGS` switches it off (`tests/identity_runner.py` does): a standing invented building is then
+  shown and treated as its base. Nothing is ever added to `DESIGNS`.
 
 ## Why a world-local design is still not built
 
@@ -58,7 +63,7 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 
 ### 1. Direct indexing of the shared table: `DESIGNS[...]`
 
-**153** occurrences in 22 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
+**150** occurrences in 22 files. Each must become `world.design(key)` (and each needs a `world` in scope; `agent.py`,
 `story/*` and the module-level tables do not have one).
 
 | file (under `server/chits/`) | occurrences | lines |
@@ -66,25 +71,25 @@ Counted on this branch by `tests/test_invent_stations.py` (the test fails if the
 | `app.py` | 2 | 167, 216 |
 | `brain/builder.py` | 12 | 64, 71, 83, 103, 104, 145, 260, 393, 408, 414, 470, 477 |
 | `brain/civic.py` | 5 | 59, 68, 114, 174, 385 |
-| `brain/instinct.py` | 22 | 547, 809, 819, 848, 915, 937, 956, 970, 971, 979, 987, 998, 1065, 1066, 1102, 1149, 1166, 1274, 1280, 1311 |
+| `brain/instinct.py` | 20 | 548, 811, 821, 850, 917, 959, 973, 974, 982, 1002, 1069, 1070, 1107, 1156, 1173, 1281, 1287, 1318 |
 | `brain/outposts.py` | 1 | 68 |
 | `brain/pioneers.py` | 1 | 30 |
-| `brain/prompt.py` | 7 | 417, 418, 493, 736, 755 |
+| `brain/prompt.py` | 7 | 417, 418, 493, 737, 756 |
 | `brain/surplus.py` | 1 | 139 |
 | `brain/voyages.py` | 1 | 67 |
 | `diag.py` | 2 | 580, 662 |
 | `runtime.py` | 1 | 1154 |
-| `sim/actions.py` | 33 | 792, 1005, 1270, 1364, 1484, 1518, 1519, 1541, 1560, 1698, 1836, 1906, 2219, 2443, 2459, 2495, 2530, 2532, 2534, 2536, 2548, 2643, 2710, 3136, 3139, 3141, 3296, 3300, 3714, 3732 |
+| `sim/actions.py` | 33 | 792, 1005, 1270, 1364, 1484, 1518, 1519, 1541, 1560, 1698, 1836, 1906, 2223, 2447, 2463, 2499, 2534, 2536, 2538, 2540, 2552, 2647, 2714, 3140, 3143, 3145, 3300, 3304, 3719, 3737 |
 | `sim/agent.py` | 1 | 374 |
 | `sim/buildings.py` | 21 | 183, 184, 200, 213, 219, 220, 222, 274, 275, 287, 289, 294, 296, 298, 369, 384, 397, 522, 965, 966, 1063 |
 | `sim/hall.py` | 1 | 30 |
-| `sim/ideas.py` | 5 | 112, 113, 183, 203, 229 |
-| `sim/projects.py` | 15 | 245, 417, 524, 537, 647, 671, 680, 684, 686, 941, 986, 996, 1000, 1007, 1058 |
+| `sim/ideas.py` | 6 | 114, 117, 215, 221, 247, 275 |
+| `sim/projects.py` | 14 | 246, 525, 538, 648, 672, 681, 685, 687, 942, 987, 997, 1001, 1008, 1059 |
 | `sim/wants.py` | 1 | 89 |
 | `sim/world.py` | 8 | 254, 1055, 1488, 1517, 1534, 1677, 1868, 1872 |
 | `story/divergence.py` | 1 | 29 |
 | `story/recap.py` | 2 | 44, 74 |
-| `views.py` | 10 | 18, 44, 49, 73, 152, 176, 302, 310, 361 |
+| `views.py` | 9 | 19, 45, 50, 74, 153, 303, 311, 362 |
 
 (Line numbers are those of the commit that last changed this table; `grep -n 'DESIGNS\[' -r server/chits` gives today's.
 `sim/ideas.py` is the variants' own module: it reads the base's entry, which is always in the shared table.)
