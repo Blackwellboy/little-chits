@@ -599,6 +599,9 @@ def _speed(world, a: Agent) -> float:
 # Transport (issue #9, #168): what rolls goes faster on a road (a cart or wagon a little, a motor car far faster), so
 # roads matter and the late ages travel differently from the first. Off, a road is as fast for everyone.
 TRANSPORT = True
+# A/B (2026-10-16, tools/harness/ab.py, 16 seeds x 200 days, paired, only this differs): discoveries 90.8 > 91.4 (11 up,
+# 2 down), age 9.31 > 9.50, population 57.6 > 58.5, stored 6915 > 7452, starved 1 > 1. The gain is carts and wagons on
+# roads: one motor car was made in 16 worlds (its hunch is rare). On.
 ROAD_SPEED = {"motor_car": 2.5, "wagon": 1.3, "cart": 1.3}  # the best one held counts
 
 
