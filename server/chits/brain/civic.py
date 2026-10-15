@@ -177,6 +177,8 @@ def make_plan(world, a: Agent, p: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not steps or len(steps) > 5:
             return None
         deliver = {"do": "help", "site": site.id} if site else {"do": "store", "what": key} if pile else None
+        if key == "rocket":
+            deliver = None  # (it waits in hand for its launch, brain/launches.py)
         return {"goal": f"make {what} for the village's {where}", "thought": f"The {where} needs {left} more {what}. I know how to make it.",
                 "steps": steps + ([deliver] if deliver else [])}
     # what it's made of is word of mouth from those who make it: only where chits talk, and only if someone does

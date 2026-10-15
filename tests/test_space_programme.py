@@ -5,6 +5,7 @@ and a village with a pad and someone who knows the rocket takes on making the ne
 import pytest
 
 from chits import views
+from chits.brain import civic
 from chits.brain import launches as LAUNCH
 from chits.brain import prompt as P
 from chits.brain.parse import normalize_step, parse_plan
@@ -79,6 +80,13 @@ def test_a_rocket_is_put_together_at_the_launch_pad_from_its_sections_and_fuel()
     assert _run(w, a, {"do": "work", "at": "pad", "what": "rocket"}) == ACT.DONE, a.last_result  # (as civic plans it)
     assert pile.storage.get("rocket", 0) + a.inventory.get("rocket", 0) == 1
     assert not pile.storage.get("rocket_part") and pad.produced.get("rocket") == 1
+    # stores with no room for it: the rocket waits in hand for its launch
+    pile.storage.clear()
+    pile.storage.update({"stone": 10_000, "rocket_part": 2, "fuel": 2})
+    a.inventory.clear()
+    assert ACT.stockpile_room(pile, "rocket") == 0
+    assert _run(w, a, {"do": "work", "at": "pad", "what": "rocket"}) == ACT.DONE, a.last_result
+    assert a.inventory.get("rocket") == 1 and pad.produced.get("rocket") == 2
     # ...and nowhere else
     a.inventory.clear()
     w.structures.pop(pad.id)
@@ -186,7 +194,7 @@ def test_a_village_with_a_pad_and_the_rocket_makes_the_next_one_materials_first(
     w, ags = _world(n=5)
     a = ags[0]
     sc = projects._default(w)
-    rocket_c = lambda: [c for c in projects.candidates(w, sc) if c[3].startswith("for the next launch")]
+    rocket_c = lambda: [c for c in projects.candidates(w, sc) if c[3] == "the space programme"]
     ags[0].learn("recipe:rocket", "taught", w.tick)
     for o in ags:
         o.learn("recipe:rocket_part", "taught", w.tick)
@@ -202,17 +210,19 @@ def test_a_village_with_a_pad_and_the_rocket_makes_the_next_one_materials_first(
     c = rocket_c()
     assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket_part", {"n": 2, "launch": 1})]
     p = projects.start(w, "make", "rocket_part", c[0][3], None, "need", c[0][4], sc)
-    assert projects.title(p) == "make 2 rocket section for the next launch"
+    assert projects.title(p) == "make 2 rocket sections for the next launch"
     projects._put(w, sc, None)
     pile.storage.update({"rocket_part": 2})
     c = rocket_c()
     assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket", {"n": 1, "launch": 1})]
     p = projects.start(w, "make", "rocket", c[0][3], None, "need", c[0][4], sc)
     assert projects.title(p) == "make a rocket for the next launch" == projects._heard(p)
+    plan = civic.make_plan(w, a, p)
+    assert plan["steps"][-1] == {"do": "work", "at": "pad", "what": "rocket", "qty": 1}  # (kept in hand to fly)
     pile.storage["rocket"] = 1
     projects._track_one(w, sc, p)  # the rocket is made: done
     done = [e for e in w.events if e.kind == "project_done"][-1]
-    assert "ready for the next launch" in done.text
+    assert done.text.startswith("Village project done: a rocket is ready for the next launch")
     assert not rocket_c()  # (one waits for its launch)
     del pile.storage["rocket"]
     for o in ags:
@@ -282,6 +292,6 @@ def test_switched_off_the_pad_is_the_one_launch_as_before(monkeypatch):
     assert LAUNCH.options(w, a) == []
     a.learn("recipe:rocket", "taught", w.tick)
     assert '"do":"launch"' not in P.verb_guide(w, a)
-    assert not [c for c in projects.candidates(w) if c[3].startswith("for the next launch")]
+    assert not [c for c in projects.candidates(w) if c[3] == "the space programme"]
     space.daily(w)
     assert w.space == {}

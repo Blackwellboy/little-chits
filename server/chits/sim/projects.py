@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
-from .actions import STATION_REACH
+from .actions import COUNTABLE, STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
 from . import ideas as IDEAS
@@ -733,7 +733,7 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
         add(score + (0.5 if d in sites else 0.0), "build", d, "the village has none", extra)
     step = _rocket_step(world, sc, recipes, have)
     if step:
-        add(ROCKET, "make", step[0], "for the next launch of the space programme", step[1])
+        add(ROCKET, "make", step[0], "the space programme", step[1])
     return sorted(((s, k, key, why, ex) for (k, key), (s, why, ex) in out.items()), key=lambda c: (-c[0], c[1], c[2]))
 
 
@@ -754,13 +754,18 @@ def _rocket_step(world, sc: Scope, recipes: set, have: set) -> Optional[Tuple[st
     return "rocket", {"n": 1, "launch": 1}
 
 
+def _launch_words(p: Dict[str, Any]) -> str:
+    """"a rocket", "2 rocket sections", "2 rocket fuel"."""
+    k, n = p["key"], p["n"]
+    return f"a {item_name(k)}" if n == 1 else f"{n} {item_name(k)}{'s' if k in COUNTABLE else ''}"
+
+
 def title(p: Dict[str, Any]) -> str:
     """The project as the observer sees it (the real names)."""
     if p["kind"] == "build":
         return f"build a {DESIGNS[p['key']].name}"
     if p["kind"] == "make" and p.get("launch"):
-        what = f"a {item_name(p['key'])}" if p["n"] == 1 else f"{p['n']} {item_name(p['key'])}"
-        return f"make {what} for the next launch"
+        return f"make {_launch_words(p)} for the next launch"
     if p["kind"] == "make":
         if p.get("for") not in DESIGNS:  # (an ingredient to try for a discovery, not a building's material)
             return f"make {p['n']} {item_name(p['key'])} to try for something new"
@@ -1075,10 +1080,11 @@ def complete(world, structure, sc: Optional[Scope] = None) -> None:
         for aid in contrib:
             wants.add_renown(world, world.agents[aid], 1.0)
         names = [world.agents[aid].name for aid in sorted(contrib, key=lambda i: -made.get(i, 0))]
-        text = (f"Village project done: {p['n']} {item_name(p['key'])} are ready "
-                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "for the next launch"
-                   if p.get("launch") else "to try for something new")
-                + (f", made by {_join_names(names)}" if names else ""))
+        text = (f"Village project done: {_launch_words(p)} {'is' if p['n'] == 1 else 'are'} ready for the next launch"
+                if p.get("launch") else
+                f"Village project done: {p['n']} {item_name(p['key'])} are ready "
+                + (f"for the {DESIGNS[p['for']].name}" if p.get("for") in DESIGNS else "to try for something new"))
+        text += f", made by {_join_names(names)}" if names else ""
         actor = max(contrib, key=lambda i: made.get(i, 0)) if contrib else None
     elif p["kind"] == "find":
         finders = [a for a in imaginers(world, DESIGNS[p["for"]], sc) if p["key"] in a.familiar]

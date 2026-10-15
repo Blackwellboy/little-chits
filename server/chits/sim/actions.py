@@ -1439,7 +1439,8 @@ def plan_bill(world, a: Agent, kinds: Optional[Set[str]] = None, target=None, pr
                 continue
             # the goods need somewhere to go: kiln shifts into full stores left chits holding 22 charcoal, and some
             # starved beside the grain with no hand free to take it
-            n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
+            if r.key != "rocket":  # (a rocket is not stored for long: it waits in hand for its launch from the pad)
+                n = min(n, sum(stockpile_room(p, r.key, world.catalog) for p in piles) // r.qty)
             if n < 1:
                 full.append(world.item_name(r.key))
                 continue

@@ -17,7 +17,7 @@ MOON_MOOD = 20.0  # everyone's lift on the day of the Moon landing
 STATION_MOOD = 2.0  # ...and each day there is a station in orbit
 EXPEDITION_MOOD = 5.0
 CREW = 3  # the launcher and up to two grown-ups standing by
-CREW_REACH = 6
+CREW_REACH = 8
 MISSIONS = ("satellite", "moon", "station")  # the 2nd, 3rd and 4th launch; after that, expeditions
 WHERE = ("round the far side of the Moon", "out to the red planet", "past the ringed giant",
          "to the comet's tail", "far beyond the last bright planet")
