@@ -59,6 +59,9 @@ def main(argv):
 
     if hasattr(projects, "MAKE_FIRST"):
         projects.MAKE_FIRST = bool(make_first)
+    for switch in ("DEED_ROAD", "ISLAND_WORKS"):  # (the road to an age by its deed; great works counted island-wide)
+        if hasattr(projects, switch):
+            setattr(projects, switch, False)
     from chits.brain import instinct as instinct_rules
     from chits.sim import actions
 

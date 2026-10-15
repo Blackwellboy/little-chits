@@ -38,6 +38,13 @@ JOIN_REACH = STATION_REACH  # a chit (or a site) outside every village belongs t
 STATION_USE = STATION_REACH  # a station this near a village's middle is one its chits can use (as far as they walk to one)
 STORE_USE = STORE_SIGHT  # stores and other buildings this near a village's middle count as its own (as far as a chit sees stores)
 MAKE_FIRST = True  # a lacking building whose made materials aren't at hand is first "make N of X" (False: as before F32)
+# By deeds (world.ERA_BY_DEEDS), the late ages are earned by what stands: a machine at work, a power station lighting a
+# lamp, a launch. The road to the next age leads to that deed, not only to the idea: a village that knew the dynamo had
+# no project for 75 days while the Electric Age waited on a power station and a street lamp (issue #168).
+DEED_ROAD = True
+# A great work (min_pop) is the island's: the build verb counts everyone living here, but a village counted only its
+# own residents, and pioneers leave a village at 40, so no village ever took on a launch pad (min_pop 40) (#168).
+ISLAND_WORKS = True
 WORLD = "world"  # the slot of a world where no village stands yet
 LEGACY = ""  # the slot an older save's single project is loaded into, until the next look at the villages
 
@@ -492,7 +499,7 @@ def next_step(world, designs: set, recipes: set, have: set, kind: str, key: str,
                 return next_step(world, designs, recipes, have, "recipe", pv, depth + 1, make, sc)
         raw = _unhandled(world, d, sc)
         return ("find", raw, {"for": key}) if raw else None  # otherwise nobody has had the idea yet
-    if (len(world.agents) if sc is None else sc.pop) < d.min_pop:
+    if (len(world.agents) if sc is None or ISLAND_WORKS else sc.pop) < d.min_pop:
         return None
     if make:
         for m, n in d.materials:
@@ -502,6 +509,35 @@ def next_step(world, designs: set, recipes: set, have: set, kind: str, key: str,
                     return next_step(world, designs, recipes, have, "design", st, depth + 1, make, sc)
                 return "make", m, {"n": n, "for": key}
     return "build", key, {}
+
+
+def age_targets(world, age: int) -> List[Tuple[str, str]]:
+    """What earns the age at index `age`, in order: its key thing, then (by deeds, DEED_ROAD) the buildings whose
+    standing is the deed (world._record_deed_ages). A target already done is skipped by next_step."""
+    from .world import ERAS, MACHINE_AGE_MACHINES
+
+    kind, key = ERAS[age][1].split(":", 1)
+    out = [(kind, key)]
+    if not (DEED_ROAD and getattr(world, "era_by_deeds", False) and getattr(world, "age_rules", 1) >= 2):
+        return out
+    if f"{kind}:{key}" in getattr(world, "deed_ages", {}):
+        return out
+    if key == "engine":
+        out += [("design", m) for m in MACHINE_AGE_MACHINES]  # any one of them (the first that can be begun)
+    elif key == "dynamo":
+        out += [("design", "power_station"), ("design", "street_lamp")]  # both, standing at once
+    return out
+
+
+def age_step(world, designs: set, recipes: set, have: set, age: int, sc: Optional[Scope] = None,
+             skipped=lambda step: False) -> Optional[Step]:
+    """The first step still to take on the road to the age at index `age` (see age_targets), passing over a step
+    the village has set aside for now (a steam pump with no well to serve: then a sawmill)."""
+    for kind, key in age_targets(world, age):
+        step = next_step(world, designs, recipes, have, kind, key, sc=sc)
+        if step and not skipped(step):
+            return step
+    return None
 
 
 def road(world) -> Optional[Dict[str, Any]]:
@@ -553,10 +589,18 @@ def road(world) -> Optional[Dict[str, Any]]:
                 visit(k[0], k[1], depth + 1)
         steps.append({"kind": kind, "key": key, "name": name(kind, key), "done": False, "needs": needs})
 
-    kind, key = target.split(":", 1)
-    if done(kind, key):
+    from .world import MACHINE_AGE_MACHINES
+
+    todo, machine = [], False
+    for t in age_targets(world, i + 1):
+        if done(*t) or (machine and t[1] in MACHINE_AGE_MACHINES):
+            continue  # (any one machine at work earns the age: the first is shown)
+        machine = machine or t[1] in MACHINE_AGE_MACHINES
+        todo.append(t)
+    if not todo:
         return None
-    visit(kind, key, 0)
+    for kind, key in todo:
+        visit(kind, key, 0)
     text = f"{age}: " + " · ".join(f"{s['name']} {'✓' if s['done'] else '✗'}" + (f" ({s['needs']})" if s["needs"] else "")
                                    for s in steps)
     return {"age": age, "steps": steps, "text": text}
@@ -640,8 +684,8 @@ def candidates(world, sc: Optional[Scope] = None) -> List[Cand]:
 
     i, _ = world.era()
     if i + 1 < len(ERAS):
-        kind, key = ERAS[i + 1][1].split(":", 1)
-        step = next_step(world, designs, recipes, have, kind, key, sc=sc)
+        step = age_step(world, designs, recipes, have, i + 1, sc,
+                        skipped=lambda st: skip.get(f"{st[0]}:{st[1]}", 0) > world.tick)
         if step:
             why = f"on the road to the {ERAS[i + 1][0]}"
             if step[0] in ("make", "find") and step[2].get("for") in DESIGNS:

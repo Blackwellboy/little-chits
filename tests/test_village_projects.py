@@ -10,6 +10,7 @@ from chits.brain.instinct import Instinct
 from chits.brain.mind import apply_reflection
 from chits.sim import actions, projects, research, wants
 from chits.sim.actions import DONE, RUNNING
+from chits.sim.items import DESIGNS
 from chits.sim.world import Tablet, World
 
 
@@ -98,9 +99,19 @@ def test_the_road_to_the_next_age_names_its_blocker():
         assert next(s for s in r["steps"] if s["name"] == done)["done"]
     forge = next(s for s in r["steps"] if s["name"] == "forge")
     assert not forge["done"] and forge["needs"] == "needs 7 more brick, 3 more iron"
-    assert names.index("forge") < names.index("steel") < names.index("gear") < names.index("steam engine") == len(names) - 1
+    assert names.index("forge") < names.index("steel") < names.index("gear") < names.index("steam engine")
+    # by deeds (projects.DEED_ROAD) the road goes on from the idea to a machine at work, which earns the age
+    assert names[-1] == DESIGNS["steam_pump"].name
     assert "forge ✗ (needs 7 more brick, 3 more iron) · steel ✗ · gear ✗" in r["text"]
     assert views.progress(w, [])["road"]["text"] == r["text"]
+
+
+def test_without_the_deed_road_it_ends_at_the_idea(monkeypatch):
+    monkeypatch.setattr(projects, "DEED_ROAD", False)
+    w = _world()
+    _iron_age(w)
+    names = [s["name"] for s in projects.road(w)["steps"]]
+    assert names.index("steam engine") == len(names) - 1
 
 
 def test_a_project_makes_enough_of_a_material_before_the_building():
