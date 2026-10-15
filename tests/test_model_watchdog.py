@@ -142,3 +142,28 @@ def test_a_hiccup_at_high_speed_is_not_news(tmp_path):
     assert outage(day, 2 * M.DOWN_AFTER_S, M.DOWN_AFTER_FAILS)  # all three: down
     assert _said(w) == ["World A's mind m has stopped answering; the chits are running on instinct",
                         "World A's mind m is answering again"]
+
+
+def test_a_loaded_save_starts_the_watch_again(tmp_path):
+    """A save from later in the game, loaded while the model was failing, kept the old world's failing_since: its
+    model was "down" from its first tick (review of #170). Another world or timeline starts a new watch."""
+    rt = Runtime(tmp_path)
+    w = next(iter(rt.worlds.values()))
+    b = rt.mind.upsert({"id": "env", "label": "env", "base_url": "http://127.0.0.1:9/v1"})
+    rt.mind.assign(w, "env")
+    rt.mind.clock = Clock()
+    w.tick = 5000
+    sid = rt.save_point("later")["id"]  # (as if the save came from later in the game than where the world is now)
+    w.tick = 10
+    b.stats.consecutive_fail = 5
+    for _ in range(M.DOWN_AFTER_TICKS + 1):
+        w.tick += 1
+        rt.mind.watch(w)
+    assert rt.mind.down_state(w.id)["down"]
+    assert rt.restore_point(sid)
+    w2 = rt.worlds[w.id]
+    assert w2.tick >= 5000
+    rt.mind.watch(w2)
+    assert rt.mind.down_state(w.id) == {"down": False, "failing_since": w2.tick}  # still failing, but only from now
+    rt.store.db.close()
+    asyncio.run(rt.mind.close())

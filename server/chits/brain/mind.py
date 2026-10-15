@@ -485,8 +485,9 @@ class Mind:
         b = self.brains.get(self.world_brain.get(world.id, INSTINCT))
         st = self.down.get(world.id)
         failing = b is not None and b.cfg.enabled and b.stats.consecutive_fail > 0
-        if st is not None and (not failing or st["brain"] != b.id or world.tick < st["since"]):
-            del self.down[world.id]  # (answering again, another brain now, or the world went back in time)
+        line = (getattr(world, "uuid", ""), getattr(world, "epoch", ""))  # (a loaded save or a new game: a new line)
+        if st is not None and (not failing or st["brain"] != b.id or world.tick < st["since"] or st["line"] != line):
+            del self.down[world.id]  # (answering again, another brain, or another world or timeline in its place)
             if st["told"] and b is not None and b.id == st["brain"] and b.cfg.enabled and not failing:
                 world.emit("mind", f"World {world.id}'s mind {b.label} is answering again", 4, brain=b.id,
                            down_days=round((world.tick - st["since"]) / TICKS_PER_DAY, 1))
@@ -495,7 +496,7 @@ class Mind:
             return
         now = self.clock()
         if st is None:
-            st = self.down[world.id] = {"brain": b.id, "since": world.tick, "since_s": now, "told": False}
+            st = self.down[world.id] = {"brain": b.id, "since": world.tick, "since_s": now, "told": False, "line": line}
         if not st["told"] and world.tick - st["since"] >= DOWN_AFTER_TICKS and now - st["since_s"] >= DOWN_AFTER_S \
                 and b.stats.consecutive_fail >= DOWN_AFTER_FAILS:
             st["told"] = True
