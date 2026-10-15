@@ -137,7 +137,7 @@ def wilcoxon_signed(diffs: Sequence[float]) -> Dict[str, float]:
         above = sum(c for s, c in dist.items() if s >= wi)
         p = min(1.0, 2 * min(below, above) / total)
         return {"n": n, "w_plus": w, "p": p, "min_p": 2 / total}
-    # normal approximation, tie correction: var = [n(n+1)(2n+1) - sum(t**3 - t)] / 48, in rank units
+    # normal approximation, tie correction, in original rank units: var = n(n+1)(2n+1)/24 - sum(t**3 - t)/48
     i, ties = 0, []
     sr = sorted(ranks)
     while i < n:
@@ -147,7 +147,7 @@ def wilcoxon_signed(diffs: Sequence[float]) -> Dict[str, float]:
         if j > i:
             ties.append(j - i + 1)
         i = j + 1
-    var = (n * (n + 1) * (2 * n + 1) - sum(t ** 3 - t for t in ties)) / 48
+    var = n * (n + 1) * (2 * n + 1) / 24 - sum(t ** 3 - t for t in ties) / 48
     if var <= 0:
         return {"n": n, "w_plus": w, "p": 1.0, "min_p": 0.0}
     z = (w - n * (n + 1) / 4) / math.sqrt(var)
