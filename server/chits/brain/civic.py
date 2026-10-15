@@ -217,6 +217,7 @@ RIDDLE_STATION = (("metal", "furnace"), ("fired", "kiln"), ("black", "kiln"), ("
 COUNTED_HUNCHES = (
     ("makes lightning", (({"turns wheels"}, 1), ({"pulls iron"}, 1), ({"conducts lightning"}, 2))),
     ("hauls", (({"large"}, 1), ({"round"}, 2), ({"dark"}, 1))),
+    ("self-moving", (({"hauls"}, 1), ({"turns wheels"}, 1), ({"springy"}, 2))),  # a wagon, an engine, steel
 )
 # ...and what it might be made of: one ingredient with any of each set of properties (the last one maybe not)
 HUNCHES = (

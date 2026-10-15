@@ -596,6 +596,19 @@ def _speed(world, a: Agent) -> float:
     return sp
 
 
+# Transport (issue #9, #168): what rolls goes faster on a road (a cart or wagon a little, a motor car far faster), so
+# roads matter and the late ages travel differently from the first. Off, a road is as fast for everyone.
+TRANSPORT = True
+ROAD_SPEED = {"motor_car": 2.5, "wagon": 1.3, "cart": 1.3}  # the best one held counts
+
+
+def road_speed(a: Agent) -> float:
+    """How much faster this chit crosses a road tile: by the best rolling thing it carries."""
+    if not TRANSPORT:
+        return 1.0
+    return max((v for k, v in ROAD_SPEED.items() if a.inventory.get(k, 0) > 0), default=1.0)
+
+
 def move_toward(world, a: Agent, s: Dict[str, Any], goals: Set[Tuple[int, int]]) -> str:
     """Advance along a path to any goal tile. Returns 'arrived', 'moving' or 'blocked'."""
     if (a.x, a.y) in goals:
@@ -609,9 +622,12 @@ def move_toward(world, a: Agent, s: Dict[str, Any], goals: Set[Tuple[int, int]])
     a.activity = "walking"
     a.move_acc += _speed(world, a)
     moved = 0
+    fast = road_speed(a)
     while a.path and moved < 4:
         nx, ny = a.path[0]
         c = world.move_cost(nx, ny) * (1.41 if nx != a.x and ny != a.y else 1.0)
+        if fast > 1.0 and ny * world.w + nx in world.roads:
+            c /= fast
         if a.move_acc < c:
             break
         if not world.passable(nx, ny):

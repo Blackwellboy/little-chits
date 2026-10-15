@@ -108,7 +108,7 @@ def _stock_near(world, a: Agent, item: str, radius: int = 25) -> int:
     return sum(p.storage.get(item, 0) for p in world.structures_near(a.x, a.y, radius, "stockpile") if p.functional and _reachable(world, a, p))
 
 
-CARRIERS = ("wagon", "cart", "sled")  # best first; the basket is made with the first tools
+CARRIERS = ("motor_car", "wagon", "cart", "sled")  # best first; the basket is made with the first tools
 
 
 def _better_carrier(world, a: Agent) -> Optional[tuple]:
@@ -1462,7 +1462,7 @@ class Instinct:
 
     def _experiment(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
         """Blind trial-and-error, nudged by the world's feedback in past attempts."""
-        haul = self._haul_idea(world, a, rng)
+        haul = self._haul_idea(world, a, rng) or self._motor_idea(world, a, rng)
         if haul:
             return haul
         if rng.random() < 0.35:
@@ -1555,6 +1555,23 @@ class Instinct:
         if not bag or civic._combo(bag, "workshop") in set(a.failed_experiments) | set(world.village_failed(a)):
             return None
         return self._exp_plan(a, sorted(bag), "workshop", "A cart with more wheels, and iron to hold them... it might haul more.")
+
+    def _motor_idea(self, world, a: Agent, rng) -> Optional[Dict[str, Any]]:
+        """A wagon that pulls itself (actions.TRANSPORT): a chit who has handled a wagon and knows the steam engine and
+        steel, by a factory, may try "a wagon, an engine to turn its wheels, steel to hold it"."""
+        from ..sim import actions as ACT
+
+        if not ACT.TRANSPORT or a.knows_recipe("motor_car") or "wagon" not in a.familiar                 or not (a.knows_recipe("engine") and a.knows_recipe("steel")) or rng.random() >= HAUL_TRY:
+            return None
+        if not any(s.functional and "factory" in s.stations() and _reachable(world, a, s)
+                   for s in world.structures_near(a.x, a.y, STATION_REACH)):
+            return None
+        from . import civic
+
+        bag = civic._hunch(world, rng, set(world.item("motor_car").props), civic._handled(world, a))
+        if not bag or civic._combo(bag, "factory") in set(a.failed_experiments) | set(world.village_failed(a)):
+            return None
+        return self._exp_plan(a, sorted(bag), "factory", "A wagon with an engine to turn its wheels... it could pull itself.")
 
     def _exp_plan(self, a: Agent, bag: List[str], station: Optional[str], thought: str) -> Optional[Dict[str, Any]]:
         from ..sim.items import normalize_item
