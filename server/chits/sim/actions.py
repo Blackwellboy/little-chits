@@ -278,8 +278,11 @@ PASSING_STORE = 3  # an eat step on its way to one store takes food from another
 # Tried first and dropped: an eat step that took the store nearest on foot ignoring every mark, and made the walk
 # when nothing was close enough to forage. The marks were protecting chits: it sent them on 100-136-step walks round
 # lakes (seed 42 starved 11, then 5 > 0 on main) and from fishing (fish 117 > 46, discoveries 66 > 59, seed 1).
-# (False: as before; tests/identity_runner.py keeps it off)
-STARVING_STORES = False
+# **On.** A/B against main 8a12b11, 24 seeds x 60 days: discoveries 77.1 > 77.6, era 8.08 > 8.00, pop 58.4 > 57.6,
+# starved 0 > 0 (main starves rarely by day 60), machine age reached 19 > 19 seeds, electric 8 > 7. On the instinct-invents
+# branch's seed 32 (the six deaths above), 60 days: starved 6 (all preventable) > 0, discoveries 80 > 84, era 7 > 8,
+# pop 56 > 60. (False: as before; tests/identity_runner.py keeps it off)
+STARVING_STORES = True
 WILD_NEAR = 6  # wild food this close (as the crow flies) is still worth a try when the store's walk can't be spared
 WILD_BELOW = 16  # ...and only a starving chit (the reflex's own threshold) treats wild food as a gamble
 WALK_LOOK = 4  # stores measured on foot, nearest as the crow flies first
