@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dropRepeatedIdeas, instinctChip, thinkingLine, type Thinking } from "../../web/src/ui/watch";
+import { dropRepeatedIdeas, escapeClosesInspector, holdOrder, instinctChip, thinkingLine, type Thinking } from "../../web/src/ui/watch";
 
 const t = (p: Partial<Thinking>): Thinking => ({ brain: "m1", steps: 100, model_pct: 40, body_pct: 30, routine_pct: 20, instinct_pct: 10,
   fallback_pct: 0, on_instinct: false, why: "", ...p });
@@ -44,5 +44,29 @@ describe("dropRepeatedIdeas", () => {
   it("leaves other learning alone", () => {
     const evs = [ev(1, "learned", "recipe:cord", "taught"), ev(2, "learned", "recipe:cord", "taught"), ev(3, "learned", "recipe:cord", "insight")];
     expect(dropRepeatedIdeas(evs).map((e) => e.seq)).toEqual([1, 2, 3]);
+  });
+});
+
+// 👥 the People list re-sorted at speed under the pointer, and a click picked the wrong chit
+describe("holdOrder", () => {
+  it("keeps the order the list had when the pointer arrived", () => {
+    expect(holdOrder(["a", "b", "c"], ["c", "a", "b"])).toEqual(["a", "b", "c"]);
+  });
+  it("drops the departed and puts newcomers at the end", () => {
+    expect(holdOrder(["a", "b", "c"], ["d", "c", "a"])).toEqual(["a", "c", "d"]);
+  });
+  it("is the fresh order when nothing is held", () => {
+    expect(holdOrder(null, ["c", "a"])).toEqual(["c", "a"]);
+  });
+});
+
+describe("escapeClosesInspector", () => {
+  const base = { selected: true, dialogOpen: false, godTool: false, typing: false };
+  it("closes an open Inspector", () => expect(escapeClosesInspector(base)).toBe(true));
+  it("leaves Escape to a dialog, an armed god tool or a text box, and does nothing with nothing open", () => {
+    expect(escapeClosesInspector({ ...base, dialogOpen: true })).toBe(false);
+    expect(escapeClosesInspector({ ...base, godTool: true })).toBe(false);
+    expect(escapeClosesInspector({ ...base, typing: true })).toBe(false);
+    expect(escapeClosesInspector({ ...base, selected: false })).toBe(false);
   });
 });

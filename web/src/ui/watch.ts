@@ -42,3 +42,19 @@ export function dropRepeatedIdeas<E extends { kind: string; data?: Record<string
     return true;
   });
 }
+
+/** A list's order while the pointer is over it: the order it had when the pointer arrived, the departed dropped and
+ *  newcomers at the end, so a click lands on the row that was under it. `held` null: the fresh order. */
+export function holdOrder(held: string[] | null, ids: string[]): string[] {
+  if (!held) return ids;
+  const now = new Set(ids);
+  const kept = held.filter((id) => now.has(id));
+  const had = new Set(kept);
+  return [...kept, ...ids.filter((id) => !had.has(id))];
+}
+
+/** Does Escape close the Inspector? Not while a dialog is open or a god-mode tool is armed (those take Escape
+ *  first), and not while typing. */
+export function escapeClosesInspector(s: { selected: boolean; dialogOpen: boolean; godTool: boolean; typing: boolean }): boolean {
+  return s.selected && !s.dialogOpen && !s.godTool && !s.typing;
+}

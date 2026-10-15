@@ -9,7 +9,7 @@ import { rowClicked } from "./listPosition";
 import { RulesPanel } from "./Rules";
 import { Portrait } from "./Portrait";
 import { WHY_NOTHING, whyLines, type WhyData } from "./why";
-import { dropRepeatedIdeas, instinctChip, thinkingLine, type Thinking } from "./watch";
+import { dropRepeatedIdeas, holdOrder, instinctChip, thinkingLine, type Thinking } from "./watch";
 
 const KIND_ICON: Record<string, string> = {
   storyteller: "📣", wolf: "🐺", wolf_driven_off: "🛡", discovery: "✦", first: "★", learned: "💡", built: "🏠", site: "📐", helped: "🤝", birth: "🍼", death: "🕯",
@@ -361,7 +361,14 @@ function People({ world }: { world: string }) {
   const [hall, setHall] = useState(false);
   const list = usePoll(() => api<any[]>(`/api/worlds/${world}/agents?dead=${dead}`), 2500, [world, dead]);
   const selected = useUI((s) => s.selected);
-  const sorted = useMemo(() => (list || []).slice().sort((a, b) => (b.alive - a.alive) || ((b.leader ? 1 : 0) - (a.leader ? 1 : 0)) || b.known - a.known), [list]);
+  const fresh = useMemo(() => (list || []).slice().sort((a, b) => (b.alive - a.alive) || ((b.leader ? 1 : 0) - (a.leader ? 1 : 0)) || b.known - a.known), [list]);
+  // at speed the list re-sorted under the pointer and a click picked the wrong chit: it holds still while hovered
+  const held = useRef<string[] | null>(null);
+  const [hover, setHover] = useState(false);
+  const byId = new Map(fresh.map((a) => [a.id, a]));
+  const order = holdOrder(hover ? held.current : null, fresh.map((a) => a.id));
+  if (hover) held.current = order;
+  const sorted = order.map((id) => byId.get(id)!);
   return (
     <div>
       <div className="panel-head">
@@ -369,7 +376,8 @@ function People({ world }: { world: string }) {
         <label className="toggle"><input type="checkbox" checked={dead} onChange={(e) => setDead(e.target.checked)} /> show departed</label>
         <label className="toggle" title="A short biography for every chit that mattered"><input type="checkbox" checked={hall} onChange={(e) => setHall(e.target.checked)} /> 🏛 hall</label>
       </div>
-      {hall ? <Hall world={world} /> : <ul className="people">
+      {hall ? <Hall world={world} /> : <ul className="people" onMouseEnter={() => { held.current = sorted.map((a) => a.id); setHover(true); }}
+        onMouseLeave={() => { held.current = null; setHover(false); }}>
         {sorted.map((a) => (
           <li key={a.id} className={`${selected?.id === a.id ? "sel" : ""} ${a.alive ? "" : "gone"}`}
             onClick={() => {

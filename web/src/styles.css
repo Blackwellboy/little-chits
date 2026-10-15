@@ -632,3 +632,5 @@ button.link { background: none; border: none; padding: 0; color: inherit; text-d
 .toast-fold .ico { font-size: 14px; }
 .toast-fold:hover { background: rgba(40,32,14,0.92); }
 body:has(.modal-bg) .banner { display: none; }
+/* a dead chit's inspector says so */
+.inspector .departed { margin-top: 10px; border-color: rgba(180,190,230,0.35); background: rgba(12,14,24,0.6); font-size: 13px; line-height: 1.45; color: #d8def0; }

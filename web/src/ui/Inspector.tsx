@@ -4,6 +4,7 @@ import { api } from "../net/socket";
 import { useUI, worlds } from "../state/store";
 import type { AgentDetail } from "../types";
 import { Portrait } from "./Portrait";
+import { escapeClosesInspector } from "./watch";
 
 const HOW: Record<string, string> = {
   instinct: "born knowing", discovered: "discovered it", insight: "had the idea", taught: "was taught",
@@ -36,6 +37,18 @@ export function Inspector() {
     const t = setInterval(load, 1000);
     return () => { alive = false; clearInterval(t); };
   }, [selected?.world, selected?.id]);
+
+  useEffect(() => {  // Escape closes it (a dialog or an armed god-mode tool takes Escape first)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const s = useUI.getState();
+      const el = e.target as HTMLElement | null;
+      if (escapeClosesInspector({ selected: !!s.selected, dialogOpen: !!document.querySelector(".modal-bg"), godTool: !!s.godTool,
+        typing: !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable) })) s.set({ selected: null, follow: false });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   if (!selected || !detail) return null;
   const close = () => set({ selected: null, follow: false });
@@ -82,12 +95,18 @@ export function Inspector() {
           <h2>{(a as any).leader && <span title={`the ${(a as any).leader_title}`}>👑 </span>}{a.name} {!a.alive && <span className="dead">† {a.cause}</span>}</h2>
           <p className="muted">{a.age} days old · gen {a.generation}{a.parents.filter(Boolean).length ? ` · child of ${a.parents.filter(Boolean).join(" & ")}` : ""}</p>
           <p className="traits">{a.personality}</p>
-          <div className="row">
+          {a.alive && <div className="row">
             <span className={`src ${src}`} title={a.plan_source}>{src === "model" ? `🧠 ${a.brain_label}` : a.plan_source === "waiting" ? "⏳ waiting for its mind" : a.plan_source === "instinct-filler" ? "⚙ instinct (while it thinks)" : a.plan_source === "instinct-fallback" ? "⚙ instinct (model down)" : "⚙ instinct"}</span>
-            {a.alive && <button className={`follow ${follow ? "on" : ""}`} onClick={() => set({ follow: !follow })}>{follow ? "◉ Following" : "◎ Follow"}</button>}
-          </div>
+            <button className={`follow ${follow ? "on" : ""}`} onClick={() => set({ follow: !follow })}>{follow ? "◉ Following" : "◎ Follow"}</button>
+          </div>}
         </div>
       </div>
+      {!a.alive && (
+        <div className="card departed" role="status">
+          <b>🕯 {a.name} has died.</b> {a.died >= 0 ? `Day ${Math.floor(a.died / 240) + 1}, ` : ""}{a.cause ? `of ${a.cause}, ` : ""}aged {Math.round(a.age)} days.
+          <small className="muted"> This is the record they left: what they knew, who they loved and how their life went.</small>
+        </div>
+      )}
 
       {a.alive && (
         <div className="needs">
@@ -106,12 +125,12 @@ export function Inspector() {
         <>
           {a.thought && <blockquote className="thought">“{a.thought}”</blockquote>}
           <div className="card">
-            <h4>{a.think ? "💭 thinking about what's next…" : "Goal"}</h4>
+            <h4>{!a.alive ? "Last goal" : a.think ? "💭 thinking about what's next…" : "Goal"}</h4>
             {(a as any).ambition && <p className="ambition" title="A life goal this chit chose for itself">🌟 {(a as any).ambition}</p>}
             {(a as any).origin && <p className="ambition" title="Sailed here from the other island">⛵ from World {(a as any).origin}</p>}
             {(a as any).belief && <p className="ambition" title={`What this chit believes: “${(a as any).belief.tenet}”`}>🕯 {(a as any).belief.name}</p>}
             {a.objective && <p className="objective" title="A lasting objective the chit chose; plans come and go under it">🎯 {a.objective}</p>}
-            {a.want && <p className="ambition" title="What this chit wants right now: when it comes true it is happier, and better known">💭 wants {a.want}</p>}
+            {a.want && a.alive && <p className="ambition" title="What this chit wants right now: when it comes true it is happier, and better known">💭 wants {a.want}</p>}
             {(a.renown ?? 0) > 0 && <p className="ambition" title="Standing in the village: discoveries, work on village projects, teaching, wishes come true">⭐ renown {a.renown}{a.famous ? " · the village's most renowned: others near it follow its lead" : ""}</p>}
             <FamilyCard world={selected.world} id={a.id} />
             <p className="goal">{a.goal || "—"}</p>
