@@ -163,6 +163,6 @@ def test_the_diagnostics_are_taken_on_the_loop_the_worlds_step_on(tmp_path, monk
 
     monkeypatch.setattr(diag, "report", report)
     with TestClient(app) as c:
-        for path in ("/api/why", "/api/diagnostics", "/api/diagnostics.txt"):
+        for path in ("/api/why", "/api/diagnostics", "/api/diagnostics.txt", "/api/scorecard"):
             assert c.get(path).status_code == 200
-    assert seen == [True, True, True]
+    assert seen == [True, True, True, True]  # (the scorecard, polled by the side panel, walks the same report)
