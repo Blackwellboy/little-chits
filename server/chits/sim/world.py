@@ -155,6 +155,11 @@ POP_CAP_BIG = 90  # ...and on an island of 256 or more: a 512 island held one vi
 # Cities (issue #168): an island bigger than 128 holds people in proportion to its side (192: 90, 256: 120, 512: 240;
 # 128 keeps 60), and a town keeps its young until it is a city's size (pioneers.TOWN_KEEPS). A Space Age island was
 # a few villages of 40 because every village sent its young away at 40, the size a city needs.
+# A/B (2026-10-15, tools/harness/ab.py, paired, only this differs): 256 map, 8 seeds x 200 days: population 75.5 >
+# 115.8 (8 of 8 up), structures 222 > 250, discoveries 90.1 > 91.8, settlements 10.9 > 8.1 (fewer, bigger: towns keep
+# their people), 8 tower blocks and 24 hospitals built, age 9.62 > 9.50, starved 4 > 8 (on islands of half as many
+# again; each a hunger reflex beside stores, #168). 128 map, 24 seeds x 60 days: discoveries 75.8 > 77.6 (18 up, 2
+# down), population 57.7 > 59.3, age equal, starved 1 > 0. On.
 CITY_GROWTH = True
 RUIN_DAYS = 6  # an unrepaired ruin crumbles away, freeing the land
 ASHES_DAYS = 3  # a campfire left cold this long is gone (World A had 200 cold stone rings; they looked like graves)
