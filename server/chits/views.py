@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .sim.actions import describe_step
 from .sim.agent import TICKS_PER_DAY, Agent
 from .sim import ideas as IDEAS
-from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name
+from .sim.items import DESIGNS, ITEMS, RECIPES, STORES, all_knowledge_keys, item_name, station_of
 from .sim.world import Structure, World
 
 
@@ -309,10 +309,11 @@ def encyclopedia(w: World, k: str) -> Optional[Dict[str, Any]]:
                               **({"from": inv["from"]} if inv.get("from") else {})} if inv else None)
         return out
     d = DESIGNS[key]
-    made_here = [rk for rk, rr in recipes.items() if d.station and rr.station == d.station]
+    st = station_of(d.key)  # (a launch pad is a station only with the space programme)
+    made_here = [rk for rk, rr in recipes.items() if st and rr.station == st]
     known_here = [rk for rk in made_here if discovered(w, f"recipe:{rk}")]
     out.update(icon="", blurb=d.blurb, materials=[named(m, n) for m, n in d.materials], size=list(d.size),
-               work=d.work, station=d.station, min_pop=d.min_pop,
+               work=d.work, station=st, min_pop=d.min_pop,
                made_here=[named(rk) for rk in known_here], undiscovered_uses=len(made_here) - len(known_here))
     return out
 

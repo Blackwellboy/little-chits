@@ -558,7 +558,7 @@ def scene(world, a: Agent) -> str:
         lines.append(f"- {len(tabs)} inscribed tablet(s) lying on the ground nearby")
     here = world.stations_at(a.x, a.y)
     if here:
-        lines.append(f"- You are standing at a: {', '.join(sorted(here))}")
+        lines.append(f"- You are standing at a: {', '.join(sorted(IT.STATION_NAME.get(h, h) for h in here))}")
     lines.append("")
     if a.plan:
         from ..sim.actions import describe_step

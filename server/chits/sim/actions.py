@@ -1445,6 +1445,8 @@ def plan_bill(world, a: Agent, kinds: Optional[Set[str]] = None, target=None, pr
                 full.append(world.item_name(r.key))
                 continue
             have = stock.get(r.key, 0)
+            if r.key == "rocket":  # (one waiting in someone's hands for its launch counts: brain/launches.py)
+                have += sum(o.inventory.get("rocket", 0) for o in world.agents.values())
             on = r.key in path
             if r.key == prefer:
                 return Bill(st, r.station or "workshop", r, n, max(0.0, 1 - have / _plenty(world, r.key)), on), ""
@@ -1481,11 +1483,14 @@ def _station_word(text: str) -> Tuple[Optional[str], Optional[str]]:
         if low.startswith(p):
             low = low[len(p):]
     kind = STATION_WORDS.get(low) or (low if low in STATIONS else None)
+    if kind == "pad" and not IT.station_of("launch_pad"):
+        kind = None  # (no pad to work at without the space programme)
     if kind:
         return kind, None
     d = normalize_design(low)
     if d:
-        return DESIGNS[d].station, (None if DESIGNS[d].station else DESIGNS[d].name)
+        st = IT.station_of(d)
+        return st, (None if st else DESIGNS[d].name)
     return None, None
 
 
@@ -1520,7 +1525,7 @@ def _work_place(world, step) -> Tuple[Optional[Set[str]], Any, Optional[str], st
         return None, None, None, f"'{r}' isn't a place to work: try a fire, kiln, furnace or workshop"
     if target is not None and not target.stations():
         nm = DESIGNS[target.design].name
-        return None, None, None, (f"the {nm} isn't working (unfinished, in ruins or gone cold)" if DESIGNS[target.design].station
+        return None, None, None, (f"the {nm} isn't working (unfinished, in ruins or gone cold)" if IT.station_of(target.design)
                                   else f"a {nm} isn't a place to work a shift")
     if prefer and not kinds and target is None:
         kinds = {world.recipe(prefer).station or "workshop"}
@@ -1938,14 +1943,19 @@ def _do_launch(world, a: Agent, step, s) -> str:
         return "nobody here knows how to fly to the sky again"
     if not a.has("rocket"):
         return "I have no rocket to launch" + (" (put one together at a launch pad first)" if a.knows_recipe("rocket") else "")
+    ok = lambda x: x is not None and x.design == "launch_pad" and x.functional
     pad = world.structures.get(s.get("pad") or "")
-    if pad is None:
+    if not ok(pad):
         ref = next((step.get(k) for k in ("target", "at", "site") if isinstance(step.get(k), str) and step.get(k)), None)
         pad = world.structures.get(ref) if ref else None
-        if pad is None or pad.design != "launch_pad":
-            pad = next((x for x in world.structures_near(a.x, a.y, 40, "launch_pad") if x.functional and world.same_land(a, x)), None)
-    if pad is None or pad.design != "launch_pad" or not pad.functional:
+        if not ok(pad):
+            pad = next((x for x in world.structures_near(a.x, a.y, 40, "launch_pad") if ok(x) and world.same_land(a, x)), None)
+    if not ok(pad):
         return "there is no working launch pad nearby"
+    if s.get("pad") != pad.id:
+        s["t"] = 0  # (readying starts again at another pad)
+        s.pop("goal_sig", None)
+        a.path = []
     s["pad"] = pad.id
     mv = _goto_structure(world, a, s, pad)
     if mv == "blocked":

@@ -201,24 +201,25 @@ def test_a_village_with_a_pad_and_the_rocket_makes_the_next_one_materials_first(
         o.learn("recipe:fuel", "taught", w.tick)
     pile = _build(w, a, "stockpile", -2)
     _build(w, a, "factory", 0, 4)
+    pile.storage.update({"charcoal": 4, "pot": 2})  # (what fuel is made from)
     assert not rocket_c()  # no pad
     _pad(w, ags)
     c = rocket_c()
     assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "fuel", {"n": 2, "launch": 1})]
     assert c[0][0] == projects.ROCKET
-    pile.storage.update({"fuel": 2})
-    c = rocket_c()
-    assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket_part", {"n": 2, "launch": 1})]
-    p = projects.start(w, "make", "rocket_part", c[0][3], None, "need", c[0][4], sc)
-    assert projects.title(p) == "make 2 rocket sections for the next launch"
-    projects._put(w, sc, None)
+    pile.storage.update({"fuel": 2, "engine": 2, "steel": 4, "copper": 4})
+    assert not rocket_c()  # the sections want alloy, which nobody here knows how to make
     for o in ags:  # a section's own made parts first, where the village can make them
         o.learn("recipe:alloy", "taught", w.tick)
     assert [(key, ex) for _, _, key, _, ex in rocket_c()] == [("alloy", {"n": 4, "launch": 1})]
     pile.storage["alloy"] = 3  # (two sections take four)
     assert [(key, ex) for _, _, key, _, ex in rocket_c()] == [("alloy", {"n": 4, "launch": 1})]
     pile.storage["alloy"] = 4
-    assert [key for _, _, key, _, _ in rocket_c()] == ["rocket_part"]  # (the engine: nobody here makes one)
+    c = rocket_c()
+    assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket_part", {"n": 2, "launch": 1})]
+    p = projects.start(w, "make", "rocket_part", c[0][3], None, "need", c[0][4], sc)
+    assert projects.title(p) == "make 2 rocket sections for the next launch"
+    projects._put(w, sc, None)
     pile.storage.update({"rocket_part": 2})
     c = rocket_c()
     assert [(k, key, ex) for _, k, key, _, ex in c] == [("make", "rocket", {"n": 1, "launch": 1})]
@@ -313,3 +314,151 @@ def test_nothing_finds_the_rocket_so_no_idea_feedback_or_clue_counts_it():
     assert "rocket" not in research.candidates(w, a)  # (a scholar's idea for it would wait for ever)
     assert research.clue("rocket_part") == "heat-proof"  # (the clue it had before there were rockets)
     assert ACT._experiment_hint({"rocket_part": 1, "fuel": 1}, set()) == ""  # (nor does it feel close)
+    from chits import diag
+
+    ops = diag.opportunities(w)
+    assert "recipe:rocket" not in ops and "recipe:rocket_part" in ops  # (the "why slow" panel waits for no find)
+
+
+def test_no_god_mode_gift_or_teacher_holds_the_rocket(monkeypatch):
+    from chits.sim import artifacts
+
+    monkeypatch.setattr(W, "SPACE_PROGRAMME", False)
+    w, ags = _world()
+    a = ags[0]
+    assert "rocket" not in artifacts.undiscovered(w) and "rocket" not in artifacts.undiscovered(w, a)
+    pools = []
+
+    class Draw:
+        def choice(self, pool):
+            pools.append(list(pool))
+            return pool[0]
+
+    monkeypatch.setattr(w, "rng_for", lambda name, key=None: Draw())
+    artifacts.on_pickup(w, a, "treasure_chest", f"{a.x},{a.y}")  # (a chest of made things: never a rocket)
+    assert pools and all("rocket" not in p and "rocket_part" in p for p in pools)
+
+
+def test_an_experiment_beside_the_pad_finds_no_rocket():
+    w, ags = _world()
+    a = ags[0]
+    pad = _pad(w, ags)
+    for o in ags:
+        o.knows.pop("recipe:rocket", None)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(pad)))
+    assert "pad" in w.stations_at(a.x, a.y)
+    a.add("rocket_part", 2)
+    a.add("fuel", 2)
+    _run(w, a, {"do": "experiment", "with": ["rocket_part", "rocket_part", "fuel", "fuel"]})
+    assert not a.knows_recipe("rocket") and not a.has("rocket") and "recipe:rocket" not in w.first
+
+
+def test_no_rocket_project_while_a_part_it_needs_is_one_nobody_here_can_make():
+    w, ags = _world(n=5)
+    a = ags[0]
+    sc = projects._default(w)
+    rocket_c = lambda: [c for c in projects.candidates(w, sc) if c[3] == "the space programme"]
+    _pad(w, ags)
+    pile = _build(w, a, "stockpile", -2)
+    _build(w, a, "factory", 0, 4)
+    pile.storage.update({"fuel": 2, "alloy": 4, "steel": 4, "gear": 4, "pot": 2})  # (all an engine takes)
+    for o in ags:
+        o.learn("recipe:rocket_part", "taught", w.tick)
+    assert not rocket_c()  # the sections want steam engines, and nobody knows the engine
+    for o in ags:
+        o.learn("recipe:engine", "taught", w.tick)
+    assert not rocket_c()  # ...it is known, but there is no forge
+    pile.storage["engine"] = 2
+    assert [key for _, _, key, _, _ in rocket_c()] == ["rocket_part"]  # (with the engines in store, the sections)
+
+
+def test_switched_off_a_launch_pad_is_no_station_anywhere(monkeypatch):
+    monkeypatch.setattr(W, "SPACE_PROGRAMME", False)
+    from chits.sim.items import station_of
+
+    w, ags = _world()
+    pad = _pad(w, ags)
+    assert station_of("launch_pad") is None and station_of("kiln") == "kiln"
+    assert ACT._station_word("launch pad") == (None, "launch pad") and ACT._station_word("pad") == (None, None)
+    enc = views.encyclopedia(w, "design:launch_pad")
+    assert enc["station"] is None and enc["undiscovered_uses"] == 0
+    assert ACT._work_place(w, {"do": "work", "target": pad.id})[3] == "a launch pad isn't a place to work a shift"
+    # ...nor does it reach a village from as far as a station does (STATION_USE): only as far as other buildings
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(projects, "_owns", lambda world, sc, s: False)
+    far = SimpleNamespace(id="v1", name="V", x=pad.x - 35, y=pad.y, residents=[], structures=[])
+    assert projects.STORE_USE < 35 <= projects.STATION_USE
+    assert pad not in projects._usable(w, projects.Scope(w, far, False))
+    monkeypatch.setattr(W, "SPACE_PROGRAMME", True)
+    assert pad in projects._usable(w, projects.Scope(w, far, False))
+    assert station_of("launch_pad") == "pad" and ACT._station_word("launch pad") == ("pad", None)
+    assert ACT._station_word("pad") == ("pad", None)
+
+
+def test_no_second_rocket_while_one_waits_in_hand():
+    w, ags = _world()
+    a = ags[0]
+    pad = _pad(w, ags)
+    pile = _build(w, a, "stockpile", -2)
+    pile.storage.update({"rocket_part": 4, "fuel": 4})
+    bill, _ = ACT.plan_bill(w, a, {"pad"}, pad)
+    assert bill is not None and bill.r.key == "rocket"
+    ags[1].add("rocket")
+    bill, why = ACT.plan_bill(w, a, {"pad"}, pad)
+    assert bill is None and "plenty of rocket" in why
+
+
+def test_readying_starts_again_at_another_pad():
+    w, ags = _world()
+    a = ags[0]
+    pad = _pad(w, ags)
+    a.add("rocket")
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(pad)))
+    s = {"pad": "struct_gone", "t": ACT.LAUNCH_WORK - 1, "ticks": 1}
+    assert ACT._do_launch(w, a, {"do": "launch"}, s) == ACT.RUNNING and s["t"] == 1 and a.has("rocket")
+
+
+def test_the_scene_names_the_launch_pad_not_its_key():
+    w, ags = _world()
+    a = ags[0]
+    pad = _pad(w, ags)
+    a.x, a.y = next(iter(w.stand_tiles_for_structure(pad)))
+    assert "standing at a: launch pad" in P.scene(w, a) and ": pad" not in P.scene(w, a)
+
+
+def test_switched_off_a_world_with_artifacts_and_a_pad_is_mains():
+    """The off path is main's, draw for draw: alien teachers, a chest, a capsule and a launch pad, two seeds."""
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    base = "8a12b11"  # main before the programme
+    git = lambda *a, **kw: subprocess.run(["git", "-C", str(root), *a], capture_output=True, **kw)
+    if git("cat-file", "-e", f"{base}^{{commit}}").returncode:
+        pytest.skip(f"{base} is not in this clone")
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tar = git("archive", base, "server")
+        subprocess.run(["tar", "-x", "-C", tmp], input=tar.stdout, check=True)
+        runner = Path(__file__).with_name("space_off_runner.py")
+        for seed in (42, 7):
+            outs = []
+            for server in (Path(tmp) / "server", root / "server"):
+                env = dict(os.environ, PYTHONPATH=str(server), PYTHONDONTWRITEBYTECODE="1")
+                r = subprocess.run([sys.executable, str(runner), str(seed), "6"], cwd=server, env=env,
+                                   capture_output=True, text=True)
+                assert r.returncode == 0, r.stderr[-2000:]
+                outs.append(json.loads(r.stdout))
+            before, after = outs
+            assert before["tree"] != after["tree"] and after["launches"] == 1
+            assert any("understood how to make" in (n or "") for n in after["notes"])
+            assert any((n or "").startswith("The chest held") for n in after["notes"])
+            assert after["notes"] == before["notes"]
+            first = next((i + 1 for i, (x, y) in enumerate(zip(before["daily"], after["daily"])) if x != y), None)
+            assert first is None, f"seed {seed}: the saved worlds first differ on day {first}"
+            assert after["hash"] == before["hash"]

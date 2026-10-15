@@ -23,7 +23,7 @@ from .actions import COUNTABLE, STATION_REACH
 from .agent import TICKS_PER_DAY, Agent
 from .food import STORE_SIGHT
 from . import ideas as IDEAS
-from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design
+from .items import DESIGNS, GATHER_RULES, HOME_STORES, RECIPES, STORES, item_name, normalize_design, station_of
 from .pioneers import APART
 
 STALL_DAYS = 8  # a project nobody has moved for this long is given up on...
@@ -63,7 +63,7 @@ LACKING = {"stockpile": 2.0, "farm": 2.2, "workshop": 2.2, "kiln": 2.2, "furnace
 NEXT_AGE = 4.0  # the next step on the road to the next age
 SITE_SIGHT = 12  # where chits can't talk, a building project is known by those who can see its site going up
 STATION_DESIGN = {"fire": "campfire", "kiln": "kiln", "workshop": "workshop", "furnace": "furnace", "forge": "forge",
-                  "factory": "factory", "loom": "tailor", "pad": "launch_pad"}
+                  "factory": "factory", "loom": "tailor"}  # (the pad: only with the programme, items.station_of)
 ROCKET = 1.0  # the space programme's next rocket (sim/space.py): below what a village lacks, so it waits on them
 
 Step = Tuple[str, str, Dict[str, Any]]  # ("discover" | "build" | "make", key, {"n": .., "for": design} for "make")
@@ -255,7 +255,7 @@ def _usable(world, sc: Scope) -> List:
     if got is None:  # (where they stand is looked at once a tick; whether they work, every time: one may be finished this tick)
         own = set(sc.village.structures)
         land = _lands(world, [world.structures[i] for i in sc.village.structures[:3] if i in world.structures])
-        makes = lambda s: DESIGNS[s.design].station or s.design in STATION_DESIGN.values()
+        makes = lambda s: station_of(s.design) or s.design in STATION_DESIGN.values()
         got = sc.cache["usable"] = [
             s for s in world.structures.values()
             if s.id in own or _owns(world, sc, s)  # (a farm or pen it raised out beyond its houses is its own too)
@@ -742,25 +742,26 @@ def _rocket_step(world, sc: Scope, recipes: set, have: set) -> Optional[Tuple[st
     sections, then the rocket at the pad. Only with a launch pad standing and someone in the village who knows the
     rocket, and none while a rocket already waits for its launch. A section short of its own made parts (alloy, a
     steam engine) is first those, as far down as the village can make them: "make 2 rocket sections" stalled for
-    want of the engines in a late-game probe, set aside every 8 days and picked again."""
+    want of the engines in a late-game probe, set aside every 8 days and picked again. None at all while a part it
+    is short of is one nobody here can make (no engine without the recipe and a forge): that project would stall."""
     from . import space
 
     if not space.on() or "launch_pad" not in have or "rocket" not in recipes or stock(world, "rocket", sc=sc) >= 1:
         return None
     for k, n in RECIPES["rocket"].inputs:
         if stock(world, k, sc=sc) < n:
-            if k not in recipes or _station_missing(have, RECIPES[k].station):
-                return None  # (nobody here can make it now)
-            k, n = _short_of(world, sc, recipes, have, k, n)
-            return k, {"n": n, "launch": 1}
+            got = _short_of(world, sc, recipes, have, k, n)
+            return (got[0], {"n": got[1], "launch": 1}) if got else None
     return "rocket", {"n": 1, "launch": 1}
 
 
-def _short_of(world, sc: Scope, recipes: set, have: set, key: str, n: int, depth: int = 0) -> Tuple[str, int]:
-    """The first made part this village is short of for `n` of `key` that it can make (key itself when none is)."""
+def _short_of(world, sc: Scope, recipes: set, have: set, key: str, n: int, depth: int = 0) -> Optional[Tuple[str, int]]:
+    """The first made part this village is short of for `n` of `key` (key itself when it is short of none); None when
+    that is one it cannot make: its recipe unknown here, its station missing, or too far down the road."""
+    if key not in recipes or _station_missing(have, RECIPES[key].station) or depth > 4:
+        return None  # (nobody here can make it now)
     for k, q in RECIPES[key].inputs:
-        if depth < 4 and k in RECIPES and k in recipes and not _station_missing(have, RECIPES[k].station) \
-                and stock(world, k, sc=sc) < q * n:
+        if k in RECIPES and stock(world, k, sc=sc) < q * n:
             return _short_of(world, sc, recipes, have, k, q * n, depth + 1)
     return key, n
 

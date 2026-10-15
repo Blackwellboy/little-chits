@@ -137,6 +137,18 @@ STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "
 # clue's rarity counts it (an idea for a rocket took a scholar's hint slot for good, and changed worlds with no pad)
 UNFOUND = frozenset({"rocket"})
 STATION_NAME = {"pad": "launch pad"}  # a station said otherwise than its key, in a recipe's words
+
+
+def station_of(design: str) -> Optional[str]:
+    """The station a building is, as the world plays it: a launch pad is one (the pad, where a rocket is put
+    together) only with the space programme (world.SPACE_PROGRAMME); off, it is none, as before the programme."""
+    d = DESIGNS.get(design)
+    st = d.station if d else None
+    if st == "pad":
+        from . import world as W
+
+        return st if W.SPACE_PROGRAMME else None
+    return st
 # the ores (issue #4): one kind of deposit tile, whose metal is fixed by its place and the world's seed (World.ore_item)
 ORE_KINDS = ("ore", "iron_ore")
 IRON_ORE_SHARE = 65  # percent of deposits that are iron: iron is the commoner ore
@@ -526,8 +538,10 @@ class Catalog:
 
     def match(self, bag: Dict[str, int], station: Optional[str]) -> Optional[Recipe]:
         """What an experiment with `bag` at `station` makes in this world: the base physics, then the pack's.
-        (Inventions are not found by experiment: they are made by the invent action.)"""
+        (Inventions are not found by experiment: they are made by the invent action; nor is what is UNFOUND.)"""
         r = match_recipe(bag, station)
+        if r is not None and r.key in UNFOUND:
+            r = None
         if r is None and self.pack_recipes:
             key = frozenset((k, v) for k, v in bag.items() if v > 0)
             for p in self.pack_recipes.values():
