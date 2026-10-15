@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from .items import ITEMS, RECIPES, UNFOUND, Item
+from .items import ITEMS, RECIPES, UNFOUND, Item, hidden
 
 ARTIFACTS: Dict[str, Item] = {
     i.key: i
@@ -34,7 +34,7 @@ def is_artifact(key: Optional[str]) -> bool:
 
 def undiscovered(world, a=None) -> List[str]:
     """Base recipes nobody in this world has discovered yet (and this chit doesn't know)."""
-    return [k for k in sorted(RECIPES) if f"recipe:{k}" not in world.first and not k.startswith("inv_") and k not in UNFOUND
+    return [k for k in sorted(RECIPES) if f"recipe:{k}" not in world.first and not k.startswith("inv_") and k not in hidden()
             and (a is None or not a.knows_recipe(k))]
 
 
@@ -50,7 +50,7 @@ def on_pickup(world, a, key: str, tile: str) -> Optional[str]:
         _give(world, a, tile, "seeds", 30)
         return "The vault cracked open: seeds, so many seeds"
     if key == "treasure_chest":
-        crafted = [k for k in sorted(RECIPES) if not k.startswith("inv_") and k not in UNFOUND]
+        crafted = [k for k in sorted(RECIPES) if not k.startswith("inv_") and k not in hidden()]
         got: Dict[str, int] = {}
         for _ in range(8):
             k = world.rng_for("artifacts").choice(crafted)

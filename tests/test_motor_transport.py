@@ -59,3 +59,13 @@ def test_the_motor_car_is_the_best_carrier_and_is_what_the_view_draws():
     a.add("wagon", 1)
     a.add("motor_car", 1)
     assert agent_brief(w, a)["vehicle"] == "motor_car"
+
+
+@pytest.mark.parametrize("on", [True, False])
+def test_switched_off_nothing_finds_teaches_or_hands_out_a_motor_car(on, monkeypatch):
+    """Off, the world draws as the tree before it did: chests, alien teachers, hints and experiments never reach it."""
+    from chits.sim import artifacts, items
+    monkeypatch.setattr(actions, "TRANSPORT", on)
+    assert ("motor_car" in items.hidden()) is (not on) and "rocket" in items.hidden()
+    w, _ = village()
+    assert ("motor_car" in artifacts.undiscovered(w)) is on

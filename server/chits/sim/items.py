@@ -137,6 +137,18 @@ STATIONS = ("fire", "workshop", "kiln", "furnace", "forge", "factory", "mill", "
 # Made only by those who saw one made (sim/space.py): nothing finds it, so no experiment's feedback, scholar's idea or
 # clue's rarity counts it (an idea for a rocket took a scholar's hint slot for good, and changed worlds with no pad)
 UNFOUND = frozenset({"rocket"})
+# things that exist only while their switch is on: switched off, nothing finds, teaches or hands them out, so the off
+# path draws as the tree before them did (artifact chests, alien teachers, hints and experiments)
+SWITCHED: Dict[str, Tuple[str, str]] = {"motor_car": ("actions", "TRANSPORT")}
+
+
+def hidden() -> frozenset:
+    """UNFOUND, and what a switch that is off keeps out of the world."""
+    import importlib
+
+    off = {k for k, (mod, flag) in SWITCHED.items()
+           if not getattr(importlib.import_module(f"chits.sim.{mod}"), flag, True)}
+    return UNFOUND | off if off else UNFOUND
 STATION_NAME = {"pad": "launch pad"}  # a station said otherwise than its key, in a recipe's words
 
 
@@ -551,7 +563,7 @@ class Catalog:
         """What an experiment with `bag` at `station` makes in this world: the base physics, then the pack's.
         (Inventions are not found by experiment: they are made by the invent action; nor is what is UNFOUND.)"""
         r = match_recipe(bag, station)
-        if r is not None and r.key in UNFOUND:
+        if r is not None and r.key in hidden():
             r = None
         if r is None and self.pack_recipes:
             key = frozenset((k, v) for k, v in bag.items() if v > 0)
