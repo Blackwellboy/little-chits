@@ -69,3 +69,20 @@ def test_switched_off_nothing_finds_teaches_or_hands_out_a_motor_car(on, monkeyp
     assert ("motor_car" in items.hidden()) is (not on) and "rocket" in items.hidden()
     w, _ = village()
     assert ("motor_car" in artifacts.undiscovered(w)) is on
+
+
+def test_a_car_is_made_only_from_a_spare_engine_and_never_switched_off(monkeypatch):
+    """Engines are the factories', pumps' and rockets' first: a car takes one only when the stores hold spares."""
+    w, (a, _) = village()
+    a.inventory.clear()
+    a.learn("recipe:motor_car", "taught", w.tick)
+    monkeypatch.setattr(INS, "_craft_steps", lambda a, k, world=None: [{"do": "craft", "what": k}])
+    stock = {"engine": 0}
+    monkeypatch.setattr(INS, "_stock_near", lambda world, a, k, radius=25: stock.get(k, 0))
+    got = INS._better_carrier(w, a)
+    assert not got or "motor car" not in got[1]["goal"]  # no spare engine: no car
+    stock["engine"] = 2 + actions.keep_stock(w).get("engine", 0)
+    assert "motor car" in INS._better_carrier(w, a)[1]["goal"]
+    monkeypatch.setattr(actions, "TRANSPORT", False)
+    got = INS._better_carrier(w, a)
+    assert not got or "motor car" not in got[1]["goal"]  # switched off: never

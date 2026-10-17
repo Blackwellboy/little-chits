@@ -115,10 +115,15 @@ def _better_carrier(world, a: Agent) -> Optional[tuple]:
     """Make (or fetch from the stores) the best carrier this chit knows, if it beats the best it holds."""
     held = max((a._item(k).carry_bonus - a._item(k).weight for k, n in a.inventory.items()
                 if n > 0 and a._item(k) and a._item(k).carry_bonus), default=0)
+    from ..sim import actions as ACT
+    from ..sim.items import hidden
+
     for k in CARRIERS:
         it = world.item(k)
-        if not a.knows_recipe(k) or a.has(k) or it.carry_bonus - it.weight <= held:
+        if not a.knows_recipe(k) or a.has(k) or it.carry_bonus - it.weight <= held or k in hidden():
             continue
+        if k == "motor_car" and _stock_near(world, a, k) <= 0 and _stock_near(world, a, "engine") < 2 + ACT.keep_stock(world).get("engine", 0):
+            continue  # (a car only from a spare engine: the village's engines are its factories', pumps' and rockets')
         if _stock_near(world, a, k) > 0:
             return (2.5, {"goal": f"fetch a {item_name(k)}", "thought": f"There's a {item_name(k)} in the stores. I could carry more.",
                           "steps": [{"do": "take", "what": k, "qty": 1}]})
