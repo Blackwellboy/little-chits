@@ -838,12 +838,13 @@ class Runtime:
 
     def narrator_brain(self, w: World):
         """Who tells the story: the shared narrator if one is set (fair in model vs model: the better *writer*
-        doesn't make its world look better), else the world's own model, else nobody (template only)."""
+        doesn't make its world look better), else the world's own model, else nobody (template only).
+        Decision-only brains take no chat, so they never narrate."""
         n = self.mind.brains.get(self.mind.narrator) if self.mind.narrator else None
-        if n and n.healthy():
+        if n and n.healthy() and self.mind._takes_chat(n):
             return n
         b = self.mind.brains.get(self.mind.world_brain.get(w.id, INSTINCT))
-        return b if b and b.healthy() else None
+        return b if b and b.healthy() and self.mind._takes_chat(b) else None
 
     def write_saga(self, w: World, week: int) -> Path:
         """A weekly story from that week's facts and top moments. Template now; narrated in the background."""
