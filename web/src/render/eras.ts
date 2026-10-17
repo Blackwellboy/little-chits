@@ -93,4 +93,4 @@ export function electrified(b: Box, stations: Box[], radius = POWER_RADIUS): boo
 }
 
 /** The best carrier a chit has, which it is drawn pulling: a wagon, else a cart, else a sled. */
-export const VEHICLES = ["wagon", "cart", "sled"] as const;
+export const VEHICLES = ["motor_car", "wagon", "cart", "sled"] as const;

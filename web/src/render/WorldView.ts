@@ -1189,7 +1189,7 @@ export class WorldView {
       // the sled, cart or wagon it carries, pulled behind it (it is real: the chit holds one)
       if (a.vehicle && !sleeping) {
         c.vehicle.texture = this.tex.get(`v:${a.vehicle}`, () => A.vehicleCanvas(a.vehicle!));
-        c.vehicle.visible = true; c.vehicle.position.set(-4, 1);
+        c.vehicle.visible = true; c.vehicle.position.set(a.vehicle === "motor_car" ? 9 : -4, 1);  // (a motor car carries its chit; the rest are pulled)
       } else c.vehicle.visible = false;
       if (a.carry) {
         c.carry.texture = this.tex.get(`i:${a.carry}`, () => A.iconCanvas(a.carry!));

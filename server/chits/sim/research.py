@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 
 from .agent import Agent
-from .items import ITEMS, RECIPES, STORES, UNFOUND, normalize_design
+from .items import ITEMS, RECIPES, STORES, UNFOUND, hidden, normalize_design
 from .items import LIBRARIES
 
 HINT_FIRST = 8.0  # insight for the first hint...
@@ -34,7 +34,7 @@ def threshold(world) -> float:
 
 
 def _prop_count(p: str) -> int:
-    return sum(1 for k, it in ITEMS.items() if p in it.props and k not in UNFOUND)
+    return sum(1 for k, it in ITEMS.items() if p in it.props and k not in hidden())
 
 
 def clue(key: str) -> str:
@@ -95,7 +95,7 @@ def candidates(world, a: Optional[Agent] = None) -> List[str]:
     target = p.get("key") if p.get("kind") == "discover" else None
     out = []
     for k, r in RECIPES.items():
-        if k in known or k in active or k in UNFOUND:
+        if k in known or k in active or k in hidden():
             continue
         if not all(i in handled for i, _ in r.inputs):
             continue

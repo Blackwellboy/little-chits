@@ -561,6 +561,14 @@ const ICONS: Record<string, (ctx: CanvasRenderingContext2D) => void> = {
 export function vehicleCanvas(kind: string): HTMLCanvasElement {
   const [c, ctx] = canvas(18, 12);
   const wood = "#8a5a32", dark = "#5a3a1e", iron = "#3c3c40";
+  if (kind === "motor_car") {  // a little red motor car: the chit sits in it (WorldView seats it, not pulls it)
+    ctx.fillStyle = "#b8302a"; ctx.fillRect(1, 5, 16, 4); ctx.fillRect(4, 2, 9, 3);
+    ctx.fillStyle = "#8fc8e8"; ctx.fillRect(5, 3, 3, 2); ctx.fillRect(9, 3, 3, 2);
+    ctx.fillStyle = "#f2e08a"; ctx.fillRect(16, 6, 1, 1);
+    ctx.fillStyle = "#7a1e1a"; ctx.fillRect(1, 8, 16, 1);
+    for (const wx of [2, 12]) { ctx.fillStyle = "#222226"; ctx.fillRect(wx, 8, 4, 4); ctx.fillStyle = "#9a9aa0"; ctx.fillRect(wx + 1, 9, 2, 2); }
+    return c;
+  }
   if (kind === "sled") {
     ctx.fillStyle = wood; ctx.fillRect(2, 5, 13, 3);
     ctx.fillStyle = dark; ctx.fillRect(1, 9, 15, 1); ctx.fillRect(1, 8, 1, 1); ctx.fillRect(15, 8, 2, 1);

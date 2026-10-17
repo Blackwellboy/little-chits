@@ -85,6 +85,8 @@ def main(argv):
         world_rules.CITY_GROWTH = False
     if hasattr(actions, "ROOM_KEEPS_PLAN"):  # (the arms-full reflex keeps what the plan needs)
         actions.ROOM_KEEPS_PLAN = False
+    if hasattr(actions, "TRANSPORT"):  # (what rolls goes faster on a road; the motor car)
+        actions.TRANSPORT = False
     from chits.brain import mind as mind_rules
     if hasattr(mind_rules, "CHOICE_REPAIR"):  # (a choosing model told why its last choice failed)
         mind_rules.CHOICE_REPAIR = False
