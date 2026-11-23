@@ -26,7 +26,7 @@ ONE_TOKEN = {"max_tokens": 1, "json_reply": False, "extra": {"logprobs": True, "
 def decision_request(world, a, style: str = "full"):
     """One decision as a brain of this prompt style is asked for it: (messages, chat arguments, option letters).
     "choose" and "cascade" pick a drafted plan by one letter; the others write a plan (no letters)."""
-    if style in ("choose", "cascade"):
+    if style in ("choose", "cascade", "decide"):
         opts = Instinct().options(world, a)
         own = style == "cascade"
         return P.choice_messages(world, a, opts, own_idea=own), dict(ONE_TOKEN), P.LETTERS[:len(opts) + own]
